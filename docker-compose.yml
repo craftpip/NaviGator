@@ -24,6 +24,10 @@ services:
       ENABLE_VNC: ${ENABLE_VNC:-1}
       # Enable MCP over HTTP (Streamable HTTP) — needed for most MCP clients
       ENABLE_HTTP_MCP: ${ENABLE_HTTP_MCP:-1}
+      # Enable the extra browser-testing tools like tabs, DOM queries, console, click, and type
+      ENABLE_DEVTOOLS_MCP: ${ENABLE_DEVTOOLS_MCP:-1}
+      # Backend for the browser-testing tools. Defaults to the same backend as normal page ops.
+      DEVTOOLS_BROWSER_BACKEND: ${DEVTOOLS_BROWSER_BACKEND:-${BROWSER_BACKEND:-cloakbrowser}}
       MCP_API_PORT: ${MCP_API_PORT:-3000}                      # port for HTTP MCP
       # How long before a page operation times out (ms)
       BROWSER_OP_TIMEOUT_MS: ${BROWSER_OP_TIMEOUT_MS:-25000}

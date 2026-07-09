@@ -14,6 +14,7 @@ import {
 import { formatBrowserBackendShort, parseBrowserBackend } from "./config.js";
 import { getBrowserManager } from "./browser.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth } from "./search.js";
+import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall } from "./devtools.js";
 
 const linkMemoryByRef = new Map();
 const linkMemoryByUrl = new Map();
@@ -909,6 +910,7 @@ async function readJsonBody(req) {
 }
 
 function getToolsListResponse() {
+  const devtoolsEnabled = Boolean(manager?.config?.enableDevtoolsMcp);
   return {
     tools: [
       {
@@ -1018,7 +1020,8 @@ function getToolsListResponse() {
           description: "Provide one of: url, urls, ref_id, or ref_ids. Prefer ref_id/ref_ids from web_search when available.",
           additionalProperties: false
         }
-      }
+      },
+      ...(devtoolsEnabled ? devtoolsToolDefinitions : [])
     ]
   };
 }
@@ -1144,6 +1147,13 @@ async function handleToolCall(name, args = {}) {
     timer.step("format_response", mark);
     timer.end({ status: "ok" });
     return response;
+  }
+
+  if (manager.config.enableDevtoolsMcp && devtoolsToolDefinitions.some((tool) => tool.name === name)) {
+    const result = await runWithHangGuard(`mcp:${name}`, () => handleDevtoolsToolCall(name, args));
+    timer.step("developer_browser_tool", mark);
+    timer.end({ status: "ok" });
+    return formatDevtoolsToolResponse(name, result);
   }
 
   timer.step("unknown_tool", mark);

@@ -219,6 +219,10 @@ export async function loadConfig() {
     lightpandaPort: parseNumber(process.env.LIGHTPANDA_PORT, 9222),
     cloakbrowserPath,
     defaultBackend: parseBrowserBackend(process.env.BROWSER_BACKEND, "cloakbrowser"),
+    devtoolsBackend: parseBrowserBackend(
+      process.env.DEVTOOLS_BROWSER_BACKEND,
+      parseBrowserBackend(process.env.BROWSER_BACKEND, "cloakbrowser")
+    ),
     browserOpTimeoutMs: parseNumber(process.env.BROWSER_OP_TIMEOUT_MS, 60000),
     navWaitUntil,
     headless: parseBoolean(process.env.HEADLESS, headlessDefault),
@@ -230,6 +234,7 @@ export async function loadConfig() {
     enableHttpHealth: parseBoolean(process.env.ENABLE_HTTP_HEALTH, false),
     enableHttpMcp: parseBoolean(process.env.ENABLE_HTTP_MCP, false),
     enableStdioMcp: parseBoolean(process.env.ENABLE_STDIO_MCP, true),
+    enableDevtoolsMcp: parseBoolean(process.env.ENABLE_DEVTOOLS_MCP, false),
     enableScreenshotDownloadLink: parseBoolean(process.env.ENABLE_SCREENSHOT_DOWNLOAD_LINK, false),
     screenshotPathPrefix: screenshotPathPrefix.trim() || null,
     searchKeepMinWorkingWindows,

@@ -933,10 +933,12 @@ export class BrowserManager {
     return {
       ok: true,
       backend: this.config.defaultBackend,
+      devtoolsBackend: this.config.devtoolsBackend,
       browserConnected: Boolean(this.browser?.connected),
       lightpandaConnected: Boolean(this.lightpandaBrowser?.connected),
       cloakbrowserConnected: Boolean(this.cloakbrowserBrowser?.connected),
       headless: this.config.headless,
+      enableDevtoolsMcp: this.config.enableDevtoolsMcp,
       userDataDir: this.config.chromeUserDataDir,
       profileDir: this.config.chromeProfileDir,
       searchRouteWarmupEngines: this.config.searchRouteWarmupEngines,

@@ -1,0 +1,1035 @@
+import { randomUUID } from "node:crypto";
+import { getBrowserManager } from "./browser.js";
+
+const MAX_TARGETS = 20;
+const MAX_CONSOLE_MESSAGES = 200;
+const MAX_QUERY_RESULTS = 25;
+const DEFAULT_HTML_LIMIT = 20000;
+
+const targetsById = new Map();
+
+function cleanWhitespace(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function truncate(value, maxChars = 300) {
+  const text = String(value || "");
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(0, maxChars - 3))}...`;
+}
+
+function parseMaxChars(value, fallback = DEFAULT_HTML_LIMIT) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(120000, Math.floor(parsed));
+}
+
+function assertString(value, field) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`Invalid input: ${field} must be a non-empty string`);
+  }
+}
+
+function assertEnabled(manager) {
+  if (!manager?.config?.enableDevtoolsMcp) {
+    throw new Error("Developer browser tools are disabled. Set ENABLE_DEVTOOLS_MCP=1 to enable them.");
+  }
+}
+
+function normalizeBackend(manager, backend) {
+  const normalized = String(backend || "").trim().toLowerCase();
+  if (!normalized) return manager.config.devtoolsBackend || manager.config.defaultBackend;
+  if (!["chromium", "cloakbrowser", "lightpanda"].includes(normalized)) {
+    throw new Error("Invalid input: backend must be one of chromium, cloakbrowser, lightpanda");
+  }
+  return normalized;
+}
+
+function getTargetState(targetId) {
+  const state = targetsById.get(String(targetId || "").trim());
+  if (!state || !state.page || state.page.isClosed()) {
+    throw new Error(`Unknown targetId: ${targetId}`);
+  }
+  state.lastActiveAt = new Date().toISOString();
+  return state;
+}
+
+function recordConsoleMessage(state, entry) {
+  state.consoleMessages.push(entry);
+  while (state.consoleMessages.length > MAX_CONSOLE_MESSAGES) {
+    state.consoleMessages.shift();
+  }
+}
+
+function buildTargetSummary(state) {
+  return {
+    targetId: state.targetId,
+    backend: state.backend,
+    url: state.page.url(),
+    title: state.lastTitle || "",
+    createdAt: state.createdAt,
+    lastActiveAt: state.lastActiveAt,
+    consoleMessageCount: state.consoleMessages.length
+  };
+}
+
+async function refreshTitle(state) {
+  try {
+    state.lastTitle = await state.page.title();
+  } catch {
+    state.lastTitle = state.lastTitle || "";
+  }
+}
+
+function installPageObservers(state) {
+  const { page } = state;
+
+  page.on("console", async (message) => {
+    let args = [];
+    try {
+      const handles = await Promise.all(
+        message.args().slice(0, 5).map(async (handle) => {
+          try {
+            return await handle.jsonValue();
+          } catch {
+            return handle.toString();
+          }
+        })
+      );
+      args = handles;
+    } catch {
+      args = [];
+    }
+
+    recordConsoleMessage(state, {
+      type: message.type(),
+      text: cleanWhitespace(message.text()),
+      args,
+      location: message.location(),
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  page.on("pageerror", (error) => {
+    recordConsoleMessage(state, {
+      type: "pageerror",
+      text: truncate(error?.stack || error?.message || String(error), 1000),
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  page.on("requestfailed", (request) => {
+    const failure = request.failure();
+    recordConsoleMessage(state, {
+      type: "requestfailed",
+      text: `${request.method()} ${request.url()}${failure?.errorText ? ` - ${failure.errorText}` : ""}`,
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  page.on("framenavigated", async (frame) => {
+    if (frame !== page.mainFrame()) return;
+    state.lastActiveAt = new Date().toISOString();
+    await refreshTitle(state);
+  });
+
+  page.on("close", () => {
+    targetsById.delete(state.targetId);
+  });
+}
+
+async function createTarget(args = {}) {
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+
+  if (targetsById.size >= MAX_TARGETS) {
+    throw new Error(`Too many open targets. Close a target before creating a new one (max ${MAX_TARGETS}).`);
+  }
+
+  const backend = normalizeBackend(manager);
+  const page = await manager.newPage({ backend });
+  const state = {
+    targetId: randomUUID(),
+    backend,
+    page,
+    consoleMessages: [],
+    createdAt: new Date().toISOString(),
+    lastActiveAt: new Date().toISOString(),
+    lastTitle: ""
+  };
+
+  installPageObservers(state);
+  targetsById.set(state.targetId, state);
+
+  const url = typeof args.url === "string" && args.url.trim() ? args.url.trim() : "about:blank";
+  if (url !== "about:blank") {
+    await page.goto(url, {
+      waitUntil: manager.config.navWaitUntil,
+      timeout: manager.config.browserOpTimeoutMs
+    });
+  }
+
+  await refreshTitle(state);
+  return buildTargetSummary(state);
+}
+
+async function listTargets() {
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const results = [];
+  for (const state of targetsById.values()) {
+    if (!state.page || state.page.isClosed()) continue;
+    await refreshTitle(state);
+    results.push(buildTargetSummary(state));
+  }
+  return {
+    count: results.length,
+    targets: results
+  };
+}
+
+async function closeTarget(args = {}) {
+  assertString(args.targetId, "targetId");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  await state.page.close();
+  targetsById.delete(state.targetId);
+  return {
+    targetId: state.targetId,
+    closed: true
+  };
+}
+
+async function navigatePage(args = {}) {
+  assertString(args.targetId, "targetId");
+  assertString(args.url, "url");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  await state.page.goto(args.url.trim(), {
+    waitUntil: manager.config.navWaitUntil,
+    timeout: manager.config.browserOpTimeoutMs
+  });
+  await refreshTitle(state);
+  return buildTargetSummary(state);
+}
+
+async function evaluateRuntime(args = {}) {
+  assertString(args.targetId, "targetId");
+  assertString(args.expression, "expression");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const result = await state.page.evaluate(async (expression) => {
+    function cleanWhitespaceInner(value) {
+      return String(value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function cssPath(element) {
+      if (!(element instanceof Element)) return null;
+      const parts = [];
+      let node = element;
+      while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 8) {
+        let segment = node.tagName.toLowerCase();
+        if (node.id) {
+          segment += `#${node.id}`;
+          parts.unshift(segment);
+          break;
+        }
+        const siblings = node.parentElement
+          ? Array.from(node.parentElement.children).filter((child) => child.tagName === node.tagName)
+          : [];
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(node);
+          segment += `:nth-of-type(${index + 1})`;
+        }
+        parts.unshift(segment);
+        node = node.parentElement;
+      }
+      return parts.join(" > ");
+    }
+
+    function xpathFor(element) {
+      if (!(element instanceof Element)) return null;
+      const parts = [];
+      let node = element;
+      while (node && node.nodeType === Node.ELEMENT_NODE) {
+        let index = 1;
+        let sibling = node.previousElementSibling;
+        while (sibling) {
+          if (sibling.tagName === node.tagName) index += 1;
+          sibling = sibling.previousElementSibling;
+        }
+        parts.unshift(`${node.tagName.toLowerCase()}[${index}]`);
+        node = node.parentElement;
+      }
+      return `/${parts.join("/")}`;
+    }
+
+    function describeElement(element) {
+      const rect = element.getBoundingClientRect();
+      return {
+        tagName: element.tagName.toLowerCase(),
+        text: cleanWhitespaceInner(element.innerText || element.textContent || "").slice(0, 500),
+        value: "value" in element ? String(element.value || "") : "",
+        selector: cssPath(element),
+        xpath: xpathFor(element),
+        attributes: {
+          id: element.id || "",
+          class: element.className || "",
+          role: element.getAttribute("role") || "",
+          name: element.getAttribute("name") || "",
+          type: element.getAttribute("type") || "",
+          href: element.getAttribute("href") || "",
+          src: element.getAttribute("src") || "",
+          placeholder: element.getAttribute("placeholder") || ""
+        },
+        rect: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        }
+      };
+    }
+
+    function serialize(value, depth = 0, seen = new WeakSet()) {
+      if (value === null || value === undefined) return value;
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+      if (typeof value === "bigint") return value.toString();
+      if (typeof value === "function") return `[Function ${value.name || "anonymous"}]`;
+      if (value instanceof Date) return value.toISOString();
+      if (value instanceof Error) {
+        return {
+          name: value.name,
+          message: value.message,
+          stack: String(value.stack || "").slice(0, 2000)
+        };
+      }
+      if (value instanceof Element) return describeElement(value);
+      if (value instanceof NodeList || value instanceof HTMLCollection || Array.isArray(value)) {
+        return Array.from(value).slice(0, 25).map((item) => serialize(item, depth + 1, seen));
+      }
+      if (typeof value === "object") {
+        if (seen.has(value)) return "[Circular]";
+        seen.add(value);
+        if (depth >= 4) return "[MaxDepth]";
+        const out = {};
+        for (const key of Object.keys(value).slice(0, 25)) {
+          out[key] = serialize(value[key], depth + 1, seen);
+        }
+        return out;
+      }
+      return String(value);
+    }
+
+    const raw = globalThis.eval(expression);
+    const awaited = raw && typeof raw.then === "function" ? await raw : raw;
+    return serialize(awaited);
+  }, args.expression);
+
+  return {
+    targetId: state.targetId,
+    result
+  };
+}
+
+async function getConsoleMessages(args = {}) {
+  assertString(args.targetId, "targetId");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const limit = Math.max(1, Math.min(100, Number(args.limit) || 30));
+  return {
+    targetId: state.targetId,
+    count: state.consoleMessages.length,
+    messages: state.consoleMessages.slice(-limit)
+  };
+}
+
+async function getDocument(args = {}) {
+  assertString(args.targetId, "targetId");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const limit = Math.max(1, Math.min(MAX_QUERY_RESULTS, Number(args.limit) || 15));
+  const result = await state.page.evaluate((limitValue) => {
+    function cleanWhitespaceInner(value) {
+      return String(value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function cssPath(element) {
+      if (!(element instanceof Element)) return null;
+      const parts = [];
+      let node = element;
+      while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 8) {
+        let segment = node.tagName.toLowerCase();
+        if (node.id) {
+          segment += `#${node.id}`;
+          parts.unshift(segment);
+          break;
+        }
+        const siblings = node.parentElement
+          ? Array.from(node.parentElement.children).filter((child) => child.tagName === node.tagName)
+          : [];
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(node);
+          segment += `:nth-of-type(${index + 1})`;
+        }
+        parts.unshift(segment);
+        node = node.parentElement;
+      }
+      return parts.join(" > ");
+    }
+
+    function xpathFor(element) {
+      if (!(element instanceof Element)) return null;
+      const parts = [];
+      let node = element;
+      while (node && node.nodeType === Node.ELEMENT_NODE) {
+        let index = 1;
+        let sibling = node.previousElementSibling;
+        while (sibling) {
+          if (sibling.tagName === node.tagName) index += 1;
+          sibling = sibling.previousElementSibling;
+        }
+        parts.unshift(`${node.tagName.toLowerCase()}[${index}]`);
+        node = node.parentElement;
+      }
+      return `/${parts.join("/")}`;
+    }
+
+    function visible(element) {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+    }
+
+    function describe(element) {
+      const rect = element.getBoundingClientRect();
+      return {
+        tagName: element.tagName.toLowerCase(),
+        role: element.getAttribute("role") || "",
+        text: cleanWhitespaceInner(element.innerText || element.textContent || "").slice(0, 300),
+        selector: cssPath(element),
+        xpath: xpathFor(element),
+        attributes: {
+          id: element.id || "",
+          class: element.className || "",
+          name: element.getAttribute("name") || "",
+          type: element.getAttribute("type") || "",
+          href: element.getAttribute("href") || "",
+          placeholder: element.getAttribute("placeholder") || ""
+        },
+        visible: visible(element),
+        rect: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        }
+      };
+    }
+
+    const selectors = [
+      "main",
+      "article",
+      "h1",
+      "h2",
+      "button",
+      "a[href]",
+      "input",
+      "textarea",
+      "select",
+      "[role='button']",
+      "[role='link']",
+      "[data-testid]"
+    ];
+
+    const nodes = [];
+    const seen = new Set();
+    for (const selector of selectors) {
+      for (const element of document.querySelectorAll(selector)) {
+        const key = cssPath(element);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        nodes.push(describe(element));
+        if (nodes.length >= limitValue) break;
+      }
+      if (nodes.length >= limitValue) break;
+    }
+
+    return {
+      title: document.title || "",
+      url: location.href,
+      readyState: document.readyState,
+      elements: nodes
+    };
+  }, limit);
+
+  return {
+    targetId: state.targetId,
+    ...result
+  };
+}
+
+async function querySelector(args = {}, multiple = false) {
+  assertString(args.targetId, "targetId");
+  if (!args.selector && !args.xpath) {
+    throw new Error("Invalid input: provide selector or xpath");
+  }
+
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const limit = Math.max(1, Math.min(MAX_QUERY_RESULTS, Number(args.limit) || 10));
+  const result = await state.page.evaluate(({ selector, xpath, multiple: wantsMany, limit: limitValue }) => {
+    function cleanWhitespaceInner(value) {
+      return String(value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function cssPath(element) {
+      if (!(element instanceof Element)) return null;
+      const parts = [];
+      let node = element;
+      while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 8) {
+        let segment = node.tagName.toLowerCase();
+        if (node.id) {
+          segment += `#${node.id}`;
+          parts.unshift(segment);
+          break;
+        }
+        const siblings = node.parentElement
+          ? Array.from(node.parentElement.children).filter((child) => child.tagName === node.tagName)
+          : [];
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(node);
+          segment += `:nth-of-type(${index + 1})`;
+        }
+        parts.unshift(segment);
+        node = node.parentElement;
+      }
+      return parts.join(" > ");
+    }
+
+    function xpathFor(element) {
+      if (!(element instanceof Element)) return null;
+      const parts = [];
+      let node = element;
+      while (node && node.nodeType === Node.ELEMENT_NODE) {
+        let index = 1;
+        let sibling = node.previousElementSibling;
+        while (sibling) {
+          if (sibling.tagName === node.tagName) index += 1;
+          sibling = sibling.previousElementSibling;
+        }
+        parts.unshift(`${node.tagName.toLowerCase()}[${index}]`);
+        node = node.parentElement;
+      }
+      return `/${parts.join("/")}`;
+    }
+
+    function visible(element) {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+    }
+
+    function describe(element) {
+      const rect = element.getBoundingClientRect();
+      return {
+        tagName: element.tagName.toLowerCase(),
+        text: cleanWhitespaceInner(element.innerText || element.textContent || "").slice(0, 300),
+        selector: cssPath(element),
+        xpath: xpathFor(element),
+        visible: visible(element),
+        attributes: {
+          id: element.id || "",
+          class: element.className || "",
+          role: element.getAttribute("role") || "",
+          name: element.getAttribute("name") || "",
+          type: element.getAttribute("type") || "",
+          href: element.getAttribute("href") || "",
+          placeholder: element.getAttribute("placeholder") || ""
+        },
+        rect: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        }
+      };
+    }
+
+    function nodesFromXpath(expression) {
+      const results = [];
+      const snapshot = document.evaluate(expression, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      for (let index = 0; index < snapshot.snapshotLength; index += 1) {
+        const node = snapshot.snapshotItem(index);
+        if (node instanceof Element) results.push(node);
+      }
+      return results;
+    }
+
+    const nodes = selector
+      ? Array.from(document.querySelectorAll(selector))
+      : nodesFromXpath(xpath);
+    const described = nodes.slice(0, limitValue).map((node) => describe(node));
+    return wantsMany ? described : described[0] || null;
+  }, {
+    selector: args.selector || "",
+    xpath: args.xpath || "",
+    multiple,
+    limit
+  });
+
+  return {
+    targetId: state.targetId,
+    ...(multiple ? { count: result.length, elements: result } : { element: result })
+  };
+}
+
+async function getOuterHtml(args = {}) {
+  assertString(args.targetId, "targetId");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const maxChars = parseMaxChars(args.maxChars, DEFAULT_HTML_LIMIT);
+  const result = await state.page.evaluate(({ selector, xpath, maxChars: limit }) => {
+    function cssPath(element) {
+      if (!(element instanceof Element)) return null;
+      const parts = [];
+      let node = element;
+      while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 8) {
+        let segment = node.tagName.toLowerCase();
+        if (node.id) {
+          segment += `#${node.id}`;
+          parts.unshift(segment);
+          break;
+        }
+        const siblings = node.parentElement
+          ? Array.from(node.parentElement.children).filter((child) => child.tagName === node.tagName)
+          : [];
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(node);
+          segment += `:nth-of-type(${index + 1})`;
+        }
+        parts.unshift(segment);
+        node = node.parentElement;
+      }
+      return parts.join(" > ");
+    }
+
+    function xpathFor(element) {
+      if (!(element instanceof Element)) return null;
+      const parts = [];
+      let node = element;
+      while (node && node.nodeType === Node.ELEMENT_NODE) {
+        let index = 1;
+        let sibling = node.previousElementSibling;
+        while (sibling) {
+          if (sibling.tagName === node.tagName) index += 1;
+          sibling = sibling.previousElementSibling;
+        }
+        parts.unshift(`${node.tagName.toLowerCase()}[${index}]`);
+        node = node.parentElement;
+      }
+      return `/${parts.join("/")}`;
+    }
+
+    function firstXpath(expression) {
+      const node = document.evaluate(expression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+      return node instanceof Element ? node : null;
+    }
+
+    const smartRoot = document.querySelector("main, article, [role='main'], #content, .content") || document.documentElement;
+    const element = selector
+      ? document.querySelector(selector)
+      : xpath
+        ? firstXpath(xpath)
+        : smartRoot;
+
+    if (!(element instanceof Element)) {
+      return null;
+    }
+
+    const html = element.outerHTML || "";
+    return {
+      selector: cssPath(element),
+      xpath: xpathFor(element),
+      tagName: element.tagName.toLowerCase(),
+      html: html.length > limit ? `${html.slice(0, Math.max(0, limit - 3))}...` : html
+    };
+  }, {
+    selector: args.selector || "",
+    xpath: args.xpath || "",
+    maxChars
+  });
+
+  if (!result) {
+    throw new Error("Could not resolve element for DOM.getOuterHTML");
+  }
+
+  return {
+    targetId: state.targetId,
+    ...result
+  };
+}
+
+async function scrollIntoViewIfNeeded(args = {}) {
+  assertString(args.targetId, "targetId");
+  if (!args.selector && !args.xpath) {
+    throw new Error("Invalid input: provide selector or xpath");
+  }
+
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const result = await state.page.evaluate(({ selector, xpath }) => {
+    function firstXpath(expression) {
+      const node = document.evaluate(expression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+      return node instanceof Element ? node : null;
+    }
+
+    const element = selector
+      ? document.querySelector(selector)
+      : firstXpath(xpath);
+    if (!(element instanceof Element)) return null;
+    element.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+    const rect = element.getBoundingClientRect();
+    return {
+      tagName: element.tagName.toLowerCase(),
+      rect: {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      }
+    };
+  }, {
+    selector: args.selector || "",
+    xpath: args.xpath || ""
+  });
+
+  if (!result) {
+    throw new Error("Could not resolve element for DOM.scrollIntoViewIfNeeded");
+  }
+
+  return {
+    targetId: state.targetId,
+    ...result
+  };
+}
+
+async function dispatchMouseEvent(args = {}) {
+  assertString(args.targetId, "targetId");
+  if (!args.selector && !args.xpath) {
+    throw new Error("Invalid input: provide selector or xpath");
+  }
+
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const button = ["left", "right", "middle"].includes(String(args.button || "").toLowerCase())
+    ? String(args.button).toLowerCase()
+    : "left";
+  const clickCount = Math.max(1, Math.min(3, Number(args.clickCount) || 1));
+
+  const point = await state.page.evaluate(({ selector, xpath }) => {
+    function firstXpath(expression) {
+      const node = document.evaluate(expression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+      return node instanceof Element ? node : null;
+    }
+
+    const element = selector
+      ? document.querySelector(selector)
+      : firstXpath(xpath);
+    if (!(element instanceof Element)) return null;
+    element.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.left + Math.max(1, rect.width / 2),
+      y: rect.top + Math.max(1, rect.height / 2),
+      tagName: element.tagName.toLowerCase()
+    };
+  }, {
+    selector: args.selector || "",
+    xpath: args.xpath || ""
+  });
+
+  if (!point) {
+    throw new Error("Could not resolve element for Input.dispatchMouseEvent");
+  }
+
+  await state.page.mouse.click(point.x, point.y, { button, clickCount });
+  return {
+    targetId: state.targetId,
+    clicked: true,
+    button,
+    clickCount,
+    point
+  };
+}
+
+async function insertText(args = {}) {
+  assertString(args.targetId, "targetId");
+  assertString(args.text, "text");
+  if (!args.selector && !args.xpath) {
+    throw new Error("Invalid input: provide selector or xpath");
+  }
+
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const point = await state.page.evaluate(({ selector, xpath }) => {
+    function firstXpath(expression) {
+      const node = document.evaluate(expression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+      return node instanceof Element ? node : null;
+    }
+
+    const element = selector
+      ? document.querySelector(selector)
+      : firstXpath(xpath);
+    if (!(element instanceof HTMLElement)) return null;
+    element.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+    const rect = element.getBoundingClientRect();
+    element.focus();
+    if ("value" in element) {
+      element.value = "";
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    return {
+      x: rect.left + Math.max(1, rect.width / 2),
+      y: rect.top + Math.max(1, rect.height / 2),
+      tagName: element.tagName.toLowerCase()
+    };
+  }, {
+    selector: args.selector || "",
+    xpath: args.xpath || ""
+  });
+
+  if (!point) {
+    throw new Error("Could not resolve element for Input.insertText");
+  }
+
+  await state.page.mouse.click(point.x, point.y, { button: "left", clickCount: 1 });
+  await state.page.keyboard.type(args.text, { delay: manager.config.humanTypingDelay });
+  return {
+    targetId: state.targetId,
+    insertedText: true,
+    length: args.text.length,
+    point
+  };
+}
+
+export const devtoolsToolDefinitions = [
+  {
+    name: "Target.createTarget",
+    description: "Create a persistent browser tab for interactive testing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Optional starting URL. Defaults to about:blank." }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "Target.getTargets",
+    description: "List open persistent testing tabs created through Target.createTarget.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false
+    }
+  },
+  {
+    name: "Target.closeTarget",
+    description: "Close a persistent testing tab.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "Page.navigate",
+    description: "Navigate an existing testing tab to a new URL.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" },
+        url: { type: "string" }
+      },
+      required: ["targetId", "url"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "Runtime.evaluate",
+    description: "Evaluate JavaScript in the page context and return a JSON-safe result.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" },
+        expression: { type: "string" }
+      },
+      required: ["targetId", "expression"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "Runtime.getConsoleMessages",
+    description: "Read captured console, page error, and request failure messages for a testing tab.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" },
+        limit: { type: "number", default: 30 }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "DOM.getDocument",
+    description: "Return an LLM-friendly page snapshot with important elements, selectors, and xpaths.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" },
+        limit: { type: "number", default: 15 }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "DOM.querySelector",
+    description: "Query a single element and return its selector, xpath, text, and attributes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" },
+        selector: { type: "string" },
+        xpath: { type: "string" }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "DOM.querySelectorAll",
+    description: "Query multiple elements and return LLM-friendly descriptors.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" },
+        selector: { type: "string" },
+        xpath: { type: "string" },
+        limit: { type: "number", default: 10 }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "DOM.getOuterHTML",
+    description: "Get outerHTML for a selector/xpath, or smart main content HTML when no locator is provided.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" },
+        selector: { type: "string" },
+        xpath: { type: "string" },
+        maxChars: { type: "number", default: DEFAULT_HTML_LIMIT }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "DOM.scrollIntoViewIfNeeded",
+    description: "Scroll an element into view using selector or xpath.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" },
+        selector: { type: "string" },
+        xpath: { type: "string" }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "Input.dispatchMouseEvent",
+    description: "Click an element by selector or xpath using the page mouse.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" },
+        selector: { type: "string" },
+        xpath: { type: "string" },
+        button: {
+          type: "string",
+          enum: ["left", "right", "middle"],
+          default: "left"
+        },
+        clickCount: { type: "number", default: 1 }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "Input.insertText",
+    description: "Focus an input-like element and type text into it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" },
+        selector: { type: "string" },
+        xpath: { type: "string" },
+        text: { type: "string" }
+      },
+      required: ["targetId", "text"],
+      additionalProperties: false
+    }
+  }
+];
+
+export async function handleDevtoolsToolCall(name, args = {}) {
+  if (name === "Target.createTarget") return createTarget(args);
+  if (name === "Target.getTargets") return listTargets(args);
+  if (name === "Target.closeTarget") return closeTarget(args);
+  if (name === "Page.navigate") return navigatePage(args);
+  if (name === "Runtime.evaluate") return evaluateRuntime(args);
+  if (name === "Runtime.getConsoleMessages") return getConsoleMessages(args);
+  if (name === "DOM.getDocument") return getDocument(args);
+  if (name === "DOM.querySelector") return querySelector(args, false);
+  if (name === "DOM.querySelectorAll") return querySelector(args, true);
+  if (name === "DOM.getOuterHTML") return getOuterHtml(args);
+  if (name === "DOM.scrollIntoViewIfNeeded") return scrollIntoViewIfNeeded(args);
+  if (name === "Input.dispatchMouseEvent") return dispatchMouseEvent(args);
+  if (name === "Input.insertText") return insertText(args);
+  throw new Error(`Unknown developer browser tool: ${name}`);
+}
+
+export function formatDevtoolsToolResponse(name, payload) {
+  const lines = [name];
+  lines.push("", "```json", JSON.stringify(payload, null, 2), "```");
+  return {
+    content: [
+      {
+        type: "text",
+        text: lines.join("\n")
+      }
+    ]
+  };
+}

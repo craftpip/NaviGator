@@ -5,6 +5,7 @@ Browser Search MCP gives your MCP client a real browser for:
 - web search
 - readable page extraction
 - page screenshots
+- optional browser-testing tools like tabs, DOM reads, console capture, click, scroll, and type
 
 It is built for HTTP MCP first, which makes it easy to run once and connect many times. If your client needs to launch a local process, stdio is supported too.
 
@@ -15,6 +16,7 @@ It is built for HTTP MCP first, which makes it easy to run once and connect many
 - Route-level circuit breakers so one failing route does not poison every request
 - A strong `web_open_page` tool that returns clean, readable content
 - A screenshot tool that can return base64, a local file path, or a download link
+- An optional devtools-style tool set for interactive browser testing
 - Persistent browser sessions and profiles
 - Optional VNC/noVNC access for interactive debugging
 
@@ -229,7 +231,9 @@ Example client config:
 
 ## MCP Tools
 
-This server exposes three tools.
+This server always exposes the three main web tools below.
+
+If `ENABLE_DEVTOOLS_MCP=1`, it also exposes a small browser-testing tool set with CDP-style names.
 
 ### `web_search`
 
@@ -288,12 +292,40 @@ Also supports:
 - `ref_id`
 - `ref_ids`
 
+### Optional browser-testing tools
+
+When `ENABLE_DEVTOOLS_MCP=1`, the server also exposes these tools:
+
+- `Target.createTarget`
+- `Target.getTargets`
+- `Target.closeTarget`
+- `Page.navigate`
+- `Runtime.evaluate`
+- `Runtime.getConsoleMessages`
+- `DOM.getDocument`
+- `DOM.querySelector`
+- `DOM.querySelectorAll`
+- `DOM.getOuterHTML`
+- `DOM.scrollIntoViewIfNeeded`
+- `Input.dispatchMouseEvent`
+- `Input.insertText`
+
+This mode is for browser testing and interactive automation, not broad web research.
+
+Quick idea of the flow:
+
+1. Create a tab with `Target.createTarget`
+2. Inspect the page with `DOM.getDocument` or `DOM.querySelector`
+3. Interact with `Input.dispatchMouseEvent` or `Input.insertText`
+4. Read errors with `Runtime.getConsoleMessages`
+
 ## Main Configuration
 
 The most important environment variables are:
 
 - `ENABLE_HTTP_MCP`: enable HTTP MCP on `/mcp`
 - `ENABLE_STDIO_MCP`: enable stdio transport
+- `ENABLE_DEVTOOLS_MCP`: enable the optional browser-testing tool set
 - `MCP_API_PORT`: HTTP server port, default `3000`
 - `HEADLESS`: run browser headless or with UI
 - `CHROME_PATH`: Chromium path for local installs
@@ -301,6 +333,8 @@ The most important environment variables are:
 - `CHROME_PROFILE_DIR`: Chrome profile subdirectory, default `Default`
 - `PRELAUNCH_BROWSER`: prelaunch browser at startup
 - `BROWSER_OP_TIMEOUT_MS`: browser operation timeout in milliseconds
+- `BROWSER_BACKEND`: default backend for page operations
+- `DEVTOOLS_BROWSER_BACKEND`: backend for the browser-testing tools; defaults to `BROWSER_BACKEND`
 - `SEARCH_ROUTE_WARMUP_ENGINES`: comma-separated search-route warmup engine list
 - `ENABLE_VNC`: enable VNC and noVNC in Docker
 
@@ -314,6 +348,7 @@ It gives you:
 
 - HTTP MCP on port `3000`
 - `/health` for quick checks
+- devtools mode enabled by default for Docker
 - persistent browser profile storage
 - optional VNC and noVNC access
 
