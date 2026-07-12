@@ -121,7 +121,7 @@ async function main() {
     for (let i = 0; i < warmup; i += 1) {
       await openTask();
     }
-    rows.push(await benchCase("web_open_page", iterations, openTask));
+    rows.push(await benchCase("web_fetch", iterations, openTask));
 
     if (screenshot) {
       const screenshotTask = async () => {

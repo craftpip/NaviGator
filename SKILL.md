@@ -35,7 +35,7 @@ docker run -d --name browser-search-mcp -p 3000:3000 browser-search-mcp
 
 When the MCP server is running, agents can use:
 - `web_search` - Search the web
-- `web_open_page` - Extract readable text from pages
+- `web_fetch` - Extract readable text from pages
 - `web_page_screenshot` - Capture page screenshots
 
 ## Important Notes

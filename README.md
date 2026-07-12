@@ -14,7 +14,7 @@ It is built for HTTP MCP first, which makes it easy to run once and connect many
 - Real browser-backed search instead of a thin scraper
 - Multiple search engines and multiple browser/backend routes
 - Route-level circuit breakers so one failing route does not poison every request
-- A strong `web_open_page` tool that returns clean, readable content
+- A strong `web_fetch` tool that returns clean, readable content
 - A screenshot tool that can return base64, a local file path, or a download link
 - An optional devtools-style tool set for interactive browser testing
 - Persistent browser sessions and profiles
@@ -49,9 +49,9 @@ Depending on configuration, it can use a mix of:
 
 That gives you flexibility when tuning for speed, resilience, compatibility, or anti-bot behavior.
 
-### `web_open_page` is built for readable extraction
+### `web_fetch` is built for readable extraction
 
-The open-page tool is one of the strongest parts of the project.
+The web_fetch tool is one of the strongest parts of the project.
 
 It does more than dump raw HTML. The extraction flow combines several methods:
 
@@ -253,7 +253,7 @@ Also supports:
 - `engine`
 - `engines`
 
-### `web_open_page`
+### `web_fetch`
 
 Open a page and return cleaned readable text.
 

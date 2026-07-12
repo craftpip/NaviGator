@@ -32,7 +32,7 @@ Performs broad web research using multiple search engines with automatic fallbac
 
 ---
 
-### `web_open_page`
+### `web_fetch`
 
 Opens pages and returns cleaned, readable text content.
 
@@ -68,7 +68,7 @@ Captures rendered page appearance as images.
 
 1. Call `web_search` with the user's intent.
 2. Select the best results using `results[].ref_id`.
-3. Call `web_open_page` with the chosen `ref_id` or `ref_ids`.
+3. Call `web_fetch` with the chosen `ref_id` or `ref_ids`.
 4. Synthesize the answer from extracted text.
 
 For visual verification, call `web_page_screenshot` with the same `ref_id`.
@@ -83,7 +83,7 @@ For visual verification, call `web_page_screenshot` with the same `ref_id`.
 |----------|---------|-------------|
 | `CHROME_PATH` | `/usr/bin/chromium` | Path to Chromium executable |
 | `HEADLESS` | `true` | Run browser in headless mode |
-| `BROWSER_BACKEND` | `cloakbrowser` | Default backend for non-search page creation. Allowed values: `cloakbrowser`, `chromium`, `lightpanda`. This is used by `web_open_page` and `web_page_screenshot`. |
+| `BROWSER_BACKEND` | `cloakbrowser` | Default backend for non-search page creation. Allowed values: `cloakbrowser`, `chromium`, `lightpanda`. This is used by `web_fetch` and `web_page_screenshot`. |
 | `BROWSER_OP_TIMEOUT_MS` | `60000` | Per-operation timeout |
 | `SEARCH_ROUTE_WARMUP_ENGINES` | `duckduckgo_api,google_cb,google_lp,bing_lp,duckduckgo_cb,bing_cb` | Engines to warm up on startup |
 | `SEARCH_ROUTE_CIRCUIT_OPEN_MS` | `300000` | Per-route cooldown after failure |
@@ -97,7 +97,7 @@ For visual verification, call `web_page_screenshot` with the same `ref_id`.
 - Sticky search windows are reused for performance.
 - `BROWSER_BACKEND` is parsed in `src/config.js` into `defaultBackend`.
 - `BrowserManager.newPage()` in `src/browser.js` uses `defaultBackend` only when no specific search engine override is passed.
-- `web_open_page` calls `browserOpenAndExtract()`, and that opens pages with `manager.newPage({ backend: manager.config.defaultBackend })`.
+- `web_fetch` calls `browserOpenAndExtract()`, and that opens pages with `manager.newPage({ backend: manager.config.defaultBackend })`.
 - `web_page_screenshot` calls `browserCaptureScreenshot()`, and that opens pages with `manager.newPage({ backend: manager.config.defaultBackend })`.
 - Search routes are different: when `newPage()` is called with an engine like `bing_lp`, `google_cb`, or `duckduckgo_ch`, the engine-specific route wins over `BROWSER_BACKEND`.
 - Current engine-to-backend overrides in `newPage()` are: `*_cb` -> `cloakbrowser`, `*_ch` -> `chromium`, `*_lp` -> `lightpanda`.
@@ -136,7 +136,7 @@ docker compose down && up -d       # Restart containers
 2. Test stateless MCP directly with `curl` against `POST /mcp` using `tools/list` and `tools/call`.
 3. Test real MCP session flow with an MCP SDK client or `mcporter`, not just direct module calls.
 4. In `src/mcp-server.js`, only route POST requests through an existing streamable transport when the client explicitly sends `Mcp-Session-Id`.
-5. After the fix, verify `web_search`, `web_open_page`, and `web_page_screenshot` through MCP using `url`, `urls`, and `ref_id` inputs.
+5. After the fix, verify `web_search`, `web_fetch`, and `web_page_screenshot` through MCP using `url`, `urls`, and `ref_id` inputs.
 
 **Verification:**
 

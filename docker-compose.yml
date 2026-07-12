@@ -18,7 +18,7 @@ services:
       # ── Most commonly changed ──────────────────────────────
       # Run the browser visibly (set to false if you don't need to watch it)
       HEADLESS: ${HEADLESS:-true}
-      # Which engine for page ops (web_open_page, screenshots): cloakbrowser | chromium | lightpanda
+      # Which engine for page ops (web_fetch, screenshots): cloakbrowser | chromium | lightpanda
       BROWSER_BACKEND: ${BROWSER_BACKEND:-cloakbrowser}
       # Starts VNC + noVNC so you can watch the browser in your browser
       ENABLE_VNC: ${ENABLE_VNC:-1}

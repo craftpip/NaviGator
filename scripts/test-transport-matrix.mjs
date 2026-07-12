@@ -24,7 +24,7 @@ async function testStdioMcp(label, command, args = [], env = {}) {
   try {
     const tools = await client.listTools();
     const toolNames = (tools?.tools || []).map((tool) => tool.name);
-    if (!toolNames.includes("web_search") || !toolNames.includes("web_open_page")) {
+    if (!toolNames.includes("web_search") || !toolNames.includes("web_fetch")) {
       throw new Error(`${label}: expected tools missing: ${JSON.stringify(toolNames)}`);
     }
 
@@ -40,7 +40,7 @@ async function testStdioMcp(label, command, args = [], env = {}) {
     }
 
     const openMany = await client.callTool({
-      name: "web_open_page",
+      name: "web_fetch",
       arguments: {
         urls: ["https://example.com", "https://modelcontextprotocol.io/docs/getting-started/intro"],
         maxChars: 400

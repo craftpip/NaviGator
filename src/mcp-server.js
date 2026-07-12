@@ -29,7 +29,7 @@ const MAX_SCREENSHOT_DOWNLOADS = 200;
 const MAX_TOOL_CACHE_ENTRIES = 200;
 const toolResultCache = {
   web_search: new Map(),
-  web_open_page: new Map()
+  web_fetch: new Map()
 };
 
 function stableStringify(value) {
@@ -215,7 +215,7 @@ function mcpRequestSummary(body) {
   if (m !== "tools/call") return m;
   const name = body?.params?.name || "?";
   const args = body?.params?.arguments || {};
-  const isPage = name === "web_open_page" || name === "web_page_screenshot";
+  const isPage = name === "web_fetch" || name === "web_page_screenshot";
   const parts = [name];
   if (args.query) parts.push(`"${truncateStr(args.query, 60)}"`);
   if (args.queries) parts.push(truncateStr(args.queries.join(" | "), 60));
@@ -309,7 +309,7 @@ function summarizeToolArgs(tool, args = {}) {
     };
   }
 
-  if (tool === "web_open_page" || tool === "web_page_screenshot") {
+  if (tool === "web_fetch" || tool === "web_page_screenshot") {
     const urlCount = Array.isArray(args.urls)
       ? args.urls.map((item) => String(item || "").trim()).filter(Boolean).length
       : typeof args.url === "string" && args.url.trim()
@@ -324,7 +324,7 @@ function summarizeToolArgs(tool, args = {}) {
       ...base,
       urlCount,
       refCount,
-      maxChars: tool === "web_open_page" ? parseMaxChars(args.maxChars, 8000) : undefined,
+      maxChars: tool === "web_fetch" ? parseMaxChars(args.maxChars, 8000) : undefined,
       format: tool === "web_page_screenshot" ? (args.format || "png") : undefined,
       fullPage: tool === "web_page_screenshot" ? (args.fullPage === undefined ? true : Boolean(args.fullPage)) : undefined
     };
@@ -561,7 +561,7 @@ function formatSearchMarkdown(payload) {
     });
     lines.push(
       "",
-      "Use `ref_id` with `/extract?ref_id=<id>` or `/screenshot?ref_id=<id>`, or MCP tools `web_open_page` / `web_page_screenshot` with `ref_id`."
+      "Use `ref_id` with `/extract?ref_id=<id>` or `/screenshot?ref_id=<id>`, or MCP tools `web_fetch` / `web_page_screenshot` with `ref_id`."
     );
   } else {
     lines.push("", "No results returned.");
@@ -947,9 +947,9 @@ function getToolsListResponse() {
         }
       },
       {
-        name: "web_open_page",
+        name: "web_fetch",
         description:
-          "Open one or more pages and return clean readable text for analysis. Use this after web_search via ref_id/ref_ids or with direct url/urls for summarization, extraction, QA, and synthesis.",
+          "Fetch one or more pages and return clean readable text for analysis. Use this after web_search via ref_id/ref_ids or with direct url/urls for summarization, extraction, QA, and synthesis.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1066,7 +1066,7 @@ async function handleToolCall(name, args = {}) {
     return response;
   }
 
-  if (name === "web_open_page") {
+  if (name === "web_fetch") {
     const cached = getCachedToolResult(name, args);
     if (cached) {
       timer.step("cache_hit", mark);

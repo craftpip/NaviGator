@@ -40,7 +40,7 @@ node -e '
   const payload = JSON.parse(process.argv[1]);
   const tools = payload.tools || [];
   const names = tools.map((tool) => tool.name);
-  const required = ["web_search", "web_open_page", "web_page_screenshot"];
+  const required = ["web_search", "web_fetch", "web_page_screenshot"];
   for (const key of required) {
     if (!names.includes(key)) {
       throw new Error(`missing tool ${key}. found: ${names.join(",")}`);
