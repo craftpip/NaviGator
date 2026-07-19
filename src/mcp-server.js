@@ -14,7 +14,7 @@ import {
 import { formatBrowserBackendShort, parseBrowserBackend } from "./config.js";
 import { getBrowserManager } from "./browser.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth } from "./search.js";
-import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall } from "./devtools.js";
+import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot } from "./devtools.js";
 
 const linkMemoryByRef = new Map();
 const linkMemoryByUrl = new Map();
@@ -980,7 +980,7 @@ function getToolsListResponse() {
       {
         name: "web_page_screenshot",
         description:
-          "Open one or more pages and return base64-encoded full-page screenshots (PNG or JPEG). Use this to capture visual snapshots of results discovered via web_search.",
+          "Open one or more pages and return base64-encoded full-page screenshots (PNG or JPEG). Use this to capture visual snapshots of results discovered via web_search. Alternatively, pass a targetId from Target.createTarget to screenshot an existing persistent tab.",
         inputSchema: {
           type: "object",
           properties: {
@@ -999,6 +999,10 @@ function getToolsListResponse() {
               items: { type: "number" },
               description: "Multiple result ids returned by a previous web_search call"
             },
+            targetId: {
+              type: "string",
+              description: "Target id from Target.createTarget. Screenshots the existing tab instead of opening a new one."
+            },
             format: {
               type: "string",
               enum: ["png", "jpeg"],
@@ -1009,7 +1013,8 @@ function getToolsListResponse() {
               type: "number",
               minimum: 1,
               maximum: 100,
-              description: "JPEG quality (ignored for PNG)"
+              default: 75,
+              description: "JPEG quality (1–100, default 75; ignored for PNG)"
             },
             fullPage: {
               type: "boolean",
@@ -1017,7 +1022,7 @@ function getToolsListResponse() {
               description: "Capture the entire page, not just the viewport"
             }
           },
-          description: "Provide one of: url, urls, ref_id, or ref_ids. Prefer ref_id/ref_ids from web_search when available.",
+          description: "Provide one of: targetId, url, urls, ref_id, or ref_ids. Prefer ref_id/ref_ids from web_search when available.",
           additionalProperties: false
         }
       },
@@ -1109,20 +1114,7 @@ async function handleToolCall(name, args = {}) {
   }
 
   if (name === "web_page_screenshot") {
-    let targetUrls;
-    try {
-      targetUrls = resolveOpenTarget(args);
-    } catch (error) {
-      timer.step("resolve_targets_failed", mark);
-      timer.end({ status: "error", error: String(error?.message || error) });
-      logEvent("mcp.error", {
-        tool: name,
-        error: String(error?.message || error)
-      });
-      throw error;
-    }
-    mark = timer.step("resolve_targets", mark);
-    const manager = await getBrowserManager();
+    const hasTargetId = args && typeof args.targetId === "string" && args.targetId.trim();
     const formatRaw = typeof args.format === "string" ? args.format.trim().toLowerCase() : "png";
     const format = formatRaw === "jpeg" ? "jpeg" : "png";
     let quality;
@@ -1131,15 +1123,44 @@ async function handleToolCall(name, args = {}) {
       quality = Math.min(100, Math.max(1, quality));
     }
     const fullPage = args.fullPage === undefined ? true : Boolean(args.fullPage);
-    mark = timer.step("prepare_execution", mark);
 
-    const result = await runWithHangGuard(`mcp:${name}`, () =>
-      captureScreenshotsParallel(targetUrls, manager.config.openPageMaxParallel, {
-        format,
-        fullPage,
-        ...(quality ? { quality } : {})
-      })
-    );
+    let result;
+    if (hasTargetId) {
+      mark = timer.step("prepare_execution", mark);
+      result = await runWithHangGuard(`mcp:${name}`, () =>
+        captureTargetScreenshot({
+          targetId: args.targetId.trim(),
+          format,
+          fullPage,
+          ...(quality ? { quality } : {})
+        })
+      );
+      result = { ...result, ok: true };
+    } else {
+      let targetUrls;
+      try {
+        targetUrls = resolveOpenTarget(args);
+      } catch (error) {
+        timer.step("resolve_targets_failed", mark);
+        timer.end({ status: "error", error: String(error?.message || error) });
+        logEvent("mcp.error", {
+          tool: name,
+          error: String(error?.message || error)
+        });
+        throw error;
+      }
+      mark = timer.step("resolve_targets", mark);
+      const manager = await getBrowserManager();
+      mark = timer.step("prepare_execution", mark);
+
+      result = await runWithHangGuard(`mcp:${name}`, () =>
+        captureScreenshotsParallel(targetUrls, manager.config.openPageMaxParallel, {
+          format,
+          fullPage,
+          ...(quality ? { quality } : {})
+        })
+      );
+    }
     mark = timer.step("capture_screenshots", mark);
     await applyScreenshotStorage(result, manager.config);
     mark = timer.step("store_screenshots", mark);
@@ -1262,7 +1283,11 @@ async function maybeStartHttpServer(managerOverride) {
   if (!manager.config.enableHttpHealth && !manager.config.enableHttpMcp) return;
 
   const mcpTransports = new Map();
+  const mcpServers = new Map();
   let defaultMcpSessionId = null;
+
+  const SSE_KEEPALIVE_MS = 30_000;
+  const SSE_RETRY_INTERVAL_MS = 30_000;
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -1296,9 +1321,16 @@ async function maybeStartHttpServer(managerOverride) {
 
           {
             // Only bind POST requests to an existing streamable session when the
-            // client explicitly sends an MCP session id. Stateless JSON-RPC
+            // client explicitly sends a VALID MCP session id. Stateless JSON-RPC
             // requests should fall through to initialize/stateless handling.
-            const existingTransport = sessionId ? resolveTransport() : null;
+            //
+            // IMPORTANT: Use exact-match lookup here, NOT resolveTransport()
+            // which falls back to any available transport. The SDK's
+            // validateSession() rejects requests where the session ID in the
+            // header doesn't match the transport's own session ID (returns 404).
+            // A fallback match would route mist's POST to bubbles' transport,
+            // causing a 404 → "Session terminated" → unnecessary reconnect loop.
+            const existingTransport = sessionId ? (mcpTransports.get(sessionId) || null) : null;
             if (existingTransport) {
               await existingTransport.handleRequest(req, res, body);
               return;
@@ -1317,13 +1349,15 @@ async function maybeStartHttpServer(managerOverride) {
               onsessioninitialized: (sid) => {
                 defaultMcpSessionId = sid;
                 mcpTransports.set(sid, transport);
-              }
+              },
+              retryInterval: SSE_RETRY_INTERVAL_MS
             });
 
             transport.onclose = () => {
               const sid = transport.sessionId;
               if (sid) {
                 mcpTransports.delete(sid);
+                mcpServers.delete(sid);
                 if (defaultMcpSessionId === sid) {
                   defaultMcpSessionId = mcpTransports.keys().next().value || null;
                 }
@@ -1336,6 +1370,7 @@ async function maybeStartHttpServer(managerOverride) {
             if (transport.sessionId) {
               defaultMcpSessionId = transport.sessionId;
               mcpTransports.set(transport.sessionId, transport);
+              mcpServers.set(transport.sessionId, mcpServer);
             }
             console.error(`🤝  MCP initialized`);
             return;
@@ -1596,11 +1631,44 @@ async function maybeStartHttpServer(managerOverride) {
     }
   });
 
+  server.keepAliveTimeout = 300_000;
+  server.headersTimeout = 300_000;
+  server.timeout = 0;
+
+  const keepaliveEncoder = new TextEncoder();
+  const keepaliveFrame = keepaliveEncoder.encode(": keepalive\n\n");
+
+  const keepaliveInterval = setInterval(() => {
+    const entries = [...mcpTransports.entries()];
+    for (const [sid, transport] of entries) {
+      try {
+        const ws = transport._webStandardTransport;
+        if (!ws?._streamMapping) continue;
+        const streams = [...ws._streamMapping.entries()];
+        for (const [key, stream] of streams) {
+          try {
+            stream.controller?.enqueue(keepaliveFrame);
+          } catch {
+            ws._streamMapping.delete(key);
+          }
+        }
+      } catch {
+        // Do NOT delete from mcpTransports here — _webStandardTransport
+        // may be temporarily unavailable during a close sequence but the
+        // transport is still valid. The SDK's own onclose handler will
+        // clean up when the session is truly dead.
+      }
+    }
+  }, SSE_KEEPALIVE_MS);
+  keepaliveInterval.unref();
+
   server.listen(manager.config.mcpApiPort, "0.0.0.0", () => {
     logEvent("boot.ready", {
       transport: "http",
       host: manager.config.mcpApiHost,
-      port: manager.config.mcpApiPort
+      port: manager.config.mcpApiPort,
+      sseKeepaliveMs: SSE_KEEPALIVE_MS,
+      sseRetryIntervalMs: SSE_RETRY_INTERVAL_MS
     });
   });
 }

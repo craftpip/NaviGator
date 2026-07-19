@@ -1862,8 +1862,8 @@ export async function browserCaptureScreenshot({
   const manager = await getBrowserManager();
   const normalizedFormat = format === "jpeg" ? "jpeg" : "png";
   const normalizedQuality =
-    normalizedFormat === "jpeg" && Number.isFinite(quality)
-      ? Math.max(1, Math.min(100, Math.floor(quality)))
+    normalizedFormat === "jpeg"
+      ? Math.max(1, Math.min(100, Math.floor(Number.isFinite(quality) ? quality : 75)))
       : undefined;
 
   return manager.withPageSlot(async () => {

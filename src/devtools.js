@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { getBrowserManager } from "./browser.js";
 
 const MAX_TARGETS = 20;
@@ -149,7 +149,7 @@ async function createTarget(args = {}) {
   const backend = normalizeBackend(manager);
   const page = await manager.newPage({ backend });
   const state = {
-    targetId: randomUUID(),
+    targetId: randomBytes(6).toString("hex"),
     backend,
     page,
     consoleMessages: [],
@@ -198,6 +198,45 @@ async function closeTarget(args = {}) {
   return {
     targetId: state.targetId,
     closed: true
+  };
+}
+
+export async function captureTargetScreenshot(args = {}) {
+  assertString(args.targetId, "targetId");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+
+  const normalizedFormat = args.format === "jpeg" ? "jpeg" : "png";
+  const normalizedQuality =
+    normalizedFormat === "jpeg"
+      ? Math.max(1, Math.min(100, Math.floor(Number.isFinite(args.quality) ? args.quality : 75)))
+      : undefined;
+  const fullPage = args.fullPage === undefined ? true : Boolean(args.fullPage);
+
+  const screenshot = await state.page.screenshot({
+    type: normalizedFormat,
+    encoding: "base64",
+    fullPage,
+    ...(normalizedFormat === "jpeg" && normalizedQuality ? { quality: normalizedQuality } : {})
+  });
+
+  const [resolvedUrl, pageTitle] = await Promise.all([
+    Promise.resolve(state.page.url()),
+    state.page.title()
+  ]);
+
+  await refreshTitle(state);
+
+  return {
+    targetId: state.targetId,
+    url: resolvedUrl,
+    title: pageTitle,
+    format: normalizedFormat,
+    contentType: normalizedFormat === "jpeg" ? "image/jpeg" : "image/png",
+    sizeBytes: Buffer.byteLength(screenshot, "base64"),
+    captureTimestamp: new Date().toISOString(),
+    screenshotBase64: screenshot
   };
 }
 
@@ -324,7 +363,16 @@ async function evaluateRuntime(args = {}) {
       return String(value);
     }
 
-    const raw = globalThis.eval(expression);
+    let raw;
+    try {
+      raw = globalThis.eval(expression);
+    } catch (evalError) {
+      if (evalError instanceof SyntaxError) {
+        raw = await new Function('return (async () => (' + expression + '))()')();
+      } else {
+        throw evalError;
+      }
+    }
     const awaited = raw && typeof raw.then === "function" ? await raw : raw;
     return serialize(awaited);
   }, args.expression);
@@ -572,9 +620,18 @@ async function querySelector(args = {}, multiple = false) {
       return results;
     }
 
-    const nodes = selector
-      ? Array.from(document.querySelectorAll(selector))
-      : nodesFromXpath(xpath);
+    const cleanedSelector = selector
+      ? selector
+          .replace(/:has-text\([^)]*\)/gi, "")
+          .replace(/:text\([^)]*\)/gi, "")
+          .replace(/,\s*,/g, ",")
+          .replace(/^[\s,]+|[\s,]+$/g, "")
+      : "";
+    const nodes = cleanedSelector
+      ? Array.from(document.querySelectorAll(cleanedSelector))
+      : selector
+        ? []
+        : nodesFromXpath(xpath);
     const described = nodes.slice(0, limitValue).map((node) => describe(node));
     return wantsMany ? described : described[0] || null;
   }, {

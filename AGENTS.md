@@ -8,6 +8,8 @@
 - [Agent Flow](#agent-flow)
 - [Configuration](#configuration)
 - [Development](#development)
+- [Known Issues](#known-issues)
+- [Fix Patterns](#fix-patterns)
 - [Project Learnings](#project-learnings)
 
 ---
@@ -54,13 +56,57 @@ Captures rendered page appearance as images.
 
 **Input** (choose one mode):
 
+- `targetId: string` — Target id from `Target.createTarget` to screenshot an existing persistent tab
 - `url: string` or `urls: string[]`
 - `ref_id: number` or `ref_ids: number[]`
 - `format: 'png' | 'jpeg'` (default `'png'`)
-- `quality: number` — JPEG quality (1–100)
+- `quality: number` (default `75`) — JPEG quality (1–100)
 - `fullPage: boolean` (default `true`) — Capture entire page
 
 **Output:** `screenshotBase64` with page metadata.
+
+---
+
+## Code References
+
+### MCP Tool Definitions
+
+All tool schemas are defined in `getToolsListResponse()`:
+
+| Tool | File | Lines |
+|------|------|-------|
+| `web_search` | `src/mcp-server.js` | 916–948 |
+| `web_fetch` | `src/mcp-server.js` | 949–979 |
+| `web_page_screenshot` | `src/mcp-server.js` | 980–1027 |
+| Devtools tools (13) | `src/devtools.js` | 884–1062 |
+
+### Tool Call Dispatch
+
+| Handler | File | Lines |
+|---------|------|-------|
+| `handleToolCall()` — primary dispatcher | `src/mcp-server.js` | 1033–1182 |
+| `handleDevtoolsToolCall()` — devtools dispatcher | `src/devtools.js` | 1064–1079 |
+| `CallToolRequestSchema` handler (session mode) | `src/mcp-server.js` | 1250–1261 |
+| `handleStatelessMcpPost()` (stateless HTTP) | `src/mcp-server.js` | 1212 |
+
+### MCP Server Setup
+
+| Component | File | Lines |
+|-----------|------|-------|
+| `createMcpServer()` | `src/mcp-server.js` | 1230–1278 |
+| HTTP transport (`maybeStartHttpServer`) | `src/mcp-server.js` | 1280–1673 |
+| Stdio transport | `src/mcp-server.js` | 1775–1779 |
+| Server startup | `src/mcp-server.js` | 1676–1684 |
+
+### Key Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `src/mcp-server.js` | Main MCP server — tool definitions, dispatch, HTTP/stdio transport, SSE keepalive, caching, screenshot storage |
+| `src/devtools.js` | Devtools tool definitions and handlers (CDP-based browser interaction) |
+| `src/search.js` | `browserSearch()`, `browserOpenAndExtract()`, `browserCaptureScreenshot()` |
+| `src/browser.js` | `BrowserManager`, page lifecycle, `newPage()` |
+| `src/config.js` | `loadConfig()`, env var parsing |
 
 ---
 
@@ -117,7 +163,31 @@ docker compose down && up -d       # Restart containers
 
 ---
 
+## Known Issues
+
+- SSE streams die after ~5 min if there is no keepalive traffic. The MCP SDK writes to SSE only when there is actual JSON-RPC data. Any idle connection gets killed by TCP keepalive, Docker networking, or upstream proxies. Fixed with 30s SSE comment keepalive (`: keepalive\n\n`) written directly to each active stream controller via `_streamMapping`, HTTP server timeouts (`keepAliveTimeout: 300s`, `headersTimeout: 300s`, `timeout: 0`), and `retryInterval: 30000` on the transport. The SDK's `StreamableHTTPServerTransport` wraps `WebStandardStreamableHTTPServerTransport` — the internal `_streamMapping` holds all active SSE controllers (standalone GET and POST response streams). SSE comments are ignored by spec-compliant clients but keep TCP/proxy idle timers alive.
+
+## Fix Patterns
+
+- When adding SSE keepalive to MCP transports, write SSE comment frames (`: keepalive\n\n`) directly to each stream controller via `transport._webStandardTransport._streamMapping` — do NOT use `notifications/message` through `transport.send()` as that creates real JSON-RPC traffic the client must process. Dead controllers throw on `enqueue()` and get cleaned up from the mapping.
+- Always copy Map entries to an array before iterating if you plan to delete during the loop (`[...map.entries()]`).
+- The `retryInterval` option on `StreamableHTTPServerTransport` sends an SSE `retry:` field telling clients when to reconnect. Without it, the client guesses or gives up.
+- The MCP SDK's `server.ping()` sends a request _to_ the client and waits for a response — that is not a keepalive. SSE comments (lines starting with `:`) are the correct idle-traffic mechanism.
+- **POST handler must use exact session ID match** (`mcpTransports.get(sessionId)`) — never `resolveTransport()` which falls back to any available transport. The SDK's `validateSession()` rejects requests where the session ID in the header doesn't match the transport's own session ID (returns 404), causing "Session terminated" errors and unnecessary reconnect loops.
+- **Keepalive outer catch must NOT delete transports** — if `transport._webStandardTransport` throws during a close sequence, skip it instead of calling `mcpTransports.delete(sid)`. The SDK's own `onclose` handler will clean up when the session is truly dead.
+- Container deploy flow: `docker compose build && docker compose down && docker compose up -d`. Never `npm install` on the host.
+
 ## Project Learnings
+
+### SSE Keepalive and Stream Lifecycle
+
+**Created:** 2026-07-15
+
+Hermes agent reported browser tools disappearing after ~5 min. Container logs showed constant `🤝 MCP initialized` — the SSE stream was dying and the client kept re-initializing. The SDK's `StreamableHTTPServerTransport` has zero built-in keepalive. It only writes to SSE streams when there is actual JSON-RPC data to send. Between tool calls the connection is completely silent. Added a 30s `setInterval` that sends SSE comment frames (`: keepalive\n\n`) directly to each active stream controller via `transport._webStandardTransport._streamMapping`. This matches the approach in the upstream SDK PR (#1726) which adds a native `keepAliveInterval` option. SSE comments are spec-compliant idle traffic that keeps TCP/proxy timers alive without creating JSON-RPC messages the client must process. Also configured HTTP server timeouts (`keepAliveTimeout: 300s`, `headersTimeout: 300s`, `timeout: 0`) and `retryInterval: 30000` on the transport.
+
+**SDK status check (2026-07-15):** Verified the `keepAliveInterval` feature is NOT in installed SDK 1.27.1 or latest available 1.29.0 — the `webStandardStreamableHttp.js` files are identical. The PR exists but hasn't shipped. Our manual implementation is the correct approach until the SDK ships it natively.
+
+**Root cause discovered (2026-07-15):** Keepalive alone wasn't enough — sessions still died every ~6 minutes. The actual root cause was in `resolveTransport()` at line 1280: POST handler used the fallback chain (exact → `defaultMcpSessionId` → ANY transport), routing requests to the wrong transport. SDK's `validateSession()` returned 404 ("Session not found"), causing "Session terminated" → reconnect loop. The GET handler worked because it patched the header (line 1385-1386), but POST handler didn't. Additionally, the keepalive outer catch block was deleting transports from `mcpTransports` on `_webStandardTransport` access errors, permanently removing sessions. Fixed by: (1) POST handler uses exact-match `mcpTransports.get(sessionId)` instead of `resolveTransport()`, (2) outer catch skips instead of deleting. Verified 30+ minute session stability after both fixes.
 
 ### MCP HTTP Compatibility With Stateless Clients
 
