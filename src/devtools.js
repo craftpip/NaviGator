@@ -5,8 +5,12 @@ const MAX_TARGETS = 20;
 const MAX_CONSOLE_MESSAGES = 200;
 const MAX_QUERY_RESULTS = 25;
 const DEFAULT_HTML_LIMIT = 20000;
+const INACTIVITY_TIMEOUT_MS = 300_000;
+const INACTIVITY_CHECK_INTERVAL_MS = 30_000;
+const CLOSED_TARGET_RETENTION_MS = 600_000;
 
 const targetsById = new Map();
+const closedTargets = new Map();
 
 function cleanWhitespace(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -46,7 +50,11 @@ function normalizeBackend(manager, backend) {
 }
 
 function getTargetState(targetId) {
-  const state = targetsById.get(String(targetId || "").trim());
+  const tid = String(targetId || "").trim();
+  if (closedTargets.has(tid)) {
+    throw new Error(`Target ${tid} was closed due to inactivity (no interaction for 5 minutes). Create a new target with Target.createTarget.`);
+  }
+  const state = targetsById.get(tid);
   if (!state || !state.page || state.page.isClosed()) {
     throw new Error(`Unknown targetId: ${targetId}`);
   }
@@ -80,6 +88,31 @@ async function refreshTitle(state) {
     state.lastTitle = state.lastTitle || "";
   }
 }
+
+let inactivityInterval = null;
+
+function startInactivityCleanup() {
+  if (inactivityInterval) return;
+  inactivityInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [targetId, state] of [...targetsById.entries()]) {
+      if (state.page.isClosed()) continue;
+      const lastActive = new Date(state.lastActiveAt).getTime();
+      if (now - lastActive >= INACTIVITY_TIMEOUT_MS) {
+        closedTargets.set(targetId, { closedAt: new Date().toISOString() });
+        state.page.close().catch(() => {});
+      }
+    }
+    for (const [targetId, entry] of [...closedTargets.entries()]) {
+      if (now - new Date(entry.closedAt).getTime() >= CLOSED_TARGET_RETENTION_MS) {
+        closedTargets.delete(targetId);
+      }
+    }
+  }, INACTIVITY_CHECK_INTERVAL_MS);
+  inactivityInterval.unref();
+}
+
+startInactivityCleanup();
 
 function installPageObservers(state) {
   const { page } = state;
