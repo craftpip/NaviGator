@@ -1892,12 +1892,18 @@ export async function browserCaptureScreenshot({
         };
       });
 
-      const screenshot = await page.screenshot({
-        type: normalizedFormat,
-        encoding: "base64",
-        fullPage: fullPage !== false,
-        ...(normalizedFormat === "jpeg" && normalizedQuality ? { quality: normalizedQuality } : {})
-      });
+      const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
+      const screenshot = await Promise.race([
+        page.screenshot({
+          type: normalizedFormat,
+          encoding: "base64",
+          fullPage: fullPage !== false,
+          ...(normalizedFormat === "jpeg" && normalizedQuality ? { quality: normalizedQuality } : {})
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Screenshot timed out after ${timeoutMs}ms`)), timeoutMs)
+        )
+      ]);
 
       const [resolvedUrl, pageTitle] = await Promise.all([Promise.resolve(page.url()), page.title()]);
 

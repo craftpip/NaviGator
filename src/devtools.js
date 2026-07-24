@@ -246,13 +246,19 @@ export async function captureTargetScreenshot(args = {}) {
       ? Math.max(1, Math.min(100, Math.floor(Number.isFinite(args.quality) ? args.quality : 75)))
       : undefined;
   const fullPage = args.fullPage === undefined ? true : Boolean(args.fullPage);
+  const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
 
-  const screenshot = await state.page.screenshot({
-    type: normalizedFormat,
-    encoding: "base64",
-    fullPage,
-    ...(normalizedFormat === "jpeg" && normalizedQuality ? { quality: normalizedQuality } : {})
-  });
+  const screenshot = await Promise.race([
+    state.page.screenshot({
+      type: normalizedFormat,
+      encoding: "base64",
+      fullPage,
+      ...(normalizedFormat === "jpeg" && normalizedQuality ? { quality: normalizedQuality } : {})
+    }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Screenshot timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
 
   const [resolvedUrl, pageTitle] = await Promise.all([
     Promise.resolve(state.page.url()),
@@ -293,7 +299,9 @@ async function evaluateRuntime(args = {}) {
   const manager = await getBrowserManager();
   assertEnabled(manager);
   const state = getTargetState(args.targetId);
-  const result = await state.page.evaluate(async (expression) => {
+  const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
+  const result = await Promise.race([
+    state.page.evaluate(async (expression) => {
     function cleanWhitespaceInner(value) {
       return String(value || "").replace(/\s+/g, " ").trim();
     }
@@ -408,7 +416,11 @@ async function evaluateRuntime(args = {}) {
     }
     const awaited = raw && typeof raw.then === "function" ? await raw : raw;
     return serialize(awaited);
-  }, args.expression);
+  }, args.expression),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Runtime evaluation timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
 
   return {
     targetId: state.targetId,
@@ -435,7 +447,9 @@ async function getDocument(args = {}) {
   assertEnabled(manager);
   const state = getTargetState(args.targetId);
   const limit = Math.max(1, Math.min(MAX_QUERY_RESULTS, Number(args.limit) || 15));
-  const result = await state.page.evaluate((limitValue) => {
+  const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
+  const result = await Promise.race([
+    state.page.evaluate((limitValue) => {
     function cleanWhitespaceInner(value) {
       return String(value || "").replace(/\s+/g, " ").trim();
     }
@@ -547,7 +561,11 @@ async function getDocument(args = {}) {
       readyState: document.readyState,
       elements: nodes
     };
-  }, limit);
+  }, limit),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`getDocument timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
 
   return {
     targetId: state.targetId,
@@ -565,7 +583,9 @@ async function querySelector(args = {}, multiple = false) {
   assertEnabled(manager);
   const state = getTargetState(args.targetId);
   const limit = Math.max(1, Math.min(MAX_QUERY_RESULTS, Number(args.limit) || 10));
-  const result = await state.page.evaluate(({ selector, xpath, multiple: wantsMany, limit: limitValue }) => {
+  const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
+  const result = await Promise.race([
+    state.page.evaluate(({ selector, xpath, multiple: wantsMany, limit: limitValue }) => {
     function cleanWhitespaceInner(value) {
       return String(value || "").replace(/\s+/g, " ").trim();
     }
@@ -672,7 +692,11 @@ async function querySelector(args = {}, multiple = false) {
     xpath: args.xpath || "",
     multiple,
     limit
-  });
+  }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`querySelector timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
 
   return {
     targetId: state.targetId,
@@ -686,7 +710,9 @@ async function getOuterHtml(args = {}) {
   assertEnabled(manager);
   const state = getTargetState(args.targetId);
   const maxChars = parseMaxChars(args.maxChars, DEFAULT_HTML_LIMIT);
-  const result = await state.page.evaluate(({ selector, xpath, maxChars: limit }) => {
+  const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
+  const result = await Promise.race([
+    state.page.evaluate(({ selector, xpath, maxChars: limit }) => {
     function cssPath(element) {
       if (!(element instanceof Element)) return null;
       const parts = [];
@@ -755,7 +781,11 @@ async function getOuterHtml(args = {}) {
     selector: args.selector || "",
     xpath: args.xpath || "",
     maxChars
-  });
+  }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`getOuterHTML timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
 
   if (!result) {
     throw new Error("Could not resolve element for DOM.getOuterHTML");
@@ -776,7 +806,9 @@ async function scrollIntoViewIfNeeded(args = {}) {
   const manager = await getBrowserManager();
   assertEnabled(manager);
   const state = getTargetState(args.targetId);
-  const result = await state.page.evaluate(({ selector, xpath }) => {
+  const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
+  const result = await Promise.race([
+    state.page.evaluate(({ selector, xpath }) => {
     function firstXpath(expression) {
       const node = document.evaluate(expression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
       return node instanceof Element ? node : null;
@@ -800,7 +832,11 @@ async function scrollIntoViewIfNeeded(args = {}) {
   }, {
     selector: args.selector || "",
     xpath: args.xpath || ""
-  });
+  }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`scrollIntoViewIfNeeded timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
 
   if (!result) {
     throw new Error("Could not resolve element for DOM.scrollIntoViewIfNeeded");
@@ -825,34 +861,45 @@ async function dispatchMouseEvent(args = {}) {
     ? String(args.button).toLowerCase()
     : "left";
   const clickCount = Math.max(1, Math.min(3, Number(args.clickCount) || 1));
+  const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
 
-  const point = await state.page.evaluate(({ selector, xpath }) => {
-    function firstXpath(expression) {
-      const node = document.evaluate(expression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-      return node instanceof Element ? node : null;
-    }
+  const point = await Promise.race([
+    state.page.evaluate(({ selector, xpath }) => {
+      function firstXpath(expression) {
+        const node = document.evaluate(expression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+        return node instanceof Element ? node : null;
+      }
 
-    const element = selector
-      ? document.querySelector(selector)
-      : firstXpath(xpath);
-    if (!(element instanceof Element)) return null;
-    element.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
-    const rect = element.getBoundingClientRect();
-    return {
-      x: rect.left + Math.max(1, rect.width / 2),
-      y: rect.top + Math.max(1, rect.height / 2),
-      tagName: element.tagName.toLowerCase()
-    };
-  }, {
-    selector: args.selector || "",
-    xpath: args.xpath || ""
-  });
+      const element = selector
+        ? document.querySelector(selector)
+        : firstXpath(xpath);
+      if (!(element instanceof Element)) return null;
+      element.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+      const rect = element.getBoundingClientRect();
+      return {
+        x: rect.left + Math.max(1, rect.width / 2),
+        y: rect.top + Math.max(1, rect.height / 2),
+        tagName: element.tagName.toLowerCase()
+      };
+    }, {
+      selector: args.selector || "",
+      xpath: args.xpath || ""
+    }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Element resolution timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
 
   if (!point) {
     throw new Error("Could not resolve element for Input.dispatchMouseEvent");
   }
 
-  await state.page.mouse.click(point.x, point.y, { button, clickCount });
+  await Promise.race([
+    state.page.mouse.click(point.x, point.y, { button, clickCount }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Mouse click timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
   return {
     targetId: state.targetId,
     clicked: true,
@@ -872,7 +919,9 @@ async function insertText(args = {}) {
   const manager = await getBrowserManager();
   assertEnabled(manager);
   const state = getTargetState(args.targetId);
-  const point = await state.page.evaluate(({ selector, xpath }) => {
+  const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
+  const point = await Promise.race([
+    state.page.evaluate(({ selector, xpath }) => {
     function firstXpath(expression) {
       const node = document.evaluate(expression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
       return node instanceof Element ? node : null;
@@ -898,14 +947,28 @@ async function insertText(args = {}) {
   }, {
     selector: args.selector || "",
     xpath: args.xpath || ""
-  });
+  }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Element resolution timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
 
   if (!point) {
     throw new Error("Could not resolve element for Input.insertText");
   }
 
-  await state.page.mouse.click(point.x, point.y, { button: "left", clickCount: 1 });
-  await state.page.keyboard.type(args.text, { delay: manager.config.humanTypingDelay });
+  await Promise.race([
+    state.page.mouse.click(point.x, point.y, { button: "left", clickCount: 1 }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Mouse click timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
+  await Promise.race([
+    state.page.keyboard.type(args.text, { delay: manager.config.humanTypingDelay }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Keyboard type timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
   return {
     targetId: state.targetId,
     insertedText: true,
