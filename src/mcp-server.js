@@ -1167,6 +1167,7 @@ async function handleToolCall(name, args = {}) {
         quality = Math.min(100, Math.max(1, quality));
       }
     }
+    if (quality === undefined) quality = 55;
     const fullPage = args.fullPage === undefined ? true : Boolean(args.fullPage);
 
     const allowedOutputModes = ["base64"];
@@ -1652,6 +1653,7 @@ async function maybeStartHttpServer(managerOverride) {
             quality = Math.min(100, Math.max(1, quality));
           }
         }
+        if (quality === null) quality = 55;
         const options = {
           format,
           fullPage,
