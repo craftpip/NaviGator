@@ -604,12 +604,40 @@ function normalizeResultEntries(payload) {
   return [];
 }
 
-async function applyScreenshotStorage(payload, config) {
+async function applyScreenshotStorage(payload, config, { outputMode } = {}) {
+  if (outputMode === "base64") return payload;
+
+  const entries = normalizeResultEntries(payload);
+  if (!entries.length) return payload;
+
+  if (outputMode === "file") {
+    for (const entry of entries) {
+      if (!entry?.ok || !entry?.screenshotBase64) continue;
+      const download = await storeScreenshotDownload(entry, config, { enableDownload: false });
+      if (!download) continue;
+      entry.bytes = download.bytes;
+      entry.filePath = resolveDisplayPath(download.filePath, config?.screenshotPathPrefix);
+      delete entry.screenshotBase64;
+    }
+    return payload;
+  }
+
+  if (outputMode === "url") {
+    for (const entry of entries) {
+      if (!entry?.ok || !entry?.screenshotBase64) continue;
+      const download = await storeScreenshotDownload(entry, config, { enableDownload: true });
+      if (!download) continue;
+      entry.downloadId = download.downloadId;
+      entry.downloadUrl = download.downloadUrl;
+      entry.bytes = download.bytes;
+      delete entry.screenshotBase64;
+    }
+    return payload;
+  }
+
   const wantsDownload = Boolean(config?.enableScreenshotDownloadLink);
   const wantsPath = Boolean(config?.screenshotPathPrefix);
   if (!wantsDownload && !wantsPath) return payload;
-  const entries = normalizeResultEntries(payload);
-  if (!entries.length) return payload;
 
   for (const entry of entries) {
     if (!entry?.ok || !entry?.screenshotBase64) continue;
@@ -980,7 +1008,7 @@ function getToolsListResponse() {
       {
         name: "web_page_screenshot",
         description:
-          "Open one or more pages and return base64-encoded full-page screenshots (PNG or JPEG). Use this to capture visual snapshots of results discovered via web_search. Alternatively, pass a targetId from Target.createTarget to screenshot an existing persistent tab.",
+          "Open one or more pages and return screenshots (PNG or JPEG). Use this to capture visual snapshots of results discovered via web_search. Alternatively, pass a targetId from Target.createTarget to screenshot an existing persistent tab.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1010,16 +1038,27 @@ function getToolsListResponse() {
               description: "Image format for the screenshot"
             },
             quality: {
-              type: "number",
-              minimum: 1,
-              maximum: 100,
-              default: 75,
-              description: "JPEG quality (1–100, default 75; ignored for PNG)"
+              type: "string",
+              enum: ["low", "medium", "high"],
+              default: "medium",
+              description:
+                "JPEG quality preset: low (30, small file), medium (55, balanced), high (75, detailed). Ignored for PNG."
             },
             fullPage: {
               type: "boolean",
               default: true,
               description: "Capture the entire page, not just the viewport"
+            },
+            output: {
+              type: "string",
+              enum: (() => {
+                const options = ["base64"];
+                if (manager?.config?.screenshotPathPrefix) options.push("file");
+                if (manager?.config?.enableScreenshotDownloadLink) options.push("url");
+                return options;
+              })(),
+              default: "base64",
+              description: "How to return the screenshot: 'base64' (inline data), 'file' (save to disk, returns path), 'url' (returns download URL). Available options depend on server configuration."
             }
           },
           description: "Provide one of: targetId, url, urls, ref_id, or ref_ids. Prefer ref_id/ref_ids from web_search when available.",
@@ -1119,28 +1158,55 @@ async function handleToolCall(name, args = {}) {
     const format = formatRaw === "jpeg" ? "jpeg" : "png";
     let quality;
     if (typeof args.quality !== "undefined" && args.quality !== null) {
-      quality = parsePositiveInt(args.quality, "quality");
-      quality = Math.min(100, Math.max(1, quality));
+      const QUALITY_PRESETS = { low: 30, medium: 55, high: 75 };
+      const preset = String(args.quality).trim().toLowerCase();
+      if (preset in QUALITY_PRESETS) {
+        quality = QUALITY_PRESETS[preset];
+      } else {
+        quality = parsePositiveInt(args.quality, "quality");
+        quality = Math.min(100, Math.max(1, quality));
+      }
     }
     const fullPage = args.fullPage === undefined ? true : Boolean(args.fullPage);
+
+    const allowedOutputModes = ["base64"];
+    if (manager?.config?.screenshotPathPrefix) allowedOutputModes.push("file");
+    if (manager?.config?.enableScreenshotDownloadLink) allowedOutputModes.push("url");
+    const outputMode = allowedOutputModes.includes(args.output) ? args.output : "base64";
+
+    const screenshotCtx = {
+      format,
+      quality: quality ?? "default",
+      fullPage,
+      target: hasTargetId ? args.targetId.trim() : (args.url || args.urls || args.ref_id || args.ref_ids || "unknown")
+    };
+    console.error(`📸  screenshot context: ${JSON.stringify(screenshotCtx)}`);
 
     let result;
     if (hasTargetId) {
       mark = timer.step("prepare_execution", mark);
-      result = await runWithHangGuard(`mcp:${name}`, () =>
-        captureTargetScreenshot({
-          targetId: args.targetId.trim(),
-          format,
-          fullPage,
-          ...(quality ? { quality } : {})
-        })
-      );
+      try {
+        result = await runWithHangGuard(`mcp:${name}`, () =>
+          captureTargetScreenshot({
+            targetId: args.targetId.trim(),
+            format,
+            fullPage,
+            ...(quality ? { quality } : {})
+          })
+        );
+      } catch (error) {
+        console.error(`📸  screenshot failed [targetId]: ${JSON.stringify(screenshotCtx)}`);
+        console.error(`📸  error: ${String(error?.message || error)}`);
+        if (error?.stack) console.error(`📸  stack: ${truncateStr(error.stack, 500)}`);
+        throw error;
+      }
       result = { ...result, ok: true };
     } else {
       let targetUrls;
       try {
         targetUrls = resolveOpenTarget(args);
       } catch (error) {
+        console.error(`📸  screenshot failed [resolve_targets]: ${String(error?.message || error)}`);
         timer.step("resolve_targets_failed", mark);
         timer.end({ status: "error", error: String(error?.message || error) });
         logEvent("mcp.error", {
@@ -1153,16 +1219,24 @@ async function handleToolCall(name, args = {}) {
       const manager = await getBrowserManager();
       mark = timer.step("prepare_execution", mark);
 
-      result = await runWithHangGuard(`mcp:${name}`, () =>
-        captureScreenshotsParallel(targetUrls, manager.config.openPageMaxParallel, {
-          format,
-          fullPage,
-          ...(quality ? { quality } : {})
-        })
-      );
+      try {
+        result = await runWithHangGuard(`mcp:${name}`, () =>
+          captureScreenshotsParallel(targetUrls, manager.config.openPageMaxParallel, {
+            format,
+            fullPage,
+            ...(quality ? { quality } : {})
+          })
+        );
+      } catch (error) {
+        console.error(`📸  screenshot failed [url]: ${JSON.stringify(screenshotCtx)}`);
+        console.error(`📸  urls: ${JSON.stringify(targetUrls)}`);
+        console.error(`📸  error: ${String(error?.message || error)}`);
+        if (error?.stack) console.error(`📸  stack: ${truncateStr(error.stack, 500)}`);
+        throw error;
+      }
     }
     mark = timer.step("capture_screenshots", mark);
-    await applyScreenshotStorage(result, manager.config);
+    await applyScreenshotStorage(result, manager.config, { outputMode });
     mark = timer.step("store_screenshots", mark);
     const response = formatScreenshotResponse(result);
     timer.step("format_response", mark);
@@ -1266,7 +1340,8 @@ function createMcpServer() {
       console.error(`📨  ${ms}ms${okLabel ? " · " + okLabel : ""}`);
       return response;
     } catch (error) {
-      console.error(`❌  ${truncateStr(String(error?.message || error), 120)}`);
+      console.error(`❌  tool ${name} failed: ${truncateStr(String(error?.message || error), 200)}`);
+      if (error?.stack) console.error(`❌  stack: ${truncateStr(error.stack, 600)}`);
       const errorResponse = {
         isError: true,
         ...asMarkdownContent(`Error calling ${name}: ${String(error?.message || error)}`)
@@ -1566,7 +1641,17 @@ async function maybeStartHttpServer(managerOverride) {
         const format = formatParam === "jpeg" ? "jpeg" : "png";
         const fullPage = parseBooleanParam(url.searchParams.get("fullPage"), true);
         const qualityParam = url.searchParams.get("quality");
-        const quality = qualityParam ? parsePositiveInt(qualityParam, "quality") : null;
+        let quality = null;
+        if (qualityParam) {
+          const QUALITY_PRESETS = { low: 30, medium: 55, high: 75 };
+          const preset = String(qualityParam).trim().toLowerCase();
+          if (preset in QUALITY_PRESETS) {
+            quality = QUALITY_PRESETS[preset];
+          } else {
+            quality = parsePositiveInt(qualityParam, "quality");
+            quality = Math.min(100, Math.max(1, quality));
+          }
+        }
         const options = {
           format,
           fullPage,

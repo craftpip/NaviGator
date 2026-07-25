@@ -181,8 +181,15 @@ async function createTarget(args = {}) {
 
   const backend = normalizeBackend(manager);
   const page = await manager.newPage({ backend });
+  const customTargetId = typeof args.targetId === "string" && args.targetId.trim()
+    ? args.targetId.trim()
+    : null;
+  if (customTargetId && targetsById.has(customTargetId)) {
+    await page.close();
+    throw new Error(`Target ${customTargetId} already exists. Use a different targetId or close the existing one.`);
+  }
   const state = {
-    targetId: randomBytes(6).toString("hex"),
+    targetId: customTargetId || randomBytes(6).toString("hex"),
     backend,
     page,
     consoleMessages: [],
@@ -248,17 +255,26 @@ export async function captureTargetScreenshot(args = {}) {
   const fullPage = args.fullPage === undefined ? true : Boolean(args.fullPage);
   const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
 
-  const screenshot = await Promise.race([
-    state.page.screenshot({
-      type: normalizedFormat,
-      encoding: "base64",
-      fullPage,
-      ...(normalizedFormat === "jpeg" && normalizedQuality ? { quality: normalizedQuality } : {})
-    }),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`Screenshot timed out after ${timeoutMs}ms`)), timeoutMs)
-    )
-  ]);
+  console.error(`📸  target screenshot: targetId=${args.targetId} format=${normalizedFormat} quality=${normalizedQuality ?? "default"} fullPage=${fullPage} timeout=${timeoutMs}ms`);
+
+  let screenshot;
+  try {
+    screenshot = await Promise.race([
+      state.page.screenshot({
+        type: normalizedFormat,
+        encoding: "base64",
+        fullPage,
+        ...(normalizedFormat === "jpeg" && normalizedQuality ? { quality: normalizedQuality } : {})
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Screenshot timed out after ${timeoutMs}ms`)), timeoutMs)
+      )
+    ]);
+  } catch (error) {
+    console.error(`📸  target screenshot failed: targetId=${args.targetId} error=${String(error?.message || error)}`);
+    if (error?.stack) console.error(`📸  stack: ${String(error.stack).slice(0, 500)}`);
+    throw error;
+  }
 
   const [resolvedUrl, pageTitle] = await Promise.all([
     Promise.resolve(state.page.url()),
@@ -284,7 +300,16 @@ async function navigatePage(args = {}) {
   assertString(args.url, "url");
   const manager = await getBrowserManager();
   assertEnabled(manager);
-  const state = getTargetState(args.targetId);
+  let state;
+  try {
+    state = getTargetState(args.targetId);
+  } catch (error) {
+    if (String(error?.message || "").includes("Unknown targetId")) {
+      state = await createTarget({ targetId: args.targetId.trim(), url: args.url.trim() });
+      return state;
+    }
+    throw error;
+  }
   await state.page.goto(args.url.trim(), {
     waitUntil: manager.config.navWaitUntil,
     timeout: manager.config.browserOpTimeoutMs
@@ -984,6 +1009,7 @@ export const devtoolsToolDefinitions = [
     inputSchema: {
       type: "object",
       properties: {
+        targetId: { type: "string", description: "Optional custom target id. If omitted, a random id is generated." },
         url: { type: "string", description: "Optional starting URL. Defaults to about:blank." }
       },
       additionalProperties: false

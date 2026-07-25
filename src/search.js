@@ -1893,17 +1893,26 @@ export async function browserCaptureScreenshot({
       });
 
       const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
-      const screenshot = await Promise.race([
-        page.screenshot({
-          type: normalizedFormat,
-          encoding: "base64",
-          fullPage: fullPage !== false,
-          ...(normalizedFormat === "jpeg" && normalizedQuality ? { quality: normalizedQuality } : {})
-        }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Screenshot timed out after ${timeoutMs}ms`)), timeoutMs)
-        )
-      ]);
+      console.error(`📸  url screenshot: url=${url} format=${normalizedFormat} quality=${normalizedQuality ?? "default"} fullPage=${fullPage !== false} dims=${dimensions.fullWidth}x${dimensions.fullHeight} timeout=${timeoutMs}ms`);
+
+      let screenshot;
+      try {
+        screenshot = await Promise.race([
+          page.screenshot({
+            type: normalizedFormat,
+            encoding: "base64",
+            fullPage: fullPage !== false,
+            ...(normalizedFormat === "jpeg" && normalizedQuality ? { quality: normalizedQuality } : {})
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`Screenshot timed out after ${timeoutMs}ms`)), timeoutMs)
+          )
+        ]);
+      } catch (error) {
+        console.error(`📸  url screenshot failed: url=${url} dims=${dimensions.fullWidth}x${dimensions.fullHeight} error=${String(error?.message || error)}`);
+        if (error?.stack) console.error(`📸  stack: ${String(error.stack).slice(0, 500)}`);
+        throw error;
+      }
 
       const [resolvedUrl, pageTitle] = await Promise.all([Promise.resolve(page.url()), page.title()]);
 
