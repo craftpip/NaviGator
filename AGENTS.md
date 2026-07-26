@@ -45,8 +45,20 @@ Opens pages and returns cleaned, readable text content.
 - `ref_id: number` — Numeric reference from a prior `web_search`
 - `ref_ids: number[]` — Multiple references
 - `maxChars: number` (default `8000`) — Maximum characters per page
+- `maxTableRows: number` (optional) — Maximum number of rows per extracted table
 
-**Output:** Per-item success/error with SEO metadata.
+**Output:** Per-item success/error with SEO metadata. Tables are always extracted and appended as clean pipe-separated tables. Links are always extracted but not shown in the output — use `web_page_links(ref_id)` to inspect them. The LLM calls `web_fetch(ref_id: link_ref_id)` to visit a link.
+
+---
+
+### `web_page_links`
+
+Lists links extracted from a previously fetched page. Given a page's `ref_id` (from `web_fetch` output), returns the extracted links with their link ref_ids. Links are already shown inline in `web_fetch` output — this tool is a convenience for re-listing them without re-fetching the page.
+
+**Input:**
+- `ref_id: number` — Page ref_id from a prior `web_fetch` call
+
+**Output:** `- text — [ref_id]` lines for each extracted link.
 
 ---
 
@@ -67,6 +79,23 @@ Captures rendered page appearance as images.
 
 ---
 
+### `web_page_ascii`
+
+Captures a webpage as annotated ASCII wireframe art with numbered element markers and a selector legend.
+
+**Input:**
+
+- `url: string` — Single URL
+- `ref_id: number` — Numeric reference from a prior `web_search`
+- `width: number` (default `100`) — ASCII art width in characters (40–200)
+- `elementLimit: number` (default `25`) — Maximum number of elements to annotate
+- `includeSelector: boolean` (default `true`) — Include CSS selectors in the legend
+- `includeXpath: boolean` (default `true`) — Include XPaths in the legend
+
+**Output:** Annotated ASCII wireframe + element legend (markdown).
+
+---
+
 ## Code References
 
 ### MCP Tool Definitions
@@ -78,6 +107,8 @@ All tool schemas are defined in `getToolsListResponse()`:
 | `web_search` | `src/mcp-server.js` | 916–948 |
 | `web_fetch` | `src/mcp-server.js` | 949–979 |
 | `web_page_screenshot` | `src/mcp-server.js` | 980–1027 |
+| `web_page_links` | `src/mcp-server.js` | after web_page_screenshot |
+| `web_page_ascii` | `src/mcp-server.js` | 1028–1065 |
 | Devtools tools (13) | `src/devtools.js` | 884–1062 |
 
 ### Tool Call Dispatch
@@ -103,6 +134,7 @@ All tool schemas are defined in `getToolsListResponse()`:
 | File | Purpose |
 |------|---------|
 | `src/mcp-server.js` | Main MCP server — tool definitions, dispatch, HTTP/stdio transport, SSE keepalive, caching, screenshot storage |
+| `src/ascii.js` | ASCII wireframe transformer — `generateWireframe()`, `formatLegend()`, `transform()` |
 | `src/devtools.js` | Devtools tool definitions and handlers (CDP-based browser interaction) |
 | `src/search.js` | `browserSearch()`, `browserOpenAndExtract()`, `browserCaptureScreenshot()` |
 | `src/browser.js` | `BrowserManager`, page lifecycle, `newPage()` |
@@ -166,6 +198,104 @@ docker compose down && up -d       # Restart containers
 ## Known Issues
 
 - SSE streams die after ~5 min if there is no keepalive traffic. The MCP SDK writes to SSE only when there is actual JSON-RPC data. Any idle connection gets killed by TCP keepalive, Docker networking, or upstream proxies. Fixed with 30s SSE comment keepalive (`: keepalive\n\n`) written directly to each active stream controller via `_streamMapping`, HTTP server timeouts (`keepAliveTimeout: 300s`, `headersTimeout: 300s`, `timeout: 0`), and `retryInterval: 30000` on the transport. The SDK's `StreamableHTTPServerTransport` wraps `WebStandardStreamableHTTPServerTransport` — the internal `_streamMapping` holds all active SSE controllers (standalone GET and POST response streams). SSE comments are ignored by spec-compliant clients but keep TCP/proxy idle timers alive.
+
+## Domain Hints Workflow
+
+Creating extraction hints for a website is an iterative process. One site at a time, one page type at a time.
+
+### Routine (per page type)
+
+1. **Open the page in a persistent browser tab:**
+   `browser_Target_createTarget(url: "https://example.com/page")`
+
+2. **Take a low-quality screenshot:**
+   `browser_web_page_screenshot(targetId: "<id>", quality: "low")`
+   See what the page looks like visually — what content matters, what's noise.
+
+3. **Inspect the DOM document structure:**
+   `browser_DOM_getDocument(targetId: "<id>", limit: 30-40)`
+   Identifies structural elements, their selectors, xpaths, text, and visibility.
+
+4. **Get outerHTML of key content containers:**
+   `browser_DOM_getOuterHTML(targetId: "<id>", selector: "main"/".content"/"div.h-card", maxChars: 5000-10000)`
+   Gets raw HTML of specific sections you identified in step 3.
+
+5. **Query specific elements to verify selectors:**
+   `browser_DOM_querySelectorAll(targetId: "<id>", selector: "ol.js-pinned-items-reorder-list li")`
+   Confirms selector matches and captures actual text content.
+
+6. **Test without hints first:**
+   `curl "http://localhost:3000/extract?url=https://example.com/page&maxChars=2000"`
+   See what the current fallback (Readability/candidate blocks) produces.
+
+7. **Write the hint in `domain-hints.json`:**
+   ```json
+   {
+     "domain": "example.com",
+     "pathPattern": "/page-type",
+     "pageType": "type-name",
+     "comment": "What this page type is.",
+     "waitForSelector": "selector-for-dynamic-content",
+     "navigationWait": 2000,
+     "preferReadability": true,
+     "content": {
+       "sections": [
+         { "selector": "div.content-area", "label": "Content", "priority": "high" },
+         { "selector": "aside.sidebar", "label": "Sidebar", "priority": "medium" }
+       ]
+     }
+   }
+   ```
+
+  **Content type hint in selector comment:** Mention what the selector targets — single text (one line), list (multiple items), mixed (text block, multi-line).
+
+  **Rule of thumb for section selectors:**
+   - Selectors must NOT overlap — one element should not be a child of another selected element.
+   - `high` priority sections always included. `medium` sections included only if they have 50+ chars of text.
+   - `low` sections are available but currently unused (reserved for future).
+   - Use `preferReadability: false` when the page has sidebar/navigation content that Readability strips.
+   - Select ONLY the container that has the useful content. Exclude UI elements: buttons, block/report forms, follow buttons, empty tables, achievement badges, "Learn more" links, form labels, sticky bars.
+   - For profile sidebars: prefer `div.js-profile-editable-area` (bio + stats + details) over `div.h-card` (includes block/report noise). Add separate sections for name (`h1.vcard-names`) and status (`div.user-status-message-wrapper`) if needed.
+   - For lists of items: select the `<ol>` or `<ul>` container directly (e.g., `ol.js-pinned-items-reorder-list`). The extraction code auto-detects `<ol>/<ul>` and renders each `<li>` as a separate block with a blank line between items.
+   - For single text items: use the most specific container (e.g., `h1.vcard-names`, `div.p-note`). These are rendered as flat list lines.
+
+8. **Deploy and test:**
+   ```bash
+   docker cp /workspace/src/search.js browser-search-mcp:/app/src/search.js
+   docker cp /workspace/src/mcp-server.js browser-search-mcp:/app/src/mcp-server.js
+   docker cp /workspace/domain-hints.json browser-search-mcp:/app/domain-hints.json
+   docker restart browser-search-mcp
+   sleep 8
+   curl "http://localhost:3000/extract?url=https://example.com/page&maxChars=2000"
+   ```
+
+9. **Compare output with screenshot:**
+   - Is all important content present?
+   - Is there noise that should be excluded?
+   - Is the formatting clean (markdown lists for sections)?
+   - Are tables extracted properly?
+
+10. **Tune and repeat** until output is clean. Then move to the next page type for the same domain, then the next domain.
+
+### Known pitfalls
+
+- `cleanAndTruncateText` used to call `cleanWhitespace` which collapsed newlines with `\s+`. Now uses `[^\S\n]+` to preserve newlines. If section output appears as a single run-on line, check that the fix is deployed.
+- Sections path and fallback path are exclusive — if sections produce any output, Readability/candidate blocks are skipped entirely.
+- `waitForSelector` waits for the selector to appear in the live DOM before extracting the HTML snapshot. If content loads after the wait (e.g., Turbo frames), increase `navigationWait`.
+- The `/extract?url=` endpoint is for quick testing. The actual MCP `web_fetch` tool goes through the same `browserOpenAndExtract()` path.
+- **Selectors must not overlap** — one selected element should not be a child of another. Otherwise content appears in multiple sections.
+- **Noisy content** comes from UI elements inside a selected container (buttons, modals, block/report forms). Use the most specific selector possible that excludes these. If `div.h-card` includes block/report UI, use `div.js-profile-editable-area` instead. If a Follow button is inside the profile area, check if a more specific container excludes it.
+- **Empty tables** (all body cells empty or whitespace-only) are now filtered out via `hasDataContent` check in `extractTablesFromDocument`. Tables must have at least one body cell with >2 chars of text content.
+- **Short values** like "7" (following count) can be lost because `uniqueLines` filters lines with `length < 3`. To preserve them, the parent element should be selected so the full text (e.g., "116 followers · 7 following") stays together.
+- **Duplicated content across page states** (e.g., desktop + mobile versions of the same section) causes duplicate lines. `uniqueLines` filters exact duplicates, but different text content passes through. Use a selector that targets only one state when possible (e.g., prefer `div.user-status-container:not(.d-md-none)` over the classless version).
+- **Smart hints, not smart code.** Do NOT add auto-detection logic (list detection, content type detection) in search.js. Formatting decisions belong in the hint — choose precise selectors that naturally produce clean output. The section extraction code stays simple: textContent → lines → dedup → render as flat list items.
+- **Link reference IDs** are shown in metadata as `Links: N (use web_page_links(ref_id: N) to list)`. The page ref_id `[N]` in each entry title lets the LLM call `web_page_links(ref_id: N)` to explore links with their own ref_ids, then `web_fetch(ref_id: link_ref_id)` to visit.
+- **test without the hints first** as step 6 before writing the hint to see what's missing.
+- **Path pattern matching:** `/*` means one segment (`/foo`), `/*/*` means two segments (`/foo/bar`), `/**` means everything. Uses `compileGlob` which converts `*` to `[^/]*`. The special case for `/*` was removed — it now uses `compileGlob` like everything else.
+- **Hint matching is first-match:** The first hint that matches wins. List hints from most specific to least specific (profile before repo, then issues, etc.). GitHub entries are ordered: profile (`/*`), repo (`/*/*`), issues (`/*/*/issues`), prs (`/*/*/pulls`).
+- **GitHub selector stability:** GitHub uses React + Turbo and CSS-module classes change per build. Use stable selectors like `h1.vcard-names`, `div.js-profile-editable-area`, `ol.js-pinned-items-reorder-list`, `article.markdown-body`, `li[role="listitem"]` (issues/PRs list). Avoid CSS-module class names. For repo pages, `article.markdown-body` is inside Turbo + React, so wait for it specifically.
+
+---
 
 ## Fix Patterns
 
@@ -337,3 +467,168 @@ Hermes agent reported browser tools disappearing after ~5 min. Container logs sh
 6. Consistent comment formatting across the file.
 
 **Verification:** A dev can open the file and know which env vars to touch within 30 seconds.
+
+---
+
+### Link Extraction — Always On, Compact Format
+
+**Created:** 2026-07-25
+
+**What:** Links are always extracted but never shown in `web_fetch` output. They are stored in `pageLinksByPageRef` and accessible only via `web_page_links(ref_id)`. There is no `extractLinks` flag — extraction is automatic but invisible.
+
+**Why:** Keeps `web_fetch` output clean and focused on page text content. The LLM calls `web_page_links(page_ref_id)` when it needs to explore links.
+
+**Key changes:**
+- `src/search.js` — `browserOpenAndExtract()` always calls `extractLinksFromHtml()`. Removed `extractLinks` parameter.
+- `src/mcp-server.js` — `openTargetsParallel()` registers links with `rememberLink()` and stores them in `pageLinksByPageRef`. No `## Links` appended to text output.
+- `src/mcp-server.js` — Removed `extractLinks` from `web_fetch` schema.
+- `linkMemoryByRef` / `linkMemoryByUrl` store the URL mapping, so `web_fetch(ref_id: link_ref_id)` resolves correctly.
+- `pageLinksByPageRef` stores `{ ref_id, url, text }` per page (used by `web_page_links` tool).
+
+**Flow:**
+1. `web_fetch(url: "...")` → clean text + tables (no links in output)
+2. `web_page_links(ref_id: <page_ref_id>)` → lists links with `- Circulars — [4]`, `- RSS Feed — [5]`, ...
+3. `web_fetch(ref_id: 4)` → fetches the Circulars page
+
+**Verified on:** NSE India option chain (255 links, no prices in link output, web_fetch link resolution works end-to-end)
+
+---
+
+### Table Extraction — Always On, No Flag
+
+**Created:** 2026-07-25
+
+**What:** There is no `includeTables` flag. `web_fetch` always extracts tables from the HTML via JSDOM and appends them as clean pipe-separated structured tables (`### Table N`). The Readability text is used as the base (it naturally strips inline tabular content), so raw tab-separated table noise is eliminated.
+
+**Why:** The raw SEO text (browser `innerText`) always contains table data as tab-separated noise (106+ rows for NSE). There is no point in letting that noise through raw when we can always parse it into a clean format. Removing the flag simplifies the API — the LLM never needs to decide whether to include tables.
+
+**Key changes:**
+- Removed `includeTables` parameter from `web_fetch` schema, `handleToolCall`, `openTargetsParallel`, and `browserOpenAndExtract`.
+- `selectedText` always uses `extracted.text` (Readability text) as the base — avoids raw tabular data while keeping article content.
+- `extractTablesFromDocument()` always runs and `insertTablesInline()` always appends structured tables.
+- `maxTableRows` kept as an optional param for limiting row count per table.
+
+**Flow:**
+1. `web_fetch(url)` → Readability text + `### Table N` (pipe-separated)
+2. No raw tab-separated noise. No flags needed.
+
+**Verified on:** NSE India option chain (0 tab rows in output, clean structured table)
+
+---
+
+---
+
+### ASCII Screenshot — Wireframe Approach
+
+**Created:** 2026-07-25
+
+**What:** The ASCII screenshot tool (`src/ascii.js`) renders a **structural wireframe** — boxes made of `─│┌┐└┘` characters with text labels inside. NOT photographic ASCII art (`$$$`, `@@@` character ramps). The user explicitly rejected pixel-to-character conversion.
+
+**Architecture:**
+- `src/ascii.js` — Pure transformer: takes element positions + viewport dims, returns wireframe + legend. Zero browser dependency.
+- `scripts/ascii-screenshot.js` — Temporary CLI harness: opens page in browser, extracts elements with scroll offset, filters to viewport, calls transformer.
+- `src/mcp-server.js` — Future consumer (Phase 2 integration).
+
+**Key decisions:**
+- Use `window.scrollX`/`scrollY` offset in element extraction so positions are document-relative, not viewport-relative.
+- Filter elements to viewport only (with 50px margin) — off-screen elements clutter the wireframe.
+- Box overlap handling: track cell ownership (`owner` array). First box's borders take priority; adjacent boxes share borders naturally.
+- Wireframe height capped at 200 rows max. Use viewport height for scaling (compact output).
+- Text inside boxes: `[N]` marker on first interior line, `<tag> text` on second line. Truncate with available width.
+- `eval()` required for code strings in `page.evaluate()` — `new Function()` doesn't serialize through puppeteer.
+
+**Files:**
+- `src/ascii.js` — exports `generateWireframe()`, `formatLegend()`, `transform()`
+- `scripts/ascii-screenshot.js` — CLI harness with `ELEMENT_EXTRACT_CODE` (content-priority extraction)
+- `ASCII screenshot.md` — Full plan with research findings
+
+**Verified on:** example.com, Hacker News, Wikipedia, GitHub Trending
+
+---
+
+### Website Exploration for Extraction Design
+
+**Created:** 2026-07-25
+
+**Status:** In progress — ~50 websites across 13 categories in `websites/` directory. See `websites/` for individual entries. 22 news sites explored (14 Indian + 8 global) with DOM inspection written to `websites/news.md`. GitHub (Profile, Repo, Issues, PRs), HN, Wikipedia, Stack Overflow, Dev.to, npm, freeCodeCamp also explored in `websites/developer.md` and `websites/reference.md`.
+
+**Key lesson (2026-07-25):** Write findings to the file immediately after each site exploration, not in batches. Earlier explorations (India Times, HT, Aaj Tak, etc.) were batch-processed and lost from context during compaction before being saved. Only later edits (BBC, CNN, Guardian, Al Jazeera) were saved immediately after each site. File edits persist through compaction; in-memory context does not.
+
+**What we're doing:** Inspecting real websites' DOM structure to understand how content is laid out, so we can design a general-purpose extraction tool. We are NOT using `web_fetch` (the tool we're building) to do this — that would be circular.
+
+**Site exploration routine (exact steps):**
+
+For each site:
+
+1. **Open page in a persistent browser tab:**
+   ```
+   browser_Target_createTarget(url: "https://example.com/page")
+   ```
+   This uses a real Chromium browser (cloakbrowser backend) and renders JS.
+
+2. **Take a low-quality screenshot:**
+   ```
+   browser_web_page_screenshot(targetId: "<id>", quality: "low")
+   ```
+   To see what the page actually looks like visually.
+
+3. **Inspect the DOM document structure:**
+   ```
+   browser_DOM_getDocument(targetId: "<id>", limit: 30-40)
+   ```
+   Gets all important elements, their selectors, xpaths, text, and visibility. This shows the structural outline of the page.
+
+4. **Get outerHTML of key content containers:**
+   ```
+   browser_DOM_getOuterHTML(targetId: "<id>", selector: "main" (or specific class/id), maxChars: 5000-10000)
+   ```
+   Gets the raw HTML of main content areas. Pick selectors based on step 3 (e.g., `main#content`, `article.markdown-body`, `turbo-frame#user-profile-frame`).
+
+5. **Run JS to get page-level stats:**
+   ```
+   browser_Runtime_evaluate(targetId: "<id>", expression: "JSON.stringify({...})")
+   ```
+   Things to measure:
+   - `document.title` — page title
+   - `document.querySelectorAll('a').length` — total link count
+   - `document.querySelectorAll('script').length` — script count (JS heaviness)
+   - Presence of key frameworks: `!!document.querySelector('turbo-frame')` (Turbo), `!!document.querySelector('react-app')` (React)
+   - Content availability: `document.querySelector('article')?.innerText?.substring(0, 200) || 'none'`
+
+6. **Close the tab:**
+   ```
+   browser_Target_closeTarget(targetId: "<id>")
+   ```
+
+7. **Write findings to the corresponding file in `websites/` directory:**
+   - Update the extraction table (SEO, Readability, Tables, Links, Screenshot columns)
+   - Document the DOM structure (use indented code blocks with `├──` tree)
+   - Note page-level stats (link count, script count, framework usage)
+   - Note quirks (SPA, bot protection, timing issues, etc.)
+   - Describe how extraction SHOULD work for this site (which strategy fits)
+
+**Things to look for:**
+- Is the site server-rendered or SPA? Check script count + presence of React/Turbo/Vue
+- Is there a timing issue? Does content appear immediately or after JS?
+- Is there bot protection? (Cloudflare, etc.)
+- Are there semantic HTML elements? (`<article>`, `<main>`, `<nav>`, `<table>`)
+- Are there microdata/structured data attributes? (schema.org `itemprop`, RDFa)
+- What are the useful CSS selectors for content areas?
+- What content should be excluded? (nav, footer, sidebar, ads)
+- How many links are there and what fraction are useful vs. navigation?
+- What kind of tables and are they useful content or layout/nav?
+
+**Categories to explore (13 files in `websites/`):**
+1. `developer.md` — GitHub (profile, repo, issues, PRs), Stack Overflow, HN, Dev.to, daily.dev, npm, freeCodeCamp
+2. `finance.md` — NSE India (done), Moneycontrol
+3. `news.md` — NDTV, India Times, Hindustan Times, Aaj Tak, The Hindu, Indian Express, The Quint, News18, ABP Live, Firstpost, The Print, Scroll, Deccan Herald, The Tribune
+4. `business-news.md` — Livemint, Business Standard, Financial Express, Economic Times
+5. `weather.md` — Weather.com, AccuWeather, BBC Weather, Windy, IMD, OpenWeatherMap, timeanddate, Skymet
+6. `ecommerce.md` — Amazon India, Flipkart
+7. `social.md` — Reddit, LinkedIn
+8. `sports.md` — Cricbuzz
+9. `food-travel.md` — IRCTC, Zomato, Swiggy
+10. `ai-chat.md` — ChatGPT, Claude AI
+11. `video.md` — YouTube
+12. `reference.md` — Wikipedia
+13. `README.md` — Category index / legend

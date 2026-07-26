@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -211,6 +212,16 @@ export async function loadConfig() {
   const lightpandaPath = await findLightpandaPath();
   const cloakbrowserPath = await findCloakbrowserPath();
 
+  const defaultHintsPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "domain-hints.json"
+  );
+  const hintsPathCustom = process.env.DOMAIN_HINTS_PATH;
+  const domainHintsPath = hintsPathCustom
+    ? path.resolve(hintsPathCustom)
+    : defaultHintsPath;
+
   return {
     chromePath,
     chromeUserDataDir: process.env.CHROME_USER_DATA_DIR || "/data/chrome",
@@ -247,6 +258,7 @@ export async function loadConfig() {
     enableHangRestart: parseBoolean(process.env.ENABLE_HANG_RESTART, false),
     hangRestartTimeoutMs: parseNumber(process.env.HANG_RESTART_TIMEOUT_MS, 120000),
     startupUrl: process.env.STARTUP_URL || "about:blank",
+    domainHintsPath,
     searchRouteWarmupEngines: parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, ["duckduckgo_api", "google_cb", "google_lp", "bing_lp", "duckduckgo_cb", "bing_cb"]),
     searchFallback: process.env.SEARCH_FALLBACK
       ? parseEngines(process.env.SEARCH_FALLBACK, [])

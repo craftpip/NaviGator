@@ -229,7 +229,80 @@ Example client config:
 }
 ```
 
-## MCP Tools
+## ## Domain Hints
+
+Some websites need special handling to extract content well. An SPA that loads content 8 seconds after page open, a site that uses web components instead of semantic HTML, or a login wall that has zero useful content — the default extraction pipeline may not handle these well.
+
+The domain hints system lets you teach the extraction engine how to handle specific websites.
+
+### How it works
+
+When a page is fetched, the domain hints module checks its URL against a list of known hints. If a matching hint is found, the extraction pipeline adjusts its behavior accordingly.
+
+Hints live in `domain-hints.json` at the project root. You can point to a different file with `DOMAIN_HINTS_PATH`.
+
+### What a hint looks like
+
+```json
+{
+  "domain": "en.wikipedia.org",
+  "pathPattern": "/wiki/**",
+  "comment": "Wikipedia navbox tables are layout noise, not content. Skip them.",
+  "skipSelectors": [".navbox", ".navbox-styles"],
+  "tableExtraction": "content",
+  "contentSelectors": ["main#content"]
+}
+```
+
+### Hint fields
+
+| Field | Purpose |
+|-------|---------|
+| `domain` | The domain the hint applies to |
+| `pathPattern` | Glob pattern for URL paths (`/**` for all, `/wiki/**` for specific sections) |
+| `comment` | Shown in the extraction output — explains why the hint exists |
+| `waitForSelector` | CSS selector to wait for before extracting (for SPAs that load content late) |
+| `navigationWait` | Milliseconds to wait after page load before extracting |
+| `skipSelectors` | CSS selectors for elements to remove before extraction (navboxes, popups, etc.) |
+| `contentSelectors` | CSS selectors for the main content container (when `<main>` or `<article>` are missing) |
+| `preferReadability` | Default `true`. Set to `false` to skip Readability and use SEO text instead |
+| `tableExtraction` | `"enabled"`, `"disabled"`, or `"content"` (only extract tables in content area) |
+| `flags` | Special behaviors: `authWall`, `visualOnly`, `paywall`, `botProtected`, `requiresChromium` |
+
+### Flag behaviors
+
+| Flag | What it does |
+|------|-------------|
+| `authWall: true` | Returns early with "Auth wall" error — no content to extract |
+| `visualOnly: true` | Returns early with "Visual-only page, no text content" error |
+| `paywall: true` | Notes that content may be behind paywall; extraction proceeds but may get partial content |
+| `botProtected: true` | Notes that the page has bot protection that may block extraction |
+| `requiresChromium: true` | Suggests using chromium backend (not enforced automatically) |
+
+### How to add a hint
+
+1. Open `domain-hints.json`
+2. Add an entry with `domain`, `pathPattern`, and `comment`
+3. Add the behavioral fields that fix extraction for that site
+4. Restart the server or container
+
+The `comment` field is shown in the extraction output so you always know which hint was applied.
+
+### Currently shipped hints
+
+The project ships with research-backed hints for 40+ websites across news, finance, weather, e-commerce, social, developer, and regional-language categories. See `websites/` for detailed research on each site.
+
+### Disable hints
+
+To run without any hints, set `DOMAIN_HINTS_PATH` to an empty file or unset it:
+
+```bash
+DOMAIN_HINTS_PATH=/dev/null
+```
+
+---
+
+MCP Tools
 
 This server always exposes the three main web tools below.
 
@@ -262,7 +335,7 @@ Under the hood it uses DOM cleanup, Mozilla Readability, and a semantic main-con
 Example input:
 
 ```json
-{ "url": "https://example.com", "maxChars": 8000, "includeTables": true }
+{ "url": "https://example.com", "maxChars": 8000 }
 ```
 
 Also supports:
@@ -270,8 +343,6 @@ Also supports:
 - `urls`
 - `ref_id`
 - `ref_ids`
-- `extractLinks`
-- `includeTables`
 - `maxTableRows` (optional row cap; omitted means no table row limit)
 
 ### `web_page_screenshot`

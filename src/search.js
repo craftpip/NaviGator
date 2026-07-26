@@ -2,17 +2,30 @@ import { getBrowserManager } from "./browser.js";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { performance } from "node:perf_hooks";
+import { findDomainHint, getDomainHints } from "./domain-hints.js";
 
-async function waitForContent(page, { pollInterval = 300, stableMs = 500, minChars = 500, maxWait = 4000 } = {}) {
+const DEFAULT_CONTENT_SELECTORS = [
+  "main", "article", "[role='main']", ".content", "#content",
+  "#__next", "#root", "#app-root", "[data-reactroot]",
+  ".article-body", ".post-content", ".entry-content",
+  "[itemprop='articleBody']"
+];
+
+async function waitForContent(page, { pollInterval = 300, stableMs = 500, minChars = 500, maxWait = 4000, extraSelectors } = {}) {
   const start = Date.now();
   let lastLength = -1;
   let lastStable = start;
 
+  const selectorBase = DEFAULT_CONTENT_SELECTORS.join(",");
+  const selectorStr = extraSelectors?.length
+    ? [...extraSelectors, ...DEFAULT_CONTENT_SELECTORS].join(",")
+    : selectorBase;
+
   while (Date.now() - start < maxWait) {
-    const len = await page.evaluate(() => {
-      const c = document.querySelector("main, article, [role='main'], .content, #content") || document.body;
+    const len = await page.evaluate((sel) => {
+      const c = document.querySelector(sel) || document.body;
       return c ? c.innerText.replace(/\s+/g, " ").trim().length : 0;
-    });
+    }, selectorStr);
 
     if (len >= minChars) return;
     if (len === lastLength) {
@@ -279,7 +292,7 @@ function dedupeDirectAnswers(answers, maxItems = 10) {
 }
 
 function cleanAndTruncateText(text, maxChars) {
-  return cleanWhitespace(text).slice(0, maxChars);
+  return String(text || "").replace(/[^\S\n]+/g, " ").trim().slice(0, maxChars);
 }
 
 const NON_CONTENT_SELECTORS = [
@@ -294,6 +307,8 @@ const NON_CONTENT_SELECTORS = [
   "footer",
   "nav",
   "aside",
+  "select",
+  "option",
   ".cookie",
   ".cookies",
   "[class*='cookie']",
@@ -315,7 +330,15 @@ const SEMANTIC_CONTENT_SELECTORS = [
   ".content",
   "#content",
   ".main",
-  "#main"
+  "#main",
+  "#__next",
+  "#root",
+  "#app-root",
+  "[data-reactroot]",
+  ".article-body",
+  ".post-content",
+  ".entry-content",
+  "[itemprop='articleBody']"
 ];
 
 const SEO_MAIN_NODE_SELECTORS = [
@@ -564,6 +587,28 @@ function extractTablesFromDocument(doc, {
     return false;
   };
 
+  // Build heading position map for context
+  const allHeadings = Array.from(doc.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+  const headingMap = new Map();
+  for (const h of allHeadings) {
+    headingMap.set(h, (h.textContent || "").replace(/\s+/g, " ").trim().slice(0, 120));
+  }
+
+  const findNearestHeading = (el) => {
+    let node = el;
+    while (node && node !== doc.body) {
+      let prev = node.previousElementSibling;
+      while (prev) {
+        if (headingMap.has(prev)) return headingMap.get(prev);
+        const innerH = prev.querySelector("h1, h2, h3, h4, h5, h6");
+        if (innerH && headingMap.has(innerH)) return headingMap.get(innerH);
+        prev = prev.previousElementSibling;
+      }
+      node = node.parentElement;
+    }
+    return "";
+  };
+
   for (const table of doc.querySelectorAll("table")) {
     if (tables.length >= maxTables || (Number.isFinite(maxRenderChars) && renderedChars >= maxRenderChars)) break;
     if (shouldSkipTable(table)) continue;
@@ -612,10 +657,20 @@ function extractTablesFromDocument(doc, {
     if (columnCount < 2 || rows.length < 1) continue;
     if (columnCount === 2 && rows.length === 1) continue;
 
+    // Skip tables with no meaningful data — all body cells (beyond first column) are empty
+    const hasDataContent = rows.some((row) =>
+      row.slice(1).some((cell) => (cell || "").replace(/\s+/g, "").length > 2)
+    );
+    if (!hasDataContent) continue;
+
+    const fingerprint = headers.join("|") + "::" + (rows[0] || []).join("|");
+    if (tables.some((t) => t.headers.join("|") + "::" + (t.rows[0] || []).join("|") === fingerprint)) continue;
+
     tables.push({
       caption,
       headers,
-      rows
+      rows,
+      context: findNearestHeading(table)
     });
   }
 
@@ -657,30 +712,245 @@ function renderExtractedTables(tables, maxChars = 12000) {
   return lines.join("\n").trimEnd();
 }
 
-function extractTextFromHtml({ html, url, maxChars, fallbackTitle, includeTables = false, maxTableRows }) {
-  const safeHtml = typeof html === "string" ? html : "";
-  const dom = new JSDOM(safeHtml || "<body></body>", { url });
+function insertLinksInline(text, links) {
+  if (!text || !links.length) return text;
+
+  const lines = text.split("\n");
+
+  // Group links by their context heading
+  const linksByContext = new Map();
+  const orphanLinks = [];
+  for (const link of links) {
+    const ctx = link.context || "";
+    if (ctx) {
+      if (!linksByContext.has(ctx)) linksByContext.set(ctx, []);
+      linksByContext.get(ctx).push(link);
+    } else {
+      orphanLinks.push(link);
+    }
+  }
+
+  // Find heading or section-label lines in text and insert links after them
+  const headingRegex = /^#{1,6}\s+(.+)/;
+  const result = [];
+  const insertedTexts = new Set();
+  const insertedLinkTexts = [];
+  let i = 0;
+  while (i < lines.length) {
+    const trimmedLine = lines[i].trim();
+
+    // Skip lines that are standalone duplicates of already-inserted link text
+    if (trimmedLine.length > 2 && trimmedLine.length < 100) {
+      const lower = trimmedLine.toLowerCase();
+      if (insertedTexts.has(lower)) {
+        i++;
+        continue;
+      }
+      // Also skip multi-line project entries: if the line is a substring of an inserted link text
+      if (insertedLinkTexts.some(lt => lt.length >= trimmedLine.length && lt.includes(lower))) {
+        i++;
+        continue;
+      }
+    }
+
+    result.push(lines[i]);
+    const mdMatch = lines[i].match(headingRegex);
+    const lineText = mdMatch ? mdMatch[1].trim() : trimmedLine;
+    // Match markdown headings directly, and short standalone lines that contain the context
+    // (Readability strips heading markers, so "Open-Source Projects" appears as plain text)
+    if (lineText && lineText.length < 150) {
+      for (const [ctx, ctxLinks] of linksByContext) {
+        if (lineText.toLowerCase().includes(ctx.toLowerCase()) || ctx.toLowerCase().includes(lineText.toLowerCase())) {
+          for (const link of ctxLinks) {
+            const label = link.text || link.href;
+            result.push(`- ${label} — ${link.href}`);
+            insertedTexts.add((link.text || "").toLowerCase().trim());
+            if (link.text) insertedLinkTexts.push(link.text.toLowerCase().trim());
+          }
+          linksByContext.delete(ctx);
+        }
+      }
+    }
+    i++;
+  }
+
+  // Append any remaining grouped links at the end
+  const remaining = [...linksByContext.values()].flat();
+  const allRemaining = [...remaining, ...orphanLinks];
+  if (allRemaining.length) {
+    result.push("", "## Links");
+    for (const link of allRemaining) {
+      const label = link.text || link.href;
+      result.push(`- ${label} — ${link.href}`);
+    }
+  }
+
+  // Collapse consecutive blank lines left by removed duplicate text
+  const cleaned = [];
+  let prevBlank = false;
+  for (const line of result) {
+    if (line === "") {
+      if (prevBlank) continue;
+      prevBlank = true;
+    } else {
+      prevBlank = false;
+    }
+    cleaned.push(line);
+  }
+
+  return cleaned.join("\n").trim();
+}
+
+function stripTableNoise(text) {
+  if (!text) return text;
+  return text.split("\n").filter((line) => !line.includes("\t")).join("\n");
+}
+
+function insertTablesInline(text, tables) {
+  if (!text || !tables.length) return text;
+
+  const lines = text.split("\n");
+  const headingRegex = /^#{1,6}\s+(.+)/;
+
+  // Build rendered table strings with their context
+  const renderedTables = tables.map((table, index) => {
+    const lines = [];
+    const heading = table.caption || `Table ${index + 1}`;
+    lines.push("", `### ${heading}`);
+    if (table.headers?.length) {
+      lines.push(table.headers.join(" | "));
+    }
+    for (const row of table.rows || []) {
+      lines.push(row.join(" | "));
+    }
+    return { context: table.context || "", rendered: lines.join("\n") };
+  });
+
+  const result = [];
+  let i = 0;
+  while (i < lines.length) {
+    result.push(lines[i]);
+    const mdMatch = lines[i].match(headingRegex);
+    const lineText = mdMatch ? mdMatch[1].trim() : lines[i].trim();
+    if (lineText && lineText.length < 150) {
+      for (const table of renderedTables) {
+        if (!table.inserted && table.context && (lineText.toLowerCase().includes(table.context.toLowerCase()) || table.context.toLowerCase().includes(lineText.toLowerCase()))) {
+          result.push(table.rendered);
+          table.inserted = true;
+        }
+      }
+    }
+    i++;
+  }
+
+  // Append any uninserted tables at the end
+  for (const table of renderedTables) {
+    if (!table.inserted) {
+      result.push(table.rendered);
+    }
+  }
+
+  return result.join("\n").trim();
+}
+
+function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows, hint, browserText }) {
+  const rawHtml = typeof html === "string" ? html : "";
+  const safeHtml = rawHtml.replace(/<style[\s\S]*?<\/style>/gi, "");
+  let dom;
+  try {
+    dom = new JSDOM(safeHtml || "<body></body>", { url });
+  } catch {
+    dom = new JSDOM("<body></body>", { url });
+  }
 
   try {
     const doc = dom.window.document;
     doc.querySelectorAll(NON_CONTENT_SELECTORS.join(",")).forEach((node) => node.remove());
-    const tables = includeTables ? extractTablesFromDocument(doc, { maxRowsPerTable: maxTableRows }) : [];
 
+    if (hint?.skipSelectors?.length) {
+      for (const sel of hint.skipSelectors) {
+        try {
+          doc.querySelectorAll(sel).forEach((node) => node.remove());
+        } catch {
+          // skip invalid selectors
+        }
+      }
+    }
+
+    const tableExtractionDisabled = hint?.tableExtraction === "disabled";
+    const tables = tableExtractionDisabled
+      ? []
+      : extractTablesFromDocument(doc, { maxRowsPerTable: maxTableRows });
+
+    if (hint?.content?.sections?.length) {
+      const sectionOutput = [];
+      const order = { high: 0, medium: 1, low: 2 };
+      const sorted = [...hint.content.sections].sort(
+        (a, b) => (order[a.priority] || 1) - (order[b.priority] || 1)
+      );
+      for (const section of sorted) {
+        const elements = doc.querySelectorAll(section.selector);
+        if (!elements.length) continue;
+        let rawText = "";
+        for (const el of elements) {
+          rawText += (el.textContent || "") + "\n";
+        }
+        const lines = toLines(rawText).filter((l) => !isLikelyJunkLine(l));
+        const cleaned = uniqueLines(lines).join("\n").trim();
+        if (!cleaned) continue;
+        if (section.priority === "medium" && cleaned.length < 50) continue;
+        const textLines = cleaned.split("\n").filter((l) => l.trim());
+        sectionOutput.push(`  - **${section.label}**`);
+        for (const tl of textLines) {
+          sectionOutput.push(`    - ${tl}`);
+        }
+      }
+      if (sectionOutput.length) {
+        let text = sectionOutput.join("\n");
+        if (tables.length) {
+          text = stripTableNoise(text);
+          text = insertTablesInline(text, tables);
+        }
+        return {
+          title: cleanWhitespace(doc.title || fallbackTitle || ""),
+          url,
+          text: safeTruncateText(text, maxChars),
+          ...(tables.length ? { tables } : {})
+        };
+      }
+    }
+
+    const skipReadability = hint?.preferReadability === false;
     let article = null;
-    try {
-      const reader = new Readability(dom.window.document);
-      article = reader.parse();
-    } catch {
-      article = null;
+    if (!skipReadability) {
+      try {
+        const reader = new Readability(dom.window.document);
+        article = reader.parse();
+      } catch {
+        article = null;
+      }
     }
 
     if (article?.textContent?.trim()) {
       const articleLines = toLines(article.textContent);
       const weatherSummary = extractWeatherSummary(articleLines);
+
+      if (!weatherSummary && browserText) {
+        const articleLen = article.textContent.trim().length;
+        const browserLen = browserText.trim().length;
+        if (browserLen > articleLen * 1.5 && browserLen - articleLen > 200) {
+          return {
+            title: cleanWhitespace(article.title || fallbackTitle || ""),
+            url,
+            text: buildCleanText(toLines(browserText), maxChars),
+            ...(tables.length ? { tables } : {})
+          };
+        }
+      }
+
       const text = weatherSummary
         ? cleanAndTruncateText(weatherSummary.join("\n"), maxChars)
         : buildCleanText(articleLines, maxChars);
-
       return {
         title: cleanWhitespace(article.title || fallbackTitle || ""),
         url,
@@ -689,11 +959,15 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, includeTables
       };
     }
 
-    const candidates = collectCandidateBlocks(doc);
-    const bestText = candidates[0]?.text || doc.body?.textContent || "";
+    let candidates, bestText;
+    try {
+      candidates = collectCandidateBlocks(doc);
+      bestText = candidates[0]?.text || doc.body?.textContent || "";
+    } catch {
+      bestText = doc.body?.textContent || "";
+    }
     const lines = toLines(bestText);
     const weatherSummary = extractWeatherSummary(lines);
-
     return {
       title: cleanWhitespace(doc.title || fallbackTitle || ""),
       url,
@@ -702,8 +976,15 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, includeTables
         : buildCleanText(lines, maxChars),
       ...(tables.length ? { tables } : {})
     };
+  } catch {
+    const fallback = dom?.window?.document?.body?.textContent || "";
+    return {
+      title: cleanWhitespace(dom?.window?.document?.title || fallbackTitle || ""),
+      url,
+      text: safeTruncateText(fallback, maxChars)
+    };
   } finally {
-    dom.window.close();
+    dom?.window?.close();
   }
 }
 
@@ -712,11 +993,14 @@ async function captureSeoSnapshot(
   {
     textLimit = MAX_MAIN_TEXT_CHARS,
     htmlLimit = MAX_MAIN_HTML_CHARS,
-    maxCandidates = MAX_SEO_CANDIDATES
+    maxCandidates = MAX_SEO_CANDIDATES,
+    extraSelectors
   } = {}
 ) {
   try {
-    const selectors = [...new Set(SEO_MAIN_NODE_SELECTORS)];
+    const selectors = extraSelectors?.length
+      ? [...new Set([...extraSelectors, ...SEO_MAIN_NODE_SELECTORS])]
+      : [...new Set(SEO_MAIN_NODE_SELECTORS)];
     const headingSelectors = [...new Set(DEFAULT_HEADING_SELECTORS)];
     if (!selectors.length) return null;
 
@@ -854,6 +1138,8 @@ async function captureSeoSnapshot(
           })
           .filter(Boolean)
           .slice(0, 50);
+
+        document.querySelectorAll("select, option").forEach((node) => node.remove());
 
         const elements = selectorString ? Array.from(document.querySelectorAll(selectorString)) : [];
         const seen = new Set();
@@ -1668,29 +1954,36 @@ export async function browserSearch({ query, queries, limit = 5, engines }) {
 }
 
 function extractLinksFromHtml({ html, url }) {
-  const dom = new JSDOM(html || "<body></body>", { url });
+  const cleanHtml = (html || "").replace(/<style[\s\S]*?<\/style>/gi, "");
+  const dom = new JSDOM(cleanHtml || "<body></body>", { url });
   try {
     const doc = dom.window.document;
+    const container = doc.body;
 
-    let article = null;
-    try {
-      const reader = new Readability(dom.window.document);
-      article = reader.parse();
-    } catch {
-      article = null;
+    // Build a map of which heading is closest above each element
+    const headings = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+    const headingPositions = new Map();
+    for (const h of headings) {
+      headingPositions.set(h, (h.textContent || "").replace(/\s+/g, " ").trim().slice(0, 120));
     }
 
-    let container = null;
-    if (article?.content) {
-      const frag = dom.window.document.createElement("div");
-      frag.innerHTML = article.content;
-      container = frag;
-    }
-
-    if (!container) {
-      doc.querySelectorAll(NON_CONTENT_SELECTORS.join(",")).forEach((n) => n.remove());
-      container = doc.body;
-    }
+    const findNearestHeading = (el) => {
+      let node = el;
+      while (node && node !== container) {
+        // Check previous siblings and their descendants
+        let prev = node.previousElementSibling;
+        while (prev) {
+          // If this sibling is a heading, return it
+          if (headingPositions.has(prev)) return headingPositions.get(prev);
+          // Check if it contains a heading
+          const innerH = prev.querySelector("h1, h2, h3, h4, h5, h6");
+          if (innerH && headingPositions.has(innerH)) return headingPositions.get(innerH);
+          prev = prev.previousElementSibling;
+        }
+        node = node.parentElement;
+      }
+      return "";
+    };
 
     const links = [];
     const seen = new Set();
@@ -1698,6 +1991,7 @@ function extractLinksFromHtml({ html, url }) {
     container.querySelectorAll("a[href]").forEach((a) => {
       const href = a.getAttribute("href");
       if (!href || href.startsWith("#") || href.startsWith("javascript:")) return;
+      if (a.closest("td, th")) return;
 
       let absoluteHref;
       try {
@@ -1705,14 +1999,25 @@ function extractLinksFromHtml({ html, url }) {
       } catch {
         return;
       }
-      if (seen.has(absoluteHref)) return;
+      const context = findNearestHeading(a);
+
+      if (seen.has(absoluteHref)) {
+        // Update context to the latest (most specific) occurrence
+        for (const link of links) {
+          if (link.href === absoluteHref && context) {
+            link.context = context;
+          }
+        }
+        return;
+      }
       seen.add(absoluteHref);
 
       links.push({
         text: (a.textContent || "").replace(/\s+/g, " ").trim().slice(0, 200),
         href: absoluteHref,
         rel: a.getAttribute("rel") || "",
-        type: a.getAttribute("type") || ""
+        type: a.getAttribute("type") || "",
+        context
       });
     });
 
@@ -1722,8 +2027,11 @@ function extractLinksFromHtml({ html, url }) {
   }
 }
 
-export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAnalysis = true, extractLinks = false, includeTables = false, maxTableRows }) {
+export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAnalysis = true, maxTableRows }) {
   const manager = await getBrowserManager();
+
+  const hints = await getDomainHints(manager.config);
+  const hint = findDomainHint(url, hints);
 
   return manager.withPageSlot(async () => {
     const page = await manager.newPage({ backend: manager.config.defaultBackend });
@@ -1761,7 +2069,33 @@ export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAn
         })
       );
 
-      await waitForContent(page, { maxWait: 5000 }).catch(() => {});
+      if (hint?.flags?.authWall || hint?.flags?.visualOnly) {
+        const pageTitle = await page.title().catch(() => "");
+        const resolvedUrl = page.url();
+        const reason = hint.flags.authWall ? "Auth wall — page requires login" : "Visual-only page — no text content in DOM";
+        await page.close().catch(() => {});
+        return { title: pageTitle, url: resolvedUrl, text: "", error: reason };
+      }
+
+      if (hint?.waitForSelector) {
+        await page.waitForSelector(hint.waitForSelector, {
+          timeout: Math.min(operationTimeoutMs, 20000)
+        }).catch(() => {});
+      }
+
+      await waitForContent(page, {
+        maxWait: 5000,
+        extraSelectors: hint?.contentSelectors
+      }).catch(() => {});
+
+      try {
+        await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 });
+      } catch {}
+
+      const navigationWaitMs = hint?.navigationWait != null ? hint.navigationWait : 2000;
+      if (navigationWaitMs > 0) {
+        await new Promise(r => setTimeout(r, navigationWaitMs));
+      }
 
       const seoSnapshot =
         includeSeoAnalysis === false
@@ -1770,12 +2104,18 @@ export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAn
               captureSeoSnapshot(page, {
                 textLimit: Math.min(MAX_MAIN_TEXT_CHARS, Math.max(maxChars * 3, 4000)),
                 htmlLimit: Math.min(Math.max(MAX_MAIN_HTML_CHARS, maxChars * 6), 120000),
-                maxCandidates: MAX_SEO_CANDIDATES
+                maxCandidates: MAX_SEO_CANDIDATES,
+                extraSelectors: hint?.contentSelectors
               })
             );
 
-      const [html, resolvedUrl, pageTitle] = await withPageTimeout("serialize_html", () =>
-        Promise.all([page.content(), Promise.resolve(page.url()), page.title()])
+      const [html, resolvedUrl, pageTitle, browserText] = await withPageTimeout("serialize_html", () =>
+        Promise.all([
+          page.content(),
+          Promise.resolve(page.url()),
+          page.title(),
+          page.evaluate(() => document.body?.innerText || "").catch(() => "")
+        ])
       );
 
       const botChallenge = await withPageTimeout("check_bot", () =>
@@ -1804,8 +2144,9 @@ export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAn
         url: resolvedUrl,
         maxChars,
         fallbackTitle: pageTitle,
-        includeTables,
-        maxTableRows
+        maxTableRows,
+        hint,
+        browserText
       });
 
       const seoAnalysis =
@@ -1813,38 +2154,29 @@ export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAn
           ? null
           : buildSeoAnalysis({ snapshot: seoSnapshot, extracted, maxChars });
 
-      const selectedText =
-        seoAnalysis?.mainContentText &&
-        seoAnalysis.mainContentText.length > (extracted?.text?.length || 0)
-          ? seoAnalysis.mainContentText
-          : extracted.text;
+      const selectedText = extracted.text || seoAnalysis?.mainContentText || "";
 
       let finalText = selectedText || extracted.text || "";
+      let extractedLinks = [];
 
-      if (extractLinks) {
-        const links = extractLinksFromHtml({ html, url: resolvedUrl });
-        if (links.length) {
-          const linkLines = ["", "## Links"];
-          for (const link of links) {
-            const label = link.text || link.href;
-            linkLines.push(`- [${label}](${link.href})`);
-          }
-          finalText = (finalText + "\n" + linkLines.join("\n")).trim();
-        }
+      const links = extractLinksFromHtml({ html, url: resolvedUrl });
+      if (links.length) {
+        extractedLinks = links;
       }
 
-      if (includeTables && extracted.tables?.length) {
-        const renderedTables = renderExtractedTables(extracted.tables, Math.max(maxChars, 12000));
-        if (renderedTables) {
-          finalText = (finalText + "\n\n" + renderedTables).trim();
-        }
+      if (extracted.tables?.length) {
+        finalText = stripTableNoise(finalText);
+        finalText = insertTablesInline(finalText, extracted.tables);
       }
 
-      return {
+      const result = {
         ...extracted,
         text: finalText,
+        ...(extractedLinks.length ? { extractedLinks } : {}),
         ...(seoAnalysis ? { seo: seoAnalysis } : {})
       };
+
+      return result;
     } finally {
       if (!page.isClosed()) {
         await page.close();

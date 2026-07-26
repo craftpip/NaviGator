@@ -1,0 +1,364 @@
+[
+  {
+    "domain": "economictimes.indiatimes.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "React SPA with TOI stack. Homepage has market data + news headlines.",
+    "waitForSelector": "main.pageHolder",
+    "preferReadability": false
+  },
+  {
+    "domain": "en.wikipedia.org",
+    "pathPattern": "/wiki/**",
+    "pageType": "article",
+    "comment": "Standard encyclopedia article with infobox and references. Skip navbox tables.",
+    "skipSelectors": [".navbox", ".navbox-styles", ".mw-empty-elt"],
+    "tableExtraction": "content",
+    "content": {
+      "sections": [
+        { "selector": "main#content", "label": "Article", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "github.com",
+    "pathPattern": "/*",
+    "pageType": "profile",
+    "comment": "User profile page — sidebar (name, bio, stats, orgs) + pinned repos + contribution graph.",
+    "waitForSelector": "turbo-frame#user-profile-frame",
+    "navigationWait": 2000,
+    "preferReadability": false,
+    "content": {
+      "sections": [
+        { "selector": "h1.vcard-names", "label": "Name", "priority": "high" },
+        { "selector": "div.js-profile-editable-area", "label": "Profile", "priority": "high" },
+        { "selector": "ol.js-pinned-items-reorder-list", "label": "Pinned Repositories", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "github.com",
+    "pathPattern": "/*/*",
+    "pageType": "repo",
+    "comment": "Repository page — README, file list, metadata. README is in a markdown-body element.",
+    "waitForSelector": "[class*=\"markdown-body\"]",
+    "navigationWait": 3000,
+    "content": {
+      "sections": [
+        { "selector": "[class*=\"markdown-body\"]", "label": "README", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "github.com",
+    "pathPattern": "/*/*/issues",
+    "pageType": "issues",
+    "comment": "Issue list page — each issue row has title, status, number, author.",
+    "waitForSelector": "li[role=\"listitem\"]",
+    "navigationWait": 3000,
+    "content": {
+      "sections": [
+        { "selector": "li[role=\"listitem\"]", "label": "Issues", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "github.com",
+    "pathPattern": "/*/*/pulls",
+    "pageType": "prs",
+    "comment": "Pull request list page — each PR row has title, status, reviewers.",
+    "waitForSelector": "turbo-frame#repo-content-turbo-frame",
+    "navigationWait": 2000,
+    "content": {
+      "sections": [
+        { "selector": "div.js-issue-row", "label": "Pull Requests", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "mausam.imd.gov.in",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Bootstrap portal with interactive weather map as the main feature.",
+    "preferReadability": false
+  },
+  {
+    "domain": "mumbaimirror.indiatimes.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "TOI tech stack. Local Mumbai news headlines with article cards.",
+    "preferReadability": false
+  },
+  {
+    "domain": "stackoverflow.com",
+    "pathPattern": "/questions/**",
+    "pageType": "article",
+    "comment": "QA page with question and answers. Cloudflare protection on some pages.",
+    "navigationWait": 2000,
+    "preferReadability": false,
+    "flags": { "botProtected": true },
+    "content": {
+      "sections": [
+        { "selector": "#question", "label": "Question", "priority": "high" },
+        { "selector": ".answer", "label": "Answers", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "timesofindia.indiatimes.com",
+    "pathPattern": "/city/**",
+    "pageType": "homepage",
+    "comment": "React SPA. City news page with headlines and article cards.",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.accuweather.com",
+    "pathPattern": "/**",
+    "pageType": "weather",
+    "comment": "Weather data page. Div-based layout with current conditions and forecast.",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.afternoonvoice.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "TagDiv WordPress theme. Local Mumbai news with article cards.",
+    "navigationWait": 2000
+  },
+  {
+    "domain": "www.bbc.com",
+    "pathPattern": "/weather/**",
+    "pageType": "weather",
+    "comment": "React SPA weather page. Conditions and forecast in custom components.",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.business-standard.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Next.js app. Business news homepage with headlines and market data.",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.cricbuzz.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Cricket scores and news. Scorecards are div-based, not HTML tables.",
+    "waitForSelector": "main.min-h-container",
+    "preferReadability": false,
+    "tableExtraction": "disabled",
+    "content": {
+      "sections": [
+        { "selector": "main.min-h-container", "label": "Cricket", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "www.deccanherald.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "News homepage with headlines and article cards. Classless div layout.",
+    "navigationWait": 1000
+  },
+  {
+    "domain": "www.divyamarathi.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Marathi news homepage. React SPA with city news and weather widget.",
+    "waitForSelector": "div#root",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.esakal.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Marathi news. Next.js SPA with headline cards.",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.financialexpress.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Business news homepage. JS-heavy, needs extra time to settle.",
+    "navigationWait": 3000,
+    "preferReadability": false,
+    "content": {
+      "sections": [
+        { "selector": "article", "label": "Headlines", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "www.firstpost.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "News homepage. No semantic HTML — pure div layout.",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.flipkart.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "E-commerce homepage or product page. Pure div SPA layout.",
+    "preferReadability": false,
+    "content": {
+      "sections": [
+        { "selector": "div#container", "label": "Content", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "www.freepressjournal.in",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "News homepage with good heading hierarchy. Readability works.",
+    "navigationWait": 1000
+  },
+  {
+    "domain": "www.hindustantimes.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "News homepage. Next.js SPA with live blog and headline cards.",
+    "waitForSelector": "div#__next",
+    "navigationWait": 2000
+  },
+  {
+    "domain": "www.indiatimes.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "News homepage. Article content in div.article-detail-content.",
+    "navigationWait": 1000
+  },
+  {
+    "domain": "www.irctc.co.in",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Railway booking portal. Angular SPA with language popup. Wait for Angular bootstrap.",
+    "waitForSelector": "app-root, app-home, app-main-page",
+    "navigationWait": 3000,
+    "skipSelectors": [".language-popup", ".cdk-overlay-container"]
+  },
+  {
+    "domain": "www.livemint.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Business news homepage. Next.js app — content renders after JS hydration.",
+    "waitForSelector": "div#__next",
+    "navigationWait": 2000
+  },
+  {
+    "domain": "www.loksatta.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Marathi news. WordPress Newpack theme with <main> and <article>.",
+    "navigationWait": 1000
+  },
+  {
+    "domain": "maharashtratimes.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Marathi news. TOI React SPA — heavy JS, Readability fails.",
+    "waitForSelector": "div#app",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.lokmat.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Marathi news. Custom PHP framework — link-heavy homepage.",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.mid-day.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Mumbai news. Next.js SPA with live blog and good heading hierarchy.",
+    "waitForSelector": "div#__next",
+    "navigationWait": 2000
+  },
+  {
+    "domain": "www.moneycontrol.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Market data and news. Interstitial ad on first load — needs extra wait.",
+    "navigationWait": 5000,
+    "preferReadability": false
+  },
+  {
+    "domain": "www.mumbailive.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Local Mumbai news. Mobile-first design with push notification popup.",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.news18.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "News homepage. Next.js SPA — content renders after hydration.",
+    "waitForSelector": "main, article[id^='story-'], div#__next",
+    "navigationWait": 2000,
+    "content": {
+      "sections": [
+        { "selector": "main", "label": "Headlines", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "www.pudhari.news",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Marathi news. Next.js SPA with hero slider.",
+    "waitForSelector": "div#__next",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.reuters.com",
+    "pathPattern": "/**",
+    "pageType": "article",
+    "comment": "Article pages. Heavy JS/bot protection — try chromium backend.",
+    "flags": { "requiresChromium": true }
+  },
+  {
+    "domain": "www.skymetweather.com",
+    "pathPattern": "/**",
+    "pageType": "weather",
+    "comment": "Angular SPA weather page with custom elements.",
+    "waitForSelector": "app-root, app-home, app-current-data",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.tarunbharat.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "Marathi news. Older HTML with <marquee> and inline styles. Nagpur-focused.",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.thehindu.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "News homepage. No semantic HTML — pure div layout with structured text.",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.tribuneindia.com",
+    "pathPattern": "/**",
+    "pageType": "homepage",
+    "comment": "News homepage. <article> elements are sidebar cards, not main content.",
+    "preferReadability": false
+  },
+  {
+    "domain": "www.youtube.com",
+    "pathPattern": "/watch**",
+    "pageType": "video",
+    "comment": "Video watch page. Title, description, and comments in web components.",
+    "preferReadability": false,
+    "content": {
+      "sections": [
+        { "selector": "ytd-watch-flexy", "label": "Video", "priority": "high" },
+        { "selector": "div#title", "label": "Title", "priority": "high" }
+      ]
+    }
+  }
+]

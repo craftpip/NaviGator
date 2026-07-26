@@ -15,9 +15,11 @@ import { formatBrowserBackendShort, parseBrowserBackend } from "./config.js";
 import { getBrowserManager } from "./browser.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth } from "./search.js";
 import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot } from "./devtools.js";
+import { transform as asciiTransform, formatLegend as asciiFormatLegend } from "./ascii.js";
 
 const linkMemoryByRef = new Map();
 const linkMemoryByUrl = new Map();
+const pageLinksByPageRef = new Map();
 let nextLinkRef = 1;
 const screenshotDownloadById = new Map();
 const screenshotStorageDir = path.join(process.cwd(), "screenshots");
@@ -156,9 +158,17 @@ function parsePositiveInt(value, field) {
   return Math.floor(parsed);
 }
 
-function sendJson(res, status, payload) {
-  res.writeHead(status, { "content-type": "application/json" });
+function sendJson(res, status, payload, extraHeaders) {
+  const headers = { "content-type": "application/json", ...extraHeaders };
+  res.writeHead(status, headers);
   res.end(JSON.stringify(payload));
+}
+
+function setCorsHeaders(res) {
+  res.setHeader("access-control-allow-origin", "*");
+  res.setHeader("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
+  res.setHeader("access-control-allow-headers", "content-type, accept, mcp-session-id");
+  res.setHeader("access-control-expose-headers", "mcp-session-id");
 }
 
 function sendMarkdown(res, status, payload) {
@@ -660,30 +670,43 @@ async function applyScreenshotStorage(payload, config, { outputMode } = {}) {
 function formatOpenPageResponse(payload) {
   const entries = normalizeResultEntries(payload);
   if (!entries.length) {
-    return asMarkdownContent("No page data available.");
+    return asMarkdownContent([]);
   }
 
   const successCount = entries.filter((entry) => entry?.ok !== false).length;
   const total = payload?.count ?? entries.length;
-  const lines = [`Processed ${total} page(s); ${successCount} succeeded.`];
+  const lines = [`- Processed ${total} page(s); ${successCount} succeeded.`];
 
   entries.forEach((entry, index) => {
     const refLabel = entry?.ref_id ? `[${entry.ref_id}]` : `#${index + 1}`;
     const title = entry?.title || entry?.url || `Page ${index + 1}`;
-    lines.push("", `### ${refLabel} ${title}`);
-    lines.push(`- Status: ${entry?.ok === false ? "Failed" : "Success"}`);
+    lines.push("", `- ${refLabel} **${title}**`);
+    lines.push(`  - Status: ${entry?.ok === false ? "Failed" : "Success"}`);
     if (entry?.url) {
-      lines.push(`- URL: ${entry.url}`);
+      lines.push(`  - URL: ${entry.url}`);
     }
     if (entry?.error) {
-      lines.push(`- Error: ${entry.error}`);
+      lines.push(`  - Error: ${entry.error}`);
       return;
     }
     if (entry?.tables?.length) {
-      lines.push(`- Tables extracted: ${entry.tables.length}`);
+      lines.push(`  - Tables extracted: ${entry.tables.length}`);
     }
     if (entry?.text) {
-      lines.push("", entry.text.trim());
+      const textLines = entry.text.trim().split("\n");
+      if (textLines.length > 0 && textLines[0].startsWith("  - ")) {
+        for (const tl of textLines) {
+          lines.push(tl);
+        }
+      } else {
+        lines.push(`  - ${textLines[0]}`);
+        for (let i = 1; i < textLines.length; i++) {
+          lines.push(`    ${textLines[i]}`);
+        }
+      }
+    }
+    if (entry?.linkRefs?.length) {
+      lines.push(`  - Links: ${entry.linkRefs.length} (use web_page_links(ref_id: ${entry.ref_id}) to list)`);
     }
   });
 
@@ -820,19 +843,39 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-async function openTargetsParallel(targetUrls, maxChars, maxParallel, includeSeoAnalysis = false, extractLinks = false, includeTables = false, maxTableRows) {
+async function openTargetsParallel(targetUrls, maxChars, maxParallel, includeSeoAnalysis = false, maxTableRows) {
   const opened = await mapWithConcurrency(
     targetUrls,
     maxParallel,
     async (targetUrl, index) => {
       try {
-        const page = await browserOpenAndExtract({ url: targetUrl, maxChars, includeSeoAnalysis, extractLinks, includeTables, maxTableRows });
-        return {
+        const page = await browserOpenAndExtract({ url: targetUrl, maxChars, includeSeoAnalysis, maxTableRows });
+        const result = {
           index,
           ok: true,
           ref_id: rememberLink(targetUrl),
           ...page
         };
+
+        // Register links in memory for ref_id-based resolution
+        if (page.extractedLinks?.length) {
+          const linkRefs = [];
+          for (const link of page.extractedLinks) {
+            const linkRef = rememberLink(link.href);
+            if (linkRef) {
+              linkRefs.push({ ref_id: linkRef, url: link.href, text: link.text });
+            }
+          }
+          if (linkRefs.length) {
+            result.linkRefs = linkRefs;
+            if (result.ref_id) {
+              pageLinksByPageRef.set(result.ref_id, linkRefs);
+            }
+            // Links stored in pageLinksByPageRef — accessible via web_page_links(ref_id)
+          }
+        }
+
+        return result;
       } catch (error) {
         return {
           index,
@@ -997,8 +1040,6 @@ function getToolsListResponse() {
               description: "Multiple result ids returned by a previous web_search call"
             },
             maxChars: { type: "number", default: 8000 },
-            extractLinks: { type: "boolean", default: false, description: "Extract links from page content and append as a markdown list" },
-            includeTables: { type: "boolean", default: false, description: "Extract HTML tables and append them as structured plain-text tables" },
             maxTableRows: { type: "number", description: "Optional maximum number of rows to extract per table. Omit for no row limit." }
           },
           description: "Provide one of: url, urls, ref_id, or ref_ids. Prefer ref_id/ref_ids from web_search when available.",
@@ -1065,6 +1106,23 @@ function getToolsListResponse() {
           additionalProperties: false
         }
       },
+      {
+        name: "web_page_links",
+        description:
+          "List links extracted from a previously fetched page. Given a page ref_id (from web_fetch output), returns the extracted links with their link ref_ids so you can call web_fetch or web_page_screenshot using a specific link's ref_id.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            ref_id: {
+              type: "number",
+              description: "Page ref_id from a previous web_fetch call (e.g. [1])"
+            }
+          },
+          required: ["ref_id"],
+          additionalProperties: false
+        }
+      },
+      /* web_page_ascii — disabled (WIP, reworking to structured text layout) */
       ...(devtoolsEnabled ? devtoolsToolDefinitions : [])
     ]
   };
@@ -1135,13 +1193,11 @@ async function handleToolCall(name, args = {}) {
     const includeSeoAnalysis = args.includeSeoAnalysis !== false;
     const manager = await getBrowserManager();
     mark = timer.step("prepare_execution", mark);
-    const extractLinks = args.extractLinks === true;
-    const includeTables = args.includeTables === true;
     const maxTableRows = args.maxTableRows === undefined || args.maxTableRows === null
       ? undefined
       : parsePositiveInt(args.maxTableRows, "maxTableRows");
     const result = await runWithHangGuard(`mcp:${name}`, () =>
-      openTargetsParallel(targetUrls, maxChars, manager.config.openPageMaxParallel, includeSeoAnalysis, extractLinks, includeTables, maxTableRows)
+      openTargetsParallel(targetUrls, maxChars, manager.config.openPageMaxParallel, includeSeoAnalysis, maxTableRows)
     );
     mark = timer.step("open_targets", mark);
     const response = formatOpenPageResponse(result);
@@ -1243,6 +1299,279 @@ async function handleToolCall(name, args = {}) {
     timer.step("format_response", mark);
     timer.end({ status: "ok" });
     return response;
+  }
+
+  if (name === "web_page_ascii") {
+    const targetUrls = (() => {
+      try {
+        return resolveOpenTarget(args);
+      } catch (error) {
+        timer.step("resolve_targets_failed", mark);
+        timer.end({ status: "error", error: String(error?.message || error) });
+        logEvent("mcp.error", { tool: name, error: String(error?.message || error) });
+        throw error;
+      }
+    })();
+    mark = timer.step("resolve_targets", mark);
+
+    const width = Math.max(40, Math.min(200, parsePositiveInt(args.width, "width") || 100));
+    const elementLimit = Math.max(1, Math.min(100, parsePositiveInt(args.elementLimit, "elementLimit") || 25));
+    const includeSelector = args.includeSelector !== false;
+    const includeXpath = args.includeXpath !== false;
+
+    const targetUrl = targetUrls[0];
+    const manager = await getBrowserManager();
+    mark = timer.step("prepare_execution", mark);
+
+    const ELEMENT_EXTRACT_CODE = `
+(function extractElements(limit) {
+  function cssPath(element) {
+    if (!(element instanceof Element)) return null;
+    const parts = [];
+    let node = element;
+    while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 10) {
+      let segment = node.tagName.toLowerCase();
+      if (node.id) {
+        segment += '#' + node.id;
+        parts.unshift(segment);
+        break;
+      }
+      const siblings = node.parentElement
+        ? Array.from(node.parentElement.children).filter(c => c.tagName === node.tagName)
+        : [];
+      if (siblings.length > 1) {
+        const index = siblings.indexOf(node);
+        segment += ':nth-of-type(' + (index + 1) + ')';
+      }
+      parts.unshift(segment);
+      node = node.parentElement;
+    }
+    return parts.join(' > ');
+  }
+
+  function xpathFor(element) {
+    if (!(element instanceof Element)) return null;
+    const parts = [];
+    let node = element;
+    while (node && node.nodeType === Node.ELEMENT_NODE) {
+      let index = 1;
+      let sibling = node.previousElementSibling;
+      while (sibling) {
+        if (sibling.tagName === node.tagName) index++;
+        sibling = sibling.previousElementSibling;
+      }
+      parts.unshift(node.tagName.toLowerCase() + '[' + index + ']');
+      node = node.parentElement;
+    }
+    return '/' + parts.join('/');
+  }
+
+  function visible(element) {
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    return rect.width > 0 && rect.height > 0
+      && style.visibility !== 'hidden'
+      && style.display !== 'none';
+  }
+
+  const scrollX = window.scrollX || 0;
+  const scrollY = window.scrollY || 0;
+  const nodes = [];
+  const seen = new Set();
+  let index = 0;
+
+  function addNode(el, kind, priority) {
+    const key = cssPath(el);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+
+    const rect = el.getBoundingClientRect();
+    if (!visible(el)) return;
+
+    let text = '';
+    let link = '';
+
+    if (kind === 'img') {
+      link = el.src || el.getAttribute('data-src') || '';
+      text = el.alt || link.split('/').pop() || 'image';
+    } else {
+      text = (el.innerText || el.textContent || '').trim().slice(0, 300);
+      if (!text && el.placeholder) text = el.placeholder;
+    }
+
+    if (!text && kind === 'interactive') return;
+
+    index++;
+    nodes.push({
+      index,
+      kind,
+      priority,
+      tagName: el.tagName.toLowerCase(),
+      selector: key,
+      xpath: xpathFor(el),
+      role: el.getAttribute('role') || '',
+      text: text || '',
+      link: link || '',
+      href: el.href || '',
+      rect: {
+        x: Math.round(rect.x + scrollX),
+        y: Math.round(rect.y + scrollY),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      },
+    });
+  }
+
+  document.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(el => {
+    addNode(el, 'heading', 1);
+  });
+
+  document.querySelectorAll('p').forEach(el => {
+    const text = (el.innerText || el.textContent || '').trim();
+    if (text.length > 10) addNode(el, 'paragraph', 2);
+  });
+
+  document.querySelectorAll('img').forEach(el => {
+    if (el.src && visible(el)) addNode(el, 'img', 3);
+  });
+
+  document.querySelectorAll('a[href]').forEach(el => {
+    const text = (el.innerText || el.textContent || '').trim();
+    if (text.length > 1) addNode(el, 'link', 4);
+  });
+
+  document.querySelectorAll('button, input, textarea, select, label, [role="button"]').forEach(el => {
+    addNode(el, 'interactive', 5);
+  });
+
+  let liCount = 0;
+  document.querySelectorAll('li').forEach(el => {
+    if (liCount >= 20) return;
+    const text = (el.innerText || el.textContent || '').trim();
+    if (text.length > 5 && text.length < 200) {
+      addNode(el, 'list-item', 6);
+      liCount++;
+    }
+  });
+
+  return {
+    title: document.title,
+    url: location.href,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    pageWidth: document.documentElement.scrollWidth,
+    pageHeight: document.documentElement.scrollHeight,
+    elements: nodes.slice(0, limit),
+  };
+})
+`;
+
+    let asciiResult;
+    try {
+      asciiResult = await runWithHangGuard(`mcp:${name}`, async () => {
+        const page = await manager.newPage({ backend: manager.config.defaultBackend });
+        try {
+          await page.goto(targetUrl, {
+            waitUntil: manager.config.navWaitUntil,
+            timeout: manager.config.browserOpTimeoutMs,
+          });
+          await page.waitForFunction(
+            () => document.readyState === "complete" || document.readyState === "interactive",
+            { timeout: 10000 }
+          ).catch(() => {});
+          await new Promise((r) => setTimeout(r, 1000));
+
+          const elementFn = eval(ELEMENT_EXTRACT_CODE);
+          const elementData = await Promise.race([
+            page.evaluate(elementFn, elementLimit),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Element extraction timed out")), 15000))
+          ]);
+
+          const vw = elementData.viewportWidth;
+          const vh = elementData.viewportHeight;
+          const margin = 50;
+          const visible = elementData.elements.filter((el) => {
+            const r = el.rect;
+            return r.x + r.width > -margin && r.x < vw + margin
+              && r.y + r.height > -margin && r.y < vh + margin;
+          });
+
+          const asciiWidth = width;
+          const aspect = vh / vw;
+          const asciiRows = Math.min(Math.max(20, Math.round(asciiWidth * aspect * 0.45)), 200);
+
+          const { wireframe } = asciiTransform(vw, vh, visible, asciiWidth);
+
+          const filteredElements = visible.map((el) => ({
+            ...el,
+            ...(includeSelector ? {} : { selector: undefined }),
+            ...(includeXpath ? {} : { xpath: undefined }),
+          }));
+          const legend = asciiFormatLegend(filteredElements);
+
+          return {
+            title: elementData.title,
+            url: elementData.url,
+            wireframe,
+            legend,
+            stats: {
+              asciiCols: asciiWidth,
+              asciiRows,
+              viewportWidth: vw,
+              viewportHeight: vh,
+              elementCount: elementData.elements.length,
+              placedCount: visible.length,
+            },
+          };
+        } finally {
+          if (!page.isClosed()) {
+            await page.close();
+          }
+        }
+      });
+    } catch (error) {
+      console.error(`🖼️  ascii failed: url=${targetUrl} error=${String(error?.message || error)}`);
+      if (error?.stack) console.error(`🖼️  stack: ${truncateStr(error.stack, 500)}`);
+      throw error;
+    }
+    mark = timer.step("capture_ascii", mark);
+
+    const lines = [
+      `### ${asciiResult.title || "Page"} — ASCII Wireframe`,
+      "",
+      "```",
+      asciiResult.wireframe,
+      "```",
+      "",
+      "### Element Legend",
+      "",
+      asciiResult.legend,
+      "",
+      `- Page: ${asciiResult.title} (${asciiResult.url})`,
+      `- Viewport: ${asciiResult.stats.viewportWidth}×${asciiResult.stats.viewportHeight}`,
+      `- Elements: ${asciiResult.stats.elementCount} found, ${asciiResult.stats.placedCount} annotated`,
+    ];
+
+    const response = asMarkdownContent(lines.join("\n"));
+    timer.step("format_response", mark);
+    timer.end({ status: "ok" });
+    return response;
+  }
+
+  if (name === "web_page_links") {
+    const refId = parsePositiveInt(args.ref_id, "ref_id");
+    let linkRefs = pageLinksByPageRef.get(refId);
+    if (!linkRefs) {
+      throw new Error(`No link data found for page ref_id ${refId}.`);
+    }
+    const out = [`Links extracted from page ref_id ${refId}:`];
+    for (const link of linkRefs) {
+      const snippet = (link.text || "").trim().slice(0, 120);
+      out.push(`- ${snippet || '(no text)'} — [${link.ref_id}]`);
+    }
+    timer.step("list_links", mark);
+    timer.end({ status: "ok" });
+    return asMarkdownContent(out.join("\n"));
   }
 
   if (manager.config.enableDevtoolsMcp && devtoolsToolDefinitions.some((tool) => tool.name === name)) {
@@ -1371,6 +1700,14 @@ async function maybeStartHttpServer(managerOverride) {
       const url = new URL(req.url || "/", "http://localhost");
 
       if (manager.config.enableHttpMcp && url.pathname === "/mcp") {
+        setCorsHeaders(res);
+
+        if (method === "OPTIONS") {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+
         const sessionId = typeof req.headers["mcp-session-id"] === "string"
           ? req.headers["mcp-session-id"]
           : undefined;
@@ -1395,24 +1732,6 @@ async function maybeStartHttpServer(managerOverride) {
           const body = await readJsonBody(req);
           const reqSum = mcpRequestSummary(body);
 
-          {
-            // Only bind POST requests to an existing streamable session when the
-            // client explicitly sends a VALID MCP session id. Stateless JSON-RPC
-            // requests should fall through to initialize/stateless handling.
-            //
-            // IMPORTANT: Use exact-match lookup here, NOT resolveTransport()
-            // which falls back to any available transport. The SDK's
-            // validateSession() rejects requests where the session ID in the
-            // header doesn't match the transport's own session ID (returns 404).
-            // A fallback match would route mist's POST to bubbles' transport,
-            // causing a 404 → "Session terminated" → unnecessary reconnect loop.
-            const existingTransport = sessionId ? (mcpTransports.get(sessionId) || null) : null;
-            if (existingTransport) {
-              await existingTransport.handleRequest(req, res, body);
-              return;
-            }
-          }
-
           const isToolCall = body?.method === "tools/call";
           const t0 = Date.now();
           if (reqSum && isToolCall) {
@@ -1420,6 +1739,19 @@ async function maybeStartHttpServer(managerOverride) {
           }
 
           if (isInitializeRequest(body)) {
+            // If client sends initialize with an existing session ID, the old
+            // transport is already initialized and will reject. Clean it up
+            // and create a fresh one.
+            if (sessionId && mcpTransports.has(sessionId)) {
+              const oldTransport = mcpTransports.get(sessionId);
+              mcpTransports.delete(sessionId);
+              mcpServers.delete(sessionId);
+              if (defaultMcpSessionId === sessionId) {
+                defaultMcpSessionId = mcpTransports.keys().next().value || null;
+              }
+              try { await oldTransport.close(); } catch (_) {}
+            }
+
             const transport = new StreamableHTTPServerTransport({
               sessionIdGenerator: () => randomUUID(),
               onsessioninitialized: (sid) => {
@@ -1450,6 +1782,16 @@ async function maybeStartHttpServer(managerOverride) {
             }
             console.error(`🤝  MCP initialized`);
             return;
+          }
+
+          // Route non-initialize requests to the existing session transport.
+          // Use exact-match lookup only — never fall back to a different session.
+          {
+            const existingTransport = sessionId ? (mcpTransports.get(sessionId) || null) : null;
+            if (existingTransport) {
+              await existingTransport.handleRequest(req, res, body);
+              return;
+            }
           }
 
           const response = await handleStatelessMcpPost(body);
@@ -1595,11 +1937,10 @@ async function maybeStartHttpServer(managerOverride) {
         mark = timer.step("resolve_targets", mark);
 
         const maxChars = parseMaxChars(url.searchParams.get("maxChars"), 8000);
-        const includeTables = String(url.searchParams.get("includeTables") || "").trim().toLowerCase() === "true";
         const maxTableRowsParam = String(url.searchParams.get("maxTableRows") || "").trim();
         const maxTableRows = maxTableRowsParam ? parsePositiveInt(maxTableRowsParam, "maxTableRows") : undefined;
         const payload = await runWithHangGuard("http:/extract", () =>
-          openTargetsParallel(targetUrls, maxChars, manager.config.openPageMaxParallel, false, false, includeTables, maxTableRows)
+          openTargetsParallel(targetUrls, maxChars, manager.config.openPageMaxParallel, false, maxTableRows)
         );
         mark = timer.step("open_targets", mark);
         const markdown = formatOpenPageResponse(payload).content[0].text;
