@@ -360,6 +360,10 @@ Hermes agent reported browser tools disappearing after ~5 min. Container logs sh
 - `npx --yes mcporter call local-browser-search.web_search ...` succeeds.
 - `/health` ends with `pageLimiter.inUse: 0` after page and screenshot tests.
 
+### Git Push Safety
+
+- Before pushing, inspect every commit in `origin/main..HEAD`; require both author and committer to be `Boniface Pereira <bonifacepereira@gmail.com>`. Do not push mismatched commits. Ask for explicit approval before rewriting them, then verify identities again.
+
 ### Creating a GitHub Release with Proper Notes
 
 **Created:** 2026-06-25
