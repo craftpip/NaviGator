@@ -909,6 +909,7 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
           url,
           text: safeTruncateText(text, maxChars),
           textOriginalLength: text.length,
+          ...(tables.length ? { tables } : {})
         };
       }
     }
@@ -957,6 +958,7 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
           url,
           text,
           textOriginalLength,
+          ...(tables.length ? { tables } : {})
         };
       } else {
         text = buildCleanText(articleLines, maxChars);
@@ -2212,9 +2214,13 @@ export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAn
         finalText = insertTablesInline(finalText, extracted.tables);
       }
 
-      if (finalText.endsWith("...")) {
+      const textWasTruncated = extracted.text?.endsWith("...");
+      if (textWasTruncated || finalText.length > maxChars) {
         const fullSize = extracted.textOriginalLength || finalText.length;
-        finalText = finalText.slice(0, -3).trimEnd() + `\n\n*(Response truncated — full page is ${fullSize} chars, increase maxChars to see more)*`;
+        if (textWasTruncated) {
+          finalText = finalText.slice(0, -3).trimEnd();
+        }
+        finalText += `\n\n*(Response truncated — full page is ${fullSize} chars, increase maxChars to see more)*`;
       }
 
       const result = {

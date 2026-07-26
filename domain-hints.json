@@ -54,7 +54,7 @@
     "pathPattern": "/*/*/issues",
     "pageType": "issues",
     "comment": "Issue list page — each issue row has title, status, number, author.",
-    "waitForSelector": "li[role=\"listitem\"]",
+    "waitForSelector": "turbo-frame#repo-content-turbo-frame",
     "navigationWait": 3000,
     "content": {
       "sections": [
@@ -84,20 +84,20 @@
     "preferReadability": false,
     "content": {
       "sections": [
-        { "selector": ".comment-body", "label": "Issue", "priority": "high" }
+        { "selector": ".markdown-body", "label": "Issue", "priority": "high" }
       ]
     }
   },
   {
     "domain": "github.com",
-    "pathPattern": "/*/*/pulls/*",
+    "pathPattern": "/*/*/pull/*",
     "pageType": "pr-detail",
     "comment": "Pull request detail page — description, diff, comments.",
     "waitForSelector": ".markdown-body",
     "preferReadability": false,
     "content": {
       "sections": [
-        { "selector": ".comment-body", "label": "PR", "priority": "high" }
+        { "selector": ".markdown-body", "label": "PR", "priority": "high" }
       ]
     }
   },
@@ -284,7 +284,6 @@
     "pathPattern": "/**",
     "pageType": "homepage",
     "comment": "Marathi news. TOI React SPA — heavy JS, Readability fails.",
-    "waitForSelector": "div#app",
     "preferReadability": false
   },
   {
@@ -335,7 +334,6 @@
     "pathPattern": "/**",
     "pageType": "homepage",
     "comment": "Marathi news. Next.js SPA with hero slider.",
-    "waitForSelector": "div#__next",
     "preferReadability": false
   },
   {
@@ -382,8 +380,7 @@
     "preferReadability": false,
     "content": {
       "sections": [
-        { "selector": "ytd-watch-flexy", "label": "Video", "priority": "high" },
-        { "selector": "div#title", "label": "Title", "priority": "high" }
+        { "selector": "ytd-watch-flexy", "label": "Video", "priority": "high" }
       ]
     }
   },
@@ -422,7 +419,7 @@
   },
   {
     "domain": "www.freecodecamp.org",
-    "pathPattern": "/**",
+    "pathPattern": "/news/**",
     "pageType": "article",
     "comment": "Gold standard for Readability. Classic blog post in article.post-full. 48K+ px tall page.",
     "preferReadability": true,

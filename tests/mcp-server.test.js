@@ -273,6 +273,19 @@ describe("mcp-server HTTP endpoints", () => {
       expect(names).toContain("web_page_screenshot");
     });
 
+    it("publishes the documented web_fetch input contract", async () => {
+      const { status, body } = await mcpPost({
+        jsonrpc: "2.0", id: 56, method: "tools/list"
+      });
+
+      expect(status).toBe(200);
+      const webFetch = body.result.tools.find((tool) => tool.name === "web_fetch");
+      expect(webFetch.inputSchema.additionalProperties).toBe(false);
+      expect(Object.keys(webFetch.inputSchema.properties).sort()).toEqual([
+        "maxChars", "maxTableRows", "ref_id", "ref_ids", "url", "urls"
+      ]);
+    });
+
     it("responds to initialize via session transport with SSE stream", async () => {
       const res = await fetch(`${MCP_BASE}/mcp`, {
         method: "POST",
@@ -434,6 +447,115 @@ describe("mcp-server HTTP endpoints", () => {
       expect(text).toContain("Example Page");
     });
 
+    it("forwards normalized extraction limits to the page extractor", async () => {
+      const searchMod = await import("../src/search.js");
+      searchMod.browserOpenAndExtract.mockReset();
+      searchMod.browserOpenAndExtract.mockResolvedValueOnce({
+        text: "limited page",
+        title: "Limited Page",
+        url: "https://limits.example.com"
+      });
+
+      const { status } = await mcpPost({
+        jsonrpc: "2.0", id: 51, method: "tools/call",
+        params: {
+          name: "web_fetch",
+          arguments: {
+            url: "https://limits.example.com",
+            maxChars: 999999,
+            maxTableRows: 3.8
+          }
+        }
+      });
+
+      expect(status).toBe(200);
+      expect(searchMod.browserOpenAndExtract).toHaveBeenCalledWith({
+        url: "https://limits.example.com",
+        maxChars: 200000,
+        includeSeoAnalysis: true,
+        maxTableRows: 3
+      });
+    });
+
+    it("rejects invalid table row limits before opening a page", async () => {
+      const searchMod = await import("../src/search.js");
+      searchMod.browserOpenAndExtract.mockReset();
+
+      const { status, body } = await mcpPost({
+        jsonrpc: "2.0", id: 52, method: "tools/call",
+        params: {
+          name: "web_fetch",
+          arguments: { url: "https://limits.example.com", maxTableRows: 0 }
+        }
+      });
+
+      expect(status).toBe(500);
+      expect(body.error).toMatch(/maxTableRows must be a positive number/);
+      expect(searchMod.browserOpenAndExtract).not.toHaveBeenCalled();
+    });
+
+    it("preserves requested order and returns partial extraction failures", async () => {
+      const searchMod = await import("../src/search.js");
+      searchMod.browserOpenAndExtract.mockReset();
+      searchMod.browserOpenAndExtract.mockImplementation(async ({ url }) => {
+        if (url === "https://slow.example.com") {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          return { text: "slow content", title: "Slow Page", url };
+        }
+        if (url === "https://broken.example.com") {
+          throw new Error("upstream navigation failed");
+        }
+        return { text: "fast content", title: "Fast Page", url };
+      });
+
+      const { status, body } = await mcpPost({
+        jsonrpc: "2.0", id: 53, method: "tools/call",
+        params: {
+          name: "web_fetch",
+          arguments: {
+            urls: ["https://slow.example.com", "https://broken.example.com", "https://fast.example.com"]
+          }
+        }
+      });
+
+      expect(status).toBe(200);
+      const text = body.result.content[0].text;
+      expect(text).toContain("Processed 3 page(s); 2 succeeded.");
+      expect(text.indexOf("Slow Page")).toBeLessThan(text.indexOf("https://broken.example.com"));
+      expect(text.indexOf("https://broken.example.com")).toBeLessThan(text.indexOf("Fast Page"));
+      expect(text).toContain("Status: Failed");
+      expect(text).toContain("upstream navigation failed");
+    });
+
+    it("registers extracted links and rewrites matching markdown links to references", async () => {
+      const searchMod = await import("../src/search.js");
+      searchMod.browserOpenAndExtract.mockReset();
+      searchMod.browserOpenAndExtract.mockResolvedValueOnce({
+        text: "Read the [documentation](https://docs.example.com/guide).",
+        title: "Documentation Index",
+        url: "https://links.example.com",
+        links: [{ href: "https://docs.example.com/guide", text: "documentation" }]
+      });
+
+      const fetchResponse = await mcpPost({
+        jsonrpc: "2.0", id: 54, method: "tools/call",
+        params: { name: "web_fetch", arguments: { url: "https://links.example.com" } }
+      });
+
+      expect(fetchResponse.status).toBe(200);
+      const text = fetchResponse.body.result.content[0].text;
+      const linkRef = text.match(/\[documentation\]\[(\d+)\]/)?.[1];
+      expect(linkRef).toBeTruthy();
+      expect(text).not.toContain("[documentation](https://docs.example.com/guide)");
+
+      const linksResponse = await mcpPost({
+        jsonrpc: "2.0", id: 55, method: "tools/call",
+        params: { name: "web_page_links", arguments: { ref_id: Number(linkRef) } }
+      });
+      expect(linksResponse.status).toBe(200);
+      expect(linksResponse.body.result.content[0].text).toContain("https://docs.example.com/guide");
+    });
+
     it("handles web_fetch with urls array", async () => {
       const searchMod = await import("../src/search.js");
       searchMod.browserOpenAndExtract
@@ -548,6 +670,39 @@ describe("mcp-server HTTP endpoints", () => {
       const text = body.result.content[0].text;
       expect(text).toContain("Fetch 1 Page");
       expect(text).toContain("Fetch 2 Page");
+    });
+
+    it("resolves a web_fetch ref_id from the preceding search result", async () => {
+      const searchMod = await import("../src/search.js");
+      searchMod.browserSearch.mockReset();
+      searchMod.browserOpenAndExtract.mockReset();
+      searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
+        query: "single fetch target",
+        results: [{ title: "Single Fetch", url: "https://single-fetch.example.com", snippet: "target" }]
+      }));
+
+      const searchResponse = await mcpPost({
+        jsonrpc: "2.0", id: 57, method: "tools/call",
+        params: { name: "web_search", arguments: { query: "single fetch target" } }
+      });
+      const refId = Number(searchResponse.body.result.content[0].text.match(/\[(\d+)\]/)?.[1]);
+      expect(refId).toBeGreaterThan(0);
+
+      searchMod.browserOpenAndExtract.mockResolvedValueOnce({
+        text: "single target content",
+        title: "Single Fetch Page",
+        url: "https://single-fetch.example.com"
+      });
+      const fetchResponse = await mcpPost({
+        jsonrpc: "2.0", id: 58, method: "tools/call",
+        params: { name: "web_fetch", arguments: { ref_id: refId } }
+      });
+
+      expect(fetchResponse.status).toBe(200);
+      expect(fetchResponse.body.result.content[0].text).toContain("Single Fetch Page");
+      expect(searchMod.browserOpenAndExtract).toHaveBeenCalledWith(expect.objectContaining({
+        url: "https://single-fetch.example.com"
+      }));
     });
 
     it("handles web_fetch with ref alias (deprecated)", async () => {
@@ -867,30 +1022,32 @@ describe("mcp-server HTTP endpoints", () => {
       expect(body.error).toMatch(/No link found/);
     });
 
-    it("web_search caches results by argument key", async () => {
+    it("does not reuse search results when caching is disabled", async () => {
       const searchMod = await import("../src/search.js");
       searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
         query: "cached query",
         results: [{ title: "Cached Result", url: "https://cached.example.com", snippet: "cached" }],
       }));
 
-      // First call populates cache
       const r1 = await mcpPost({
         jsonrpc: "2.0", id: 20, method: "tools/call",
         params: { name: "web_search", arguments: { query: "cached query" } },
       });
       expect(r1.status).toBe(200);
 
-      // Reset mock - second call should come from cache
       searchMod.browserSearch.mockReset();
+      searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
+        query: "cached query",
+        results: [{ title: "Fresh Result", url: "https://fresh.example.com", snippet: "fresh" }],
+      }));
 
       const r2 = await mcpPost({
         jsonrpc: "2.0", id: 21, method: "tools/call",
         params: { name: "web_search", arguments: { query: "cached query" } },
       });
       expect(r2.status).toBe(200);
-      expect(r2.body.result.content[0].text).toContain("Cached Result");
-      expect(searchMod.browserSearch).not.toHaveBeenCalled();
+      expect(r2.body.result.content[0].text).toContain("Fresh Result");
+      expect(searchMod.browserSearch).toHaveBeenCalledOnce();
     });
   });
 
@@ -934,7 +1091,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(names).not.toContain("DOM.querySelector");
     });
 
-    it("returns exactly three search tools", async () => {
+    it("returns the four public search and page tools", async () => {
       const { status, body } = await mcpPost({
         jsonrpc: "2.0", id: 51, method: "tools/list",
       });
@@ -945,6 +1102,7 @@ describe("mcp-server HTTP endpoints", () => {
         "web_search",
         "web_fetch",
         "web_page_screenshot",
+        "web_page_links",
       ]);
     });
   });

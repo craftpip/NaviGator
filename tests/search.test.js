@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 const mockGetBrowserManager = vi.fn();
@@ -42,6 +45,34 @@ function makeMockManager(configOverrides = {}) {
     withPageSlot: vi.fn().mockImplementation((fn) => fn()),
     acquireSearchWindow: vi.fn(),
     releaseSearchWindow: vi.fn(),
+  };
+}
+
+function makeExtractionManager({ html, url = "https://example.com/page", hintsPath }) {
+  let closed = false;
+  const page = {
+    goto: vi.fn().mockResolvedValue(undefined),
+    waitForNetworkIdle: vi.fn().mockResolvedValue(undefined),
+    title: vi.fn().mockResolvedValue("Example page"),
+    url: vi.fn().mockReturnValue(url),
+    content: vi.fn().mockResolvedValue(html),
+    isClosed: vi.fn(() => closed),
+    close: vi.fn().mockImplementation(async () => { closed = true; }),
+    evaluate: vi.fn().mockImplementation((fn) => {
+      const source = String(fn);
+      if (source.includes("document.querySelector(sel)")) return Promise.resolve(500);
+      if (source.includes("cf-browser-verification")) return Promise.resolve(null);
+      return Promise.resolve("Rendered browser text");
+    })
+  };
+
+  return {
+    config: makeMockConfig({
+      domainHintsPath: hintsPath,
+      defaultBackend: "cloakbrowser"
+    }),
+    withPageSlot: vi.fn().mockImplementation((fn) => fn()),
+    newPage: vi.fn().mockResolvedValue(page)
   };
 }
 
@@ -190,6 +221,44 @@ describe("browserOpenAndExtract", () => {
   it("accepts one parameter (destructured object)", async () => {
     const { browserOpenAndExtract } = await import("../src/search.js");
     expect(browserOpenAndExtract.length).toBe(1);
+  });
+
+  it("keeps hinted sections, extracted tables, and truncation metadata together", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-hints-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([{
+      domain: "example.com",
+      pathPattern: "/**",
+      navigationWait: 0,
+      content: {
+        sections: [{ selector: ".profile", label: "Profile", priority: "high" }]
+      }
+    }]));
+
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+      hintsPath,
+      html: `<!doctype html><html><head><title>Hinted page</title></head><body>
+        <section class="profile"><p>${"Profile content ".repeat(20)}</p>
+          <table><caption>Metrics</caption><tr><th>Name</th><th>Value</th></tr><tr><td>Visitors</td><td>12345</td></tr><tr><td>Subscribers</td><td>67890</td></tr></table>
+        </section>
+      </body></html>`
+    }));
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({
+        url: "https://example.com/page",
+        maxChars: 120,
+        includeSeoAnalysis: false
+      });
+
+      expect(result.text).toContain("### Profile");
+      expect(result.text).toContain("### Metrics");
+      expect(result.text).toContain("Visitors | 12345");
+      expect(result.text).toContain("Response truncated");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   });
 });
 
