@@ -193,6 +193,15 @@ docker compose build               # Build Docker image
 docker compose down && up -d       # Restart containers
 ```
 
+### Running tests
+
+All tests run inside the container only:
+```bash
+docker compose exec browser-search-mcp npm install --include=dev   # First time only
+docker compose exec browser-search-mcp npx vitest run              # Run all tests
+docker compose exec browser-search-mcp npx vitest run tests/mcp-server.test.js  # Single file
+```
+
 ---
 
 ## Known Issues
@@ -546,6 +555,28 @@ Hermes agent reported browser tools disappearing after ~5 min. Container logs sh
 - `ASCII screenshot.md` — Full plan with research findings
 
 **Verified on:** example.com, Hacker News, Wikipedia, GitHub Trending
+
+---
+
+### Truncation Indicator for web_fetch
+
+**Created:** 2026-07-26
+
+**What:** When `web_fetch` output exceeds `maxChars`, a truncation note is appended at the end of the text.
+
+**Why:** Previously, the LLM had no way to know when content was truncated. The article text was truncated to `maxChars`, but tables (extracted separately) could push the total output far beyond `maxChars` with no indicator.
+
+**Implementation (Option B — awareness only):**
+- `src/search.js:2175-2177` in `browserOpenAndExtract()` — after `insertTablesInline()`:
+  ```js
+  if (maxChars && finalText.length > maxChars) {
+    finalText += `\n\n*(Response truncated — increase maxChars to see more)*`;
+  }
+  ```
+- No re-truncation of the output — just appends the note when the total exceeds `maxChars`.
+- The note uses `*(italic)*` markdown so LLMs notice it naturally.
+
+**Trade-off:** Tables can still exceed `maxChars` (no re-truncation), which is intentional — this is the less-breaking approach. If re-truncation is needed later, the check is already in place.
 
 ---
 

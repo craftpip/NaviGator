@@ -908,6 +908,7 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
           title: cleanWhitespace(doc.title || fallbackTitle || ""),
           url,
           text: safeTruncateText(text, maxChars),
+          textOriginalLength: text.length,
         };
       }
     }
@@ -936,28 +937,36 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
             title: cleanWhitespace(article.title || fallbackTitle || ""),
             url,
             text: safeTruncateText(fullMarkdown, maxChars),
+            textOriginalLength: fullMarkdown.length,
             ...(tables.length ? { tables } : {})
           };
         }
       }
 
       let text;
+      let textOriginalLength;
       if (weatherSummary) {
         text = cleanAndTruncateText(weatherSummary.join("\n"), maxChars);
+        textOriginalLength = weatherSummary.join("\n").length;
       } else if (article.content) {
-        text = safeTruncateText(htmlToMarkdown(article.content, { baseUrl: url }), maxChars);
+        const raw = htmlToMarkdown(article.content, { baseUrl: url });
+        text = safeTruncateText(raw, maxChars);
+        textOriginalLength = raw.length;
         return {
           title: cleanWhitespace(article.title || fallbackTitle || ""),
           url,
           text,
+          textOriginalLength,
         };
       } else {
         text = buildCleanText(articleLines, maxChars);
+        textOriginalLength = articleLines.join("\n").length;
       }
       return {
         title: cleanWhitespace(article.title || fallbackTitle || ""),
         url,
         text,
+        textOriginalLength,
         ...(tables.length ? { tables } : {})
       };
     }
@@ -971,12 +980,14 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
     }
     const lines = toLines(bestText);
     const weatherSummary = extractWeatherSummary(lines);
+    const fullText = weatherSummary
+      ? cleanAndTruncateText(weatherSummary.join("\n"), maxChars)
+      : buildCleanText(lines, maxChars);
     return {
       title: cleanWhitespace(doc.title || fallbackTitle || ""),
       url,
-      text: weatherSummary
-        ? cleanAndTruncateText(weatherSummary.join("\n"), maxChars)
-        : buildCleanText(lines, maxChars),
+      text: fullText,
+      textOriginalLength: bestText.length,
       ...(tables.length ? { tables } : {})
     };
   } catch {
@@ -984,7 +995,8 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
     return {
       title: cleanWhitespace(dom?.window?.document?.title || fallbackTitle || ""),
       url,
-      text: safeTruncateText(fallback, maxChars)
+      text: safeTruncateText(fallback, maxChars),
+      textOriginalLength: fallback.length,
     };
   } finally {
     dom?.window?.close();
@@ -2170,6 +2182,11 @@ export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAn
       if (extracted.tables?.length) {
         finalText = stripTableNoise(finalText);
         finalText = insertTablesInline(finalText, extracted.tables);
+      }
+
+      if (finalText.endsWith("...")) {
+        const fullSize = extracted.textOriginalLength || finalText.length;
+        finalText = finalText.slice(0, -3).trimEnd() + `\n\n*(Response truncated — full page is ${fullSize} chars, increase maxChars to see more)*`;
       }
 
       const result = {
