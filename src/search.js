@@ -3,6 +3,7 @@ import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { performance } from "node:perf_hooks";
 import { findDomainHint, getDomainHints } from "./domain-hints.js";
+import { htmlToMarkdown } from "./markdown.js";
 
 const DEFAULT_CONTENT_SELECTORS = [
   "main", "article", "[role='main']", ".content", "#content",
@@ -303,8 +304,6 @@ const NON_CONTENT_SELECTORS = [
   "svg",
   "canvas",
   "iframe",
-  "header",
-  "footer",
   "nav",
   "aside",
   "select",
@@ -891,31 +890,24 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
       for (const section of sorted) {
         const elements = doc.querySelectorAll(section.selector);
         if (!elements.length) continue;
-        let rawText = "";
+        let markdown = "";
         for (const el of elements) {
-          rawText += (el.textContent || "") + "\n";
+          markdown += htmlToMarkdown(el.innerHTML || "", { baseUrl: url }) + "\n";
         }
-        const lines = toLines(rawText).filter((l) => !isLikelyJunkLine(l));
-        const cleaned = uniqueLines(lines).join("\n").trim();
-        if (!cleaned) continue;
-        if (section.priority === "medium" && cleaned.length < 50) continue;
-        const textLines = cleaned.split("\n").filter((l) => l.trim());
-        sectionOutput.push(`  - **${section.label}**`);
-        for (const tl of textLines) {
-          sectionOutput.push(`    - ${tl}`);
-        }
+        markdown = markdown.trim();
+        if (!markdown) continue;
+        if (section.priority === "medium" && markdown.length < 50) continue;
+        sectionOutput.push(`### ${section.label}`);
+        sectionOutput.push("");
+        sectionOutput.push(markdown);
+        sectionOutput.push("");
       }
       if (sectionOutput.length) {
         let text = sectionOutput.join("\n");
-        if (tables.length) {
-          text = stripTableNoise(text);
-          text = insertTablesInline(text, tables);
-        }
         return {
           title: cleanWhitespace(doc.title || fallbackTitle || ""),
           url,
           text: safeTruncateText(text, maxChars),
-          ...(tables.length ? { tables } : {})
         };
       }
     }
@@ -926,7 +918,7 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
       try {
         const reader = new Readability(dom.window.document);
         article = reader.parse();
-      } catch {
+      } catch (e) {
         article = null;
       }
     }
@@ -939,18 +931,29 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
         const articleLen = article.textContent.trim().length;
         const browserLen = browserText.trim().length;
         if (browserLen > articleLen * 1.5 && browserLen - articleLen > 200) {
+          const fullMarkdown = htmlToMarkdown(doc.body.innerHTML, { baseUrl: url });
           return {
             title: cleanWhitespace(article.title || fallbackTitle || ""),
             url,
-            text: buildCleanText(toLines(browserText), maxChars),
+            text: safeTruncateText(fullMarkdown, maxChars),
             ...(tables.length ? { tables } : {})
           };
         }
       }
 
-      const text = weatherSummary
-        ? cleanAndTruncateText(weatherSummary.join("\n"), maxChars)
-        : buildCleanText(articleLines, maxChars);
+      let text;
+      if (weatherSummary) {
+        text = cleanAndTruncateText(weatherSummary.join("\n"), maxChars);
+      } else if (article.content) {
+        text = safeTruncateText(htmlToMarkdown(article.content, { baseUrl: url }), maxChars);
+        return {
+          title: cleanWhitespace(article.title || fallbackTitle || ""),
+          url,
+          text,
+        };
+      } else {
+        text = buildCleanText(articleLines, maxChars);
+      }
       return {
         title: cleanWhitespace(article.title || fallbackTitle || ""),
         url,

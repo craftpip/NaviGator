@@ -360,5 +360,50 @@
         { "selector": "div#title", "label": "Title", "priority": "high" }
       ]
     }
+  },
+  {
+    "domain": "news.ycombinator.com",
+    "pathPattern": "/**",
+    "pageType": "aggregator",
+    "comment": "Pure server-rendered HTML, table-based layout. Gold standard for extraction — Readability works well.",
+    "preferReadability": true
+  },
+  {
+    "domain": "dev.to",
+    "pathPattern": "/**",
+    "pageType": "article",
+    "comment": "Developer blog platform. Server-rendered. Article pages have standard <article> + <main>. Feed uses .crayons-story cards.",
+    "preferReadability": true
+  },
+  {
+    "domain": "daily.dev",
+    "pathPattern": "/**",
+    "pageType": "marketing",
+    "comment": "Marketing landing page. Feed is behind auth. Readability works on landing page content.",
+    "preferReadability": true
+  },
+  {
+    "domain": "www.npmjs.com",
+    "pathPattern": "/**",
+    "pageType": "package",
+    "comment": "Package registry. Clean semantic HTML. README in article + div#readme. Sidebar metadata in <aside>.",
+    "preferReadability": true,
+    "content": {
+      "sections": [
+        { "selector": "article", "label": "README", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "www.freecodecamp.org",
+    "pathPattern": "/**",
+    "pageType": "article",
+    "comment": "Gold standard for Readability. Classic blog post in article.post-full. 48K+ px tall page.",
+    "preferReadability": true,
+    "content": {
+      "sections": [
+        { "selector": "article.post-full", "label": "Article", "priority": "high" }
+      ]
+    }
   }
 ]

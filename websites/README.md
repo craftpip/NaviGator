@@ -40,7 +40,11 @@ docker exec browser-search-mcp sh -c "curl ... web_page_screenshot ..."
 
 All extraction strategies in these files are now encoded as [domain hints](../domain-hints.json) in the main project. When `web_fetch` loads a known domain, it applies the matching hint's wait strategy, content selector, and known limitations automatically.
 
-To verify a hint works on a site:
+## Competitive Landscape
+
+See [../notes/extraction-patterns.md](../notes/extraction-patterns.md) for a comparison of how other projects (Firecrawl, Crawl4AI, Jina Reader, Spider, weblens-mcp) handle web content extraction — their architectures, extraction strategies, table/link handling, and where we're stronger or weaker.
+
+## Verify a Hint
 
 ```bash
 docker exec browser-search-mcp curl -s "http://localhost:3000/extract?url=https://example.com&maxChars=1000"

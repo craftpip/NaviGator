@@ -299,6 +299,9 @@ Creating extraction hints for a website is an iterative process. One site at a t
 
 ## Fix Patterns
 
+- When debugging extraction issues, use the browser devtools (`browser_Target_createTarget`, `browser_Runtime_evaluate`, `browser_DOM_getDocument`, `browser_web_fetch`) to inspect the live page and test Readability's output directly in the browser. Do NOT guess by reading code — the browser tools are faster and show the actual runtime state.
+- Before modifying `NON_CONTENT_SELECTORS`, check whether removing semantic elements like `header`/`footer` could strip page content. These elements commonly hold real content on portfolio and personal sites. Let Readability handle them naturally instead of pre-removing them.
+
 - When adding SSE keepalive to MCP transports, write SSE comment frames (`: keepalive\n\n`) directly to each stream controller via `transport._webStandardTransport._streamMapping` — do NOT use `notifications/message` through `transport.send()` as that creates real JSON-RPC traffic the client must process. Dead controllers throw on `enqueue()` and get cleaned up from the mapping.
 - Always copy Map entries to an array before iterating if you plan to delete during the loop (`[...map.entries()]`).
 - The `retryInterval` option on `StreamableHTTPServerTransport` sends an SSE `retry:` field telling clients when to reconnect. Without it, the client guesses or gives up.
