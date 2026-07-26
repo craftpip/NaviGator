@@ -76,6 +76,32 @@
     }
   },
   {
+    "domain": "github.com",
+    "pathPattern": "/*/*/issues/*",
+    "pageType": "issue-detail",
+    "comment": "Issue detail page — description, comments.",
+    "waitForSelector": ".markdown-body",
+    "preferReadability": false,
+    "content": {
+      "sections": [
+        { "selector": ".comment-body", "label": "Issue", "priority": "high" }
+      ]
+    }
+  },
+  {
+    "domain": "github.com",
+    "pathPattern": "/*/*/pulls/*",
+    "pageType": "pr-detail",
+    "comment": "Pull request detail page — description, diff, comments.",
+    "waitForSelector": ".markdown-body",
+    "preferReadability": false,
+    "content": {
+      "sections": [
+        { "selector": ".comment-body", "label": "PR", "priority": "high" }
+      ]
+    }
+  },
+  {
     "domain": "mausam.imd.gov.in",
     "pathPattern": "/**",
     "pageType": "homepage",

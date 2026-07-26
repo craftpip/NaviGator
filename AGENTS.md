@@ -47,18 +47,20 @@ Opens pages and returns cleaned, readable text content.
 - `maxChars: number` (default `8000`) — Maximum characters per page
 - `maxTableRows: number` (optional) — Maximum number of rows per extracted table
 
-**Output:** Per-item success/error with SEO metadata. Tables are always extracted and appended as clean pipe-separated tables. Links are always extracted but not shown in the output — use `web_page_links(ref_id)` to inspect them. The LLM calls `web_fetch(ref_id: link_ref_id)` to visit a link.
+**Output:** Per-item success/error with SEO metadata. Tables are always extracted and appended as clean pipe-separated tables. Links are always extracted and shown inline as `[text][ref_id]` — use `web_page_links(ref_id: link_ref_id)` to resolve a link ref_id to its URL. The LLM calls `web_fetch(ref_id: link_ref_id)` to visit a link.
 
 ---
 
 ### `web_page_links`
 
-Lists links extracted from a previously fetched page. Given a page's `ref_id` (from `web_fetch` output), returns the extracted links with their link ref_ids. Links are already shown inline in `web_fetch` output — this tool is a convenience for re-listing them without re-fetching the page.
+Resolves one or more link ref_ids to their full URLs. Each link in the `## Links` section of a `web_fetch` result has a `[ref_id]` marker. Feed that ref_id here to get the actual URL.
 
-**Input:**
-- `ref_id: number` — Page ref_id from a prior `web_fetch` call
+**Input** (choose one mode):
 
-**Output:** `- text — [ref_id]` lines for each extracted link.
+- `ref_id: number` — Single link ref_id to resolve
+- `ref_ids: number[]` — Multiple link ref_ids to resolve in one call
+
+**Output:** `- [ref_id]: url` lines for each resolved ref_id.
 
 ---
 
@@ -290,7 +292,8 @@ Creating extraction hints for a website is an iterative process. One site at a t
 
 - `cleanAndTruncateText` used to call `cleanWhitespace` which collapsed newlines with `\s+`. Now uses `[^\S\n]+` to preserve newlines. If section output appears as a single run-on line, check that the fix is deployed.
 - Sections path and fallback path are exclusive — if sections produce any output, Readability/candidate blocks are skipped entirely.
-- `waitForSelector` waits for the selector to appear in the live DOM before extracting the HTML snapshot. If content loads after the wait (e.g., Turbo frames), increase `navigationWait`.
+- `waitForSelector` is fast when the selector exists (~1ms–374ms). When the selector doesn't exist (e.g., `div[data-testid="markdown-body"]` on GitHub), it silently times out at 20s — this was the biggest performance killer for GitHub pages. If content loads after the wait (e.g., Turbo frames), increase `navigationWait`.
+- **GitHub selectors:** GitHub uses `.markdown-body` (class-based), NOT `div[data-testid="markdown-body"]`. The `data-testid` attribute does not exist on GitHub pages. For issue/PR detail pages, use `.comment-body` for content sections (picks up the issue description + comments).
 - The `/extract?url=` endpoint is for quick testing. The actual MCP `web_fetch` tool goes through the same `browserOpenAndExtract()` path.
 - **Selectors must not overlap** — one selected element should not be a child of another. Otherwise content appears in multiple sections.
 - **Noisy content** comes from UI elements inside a selected container (buttons, modals, block/report forms). Use the most specific selector possible that excludes these. If `div.h-card` includes block/report UI, use `div.js-profile-editable-area` instead. If a Follow button is inside the profile area, check if a more specific container excludes it.

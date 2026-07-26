@@ -467,7 +467,7 @@ export class BrowserManager {
     const port = this.config.lightpandaPort;
 
     return new Promise((resolve, reject) => {
-      const proc = spawn(binaryPath, ["serve", "--port", String(port)], {
+      const proc = spawn(binaryPath, ["serve", "--port", String(port), "--timeout", "300"], {
         stdio: ["ignore", "pipe", "pipe"]
       });
 
@@ -521,12 +521,26 @@ export class BrowserManager {
   }
 
   async _connectLightpanda() {
-    let processHandle;
-    try {
-      processHandle = await this._spawnLightpanda();
-    } catch (error) {
-      logBrowserEvent("lightpanda.spawn_failed", { error: String(error?.message || error) });
-      return null;
+    let processHandle = this.lightpandaProcess;
+    if (!processHandle) {
+      try {
+        const browser = await puppeteer.connect({
+          browserWSEndpoint: `ws://127.0.0.1:${this.config.lightpandaPort}`,
+          defaultViewport: { width: MONITOR_WIDTH, height: MONITOR_HEIGHT }
+        });
+        this.lightpandaBrowser = browser;
+        this._watchLightpandaBrowser(browser);
+        return browser;
+      } catch {
+        // No existing CDP server is accepting connections; spawn one below.
+      }
+
+      try {
+        processHandle = await this._spawnLightpanda();
+      } catch (error) {
+        logBrowserEvent("lightpanda.spawn_failed", { error: String(error?.message || error) });
+        return null;
+      }
     }
 
     if (!processHandle) return null;
@@ -544,11 +558,19 @@ export class BrowserManager {
     });
 
     this.lightpandaBrowser = browser;
+    this._watchLightpandaBrowser(browser);
+    return browser;
+  }
+
+  _watchLightpandaBrowser(browser) {
     browser.on("disconnected", () => {
       this.lightpandaBrowser = null;
+      const pool = this.engineWorkingWindows.get("_shared");
+      if (pool) {
+        pool.windows = [];
+        for (const resolve of pool.waiters.splice(0)) resolve();
+      }
     });
-
-    return browser;
   }
 
   async _newLightpandaPage() {
@@ -772,11 +794,11 @@ export class BrowserManager {
   }
 
   _poolMaxWindows(poolEngine) {
-    if (poolEngine === "_shared" && this.config.defaultBackend !== "chromium") return 1;
+    if (poolEngine === "_shared") return 1;
     return this.config.searchMaxWorkingWindows;
   }
 
-  async ensureMinWorkingWindows(engine, { startupUrl, waitUntil = "domcontentloaded", label, reason = "cold_start" } = {}) {
+  async ensureMinWorkingWindows(engine, { startupUrl, waitUntil = "domcontentloaded", label, reason = "cold_start", browserEngine = engine } = {}) {
     const lower = (engine || "").toLowerCase();
     const needsCloakbrowser = ["duckduckgo_cb", "google_cb", "bing_cb"].includes(lower);
     const needsChromium = ["duckduckgo_ch", "google_ch"].includes(lower);
@@ -801,7 +823,7 @@ export class BrowserManager {
       pool.windows.push(entry);
 
       try {
-        const page = await this.newPage({ engine });
+        const page = await this.newPage({ engine: browserEngine });
         entry.page = page;
         entry.pending = false;
 
@@ -832,7 +854,13 @@ export class BrowserManager {
     }
 
     const poolEngine = this._poolEngine(engine);
-    await this.ensureMinWorkingWindows(poolEngine, { startupUrl, waitUntil, label: engine, reason: "cold_start" });
+    await this.ensureMinWorkingWindows(poolEngine, {
+      startupUrl,
+      waitUntil,
+      label: engine,
+      reason: "cold_start",
+      browserEngine: engine
+    });
     const pool = this.getEnginePool(poolEngine);
 
     while (true) {
@@ -853,7 +881,7 @@ export class BrowserManager {
         };
         pool.windows.push(entry);
         try {
-          const page = await this.newPage({ engine: poolEngine });
+          const page = await this.newPage({ engine });
           entry.page = page;
           entry.pending = false;
 
@@ -983,10 +1011,11 @@ export class BrowserManager {
 
       await Promise.allSettled(
         this.config.searchRouteWarmupEngines.map((engine) =>
-          this.ensureMinWorkingWindows(engine, {
+          this.ensureMinWorkingWindows(this._poolEngine(engine), {
             startupUrl: ENGINE_STARTUP_URLS[engine] || "about:blank",
             waitUntil: "domcontentloaded",
-            reason: "warmup"
+            reason: "warmup",
+            browserEngine: engine
           })
         )
       );

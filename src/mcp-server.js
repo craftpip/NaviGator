@@ -19,7 +19,6 @@ import { transform as asciiTransform, formatLegend as asciiFormatLegend } from "
 
 const linkMemoryByRef = new Map();
 const linkMemoryByUrl = new Map();
-const pageLinksByPageRef = new Map();
 let nextLinkRef = 1;
 const screenshotDownloadById = new Map();
 const screenshotStorageDir = path.join(process.cwd(), "screenshots");
@@ -254,7 +253,7 @@ function mcpRequestSummary(body) {
 function firstResultTitle(text) {
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].startsWith("- [ref_id")) {
+    if (lines[i].startsWith("- **")) {
       const match = lines[i].match(/\*\*(.+?)\*\*/);
       if (match) return truncateStr(match[1], 60);
     }
@@ -270,7 +269,7 @@ function extractDomains(text) {
     if (m && !domains.includes(m[2])) domains.push(m[2]);
   }
   if (!domains.length) {
-    const m = text.match(/\[ref_id \d+\].*?\]\s+(https?:\/\/([^\/\s]+))/);
+    const m = text.match(/\[\d+\].*?\]\s+(https?:\/\/([^\/\s]+))/);
     if (m && !domains.includes(m[2])) domains.push(m[2]);
   }
   return domains.join(", ");
@@ -284,7 +283,7 @@ function mcpResponseSummary(resp) {
   if (result.isError) return "error";
   const text = result?.content?.[0]?.text || "";
   if (!text) return "ok";
-  const refs = text.match(/\[ref_id \d+\]/g);
+  const refs = text.match(/^\s*- \*\*.+?\*\* \[\d+\]/gm);
   if (refs) {
     const hint = firstResultTitle(text);
     const domains = extractDomains(text);
@@ -554,25 +553,21 @@ function formatSearchMarkdown(payload) {
     lines.push("", `**Results (${results.length}):**`);
     results.forEach((result, index) => {
       const refId = result?.ref_id;
-      const refLabel = refId ? `[ref_id ${refId}]` : `${index + 1}.`;
+      const refLabel = refId ? `[${refId}]` : `${index + 1}.`;
       const titleText = cleanTitle(result?.title || "");
       const title = titleText ? `**${titleText}**` : "Untitled";
-      const link = result?.link || result?.url || "";
       const snippet = truncateForDisplay(result?.snippet || "", 450);
       const queryVariants = Array.isArray(result?.queryVariants) && result.queryVariants.length
         ? ` _(queries: ${result.queryVariants.join(", ")})_`
         : "";
 
-      const bullet = link ? `- ${refLabel} ${title} — ${link}${queryVariants}` : `- ${refLabel} ${title}${queryVariants}`;
+      const bullet = `- ${title} ${refLabel}${queryVariants}`;
       lines.push(bullet.trim());
       if (snippet) {
         lines.push(`  - ${snippet}`);
       }
     });
-    lines.push(
-      "",
-      "Use `ref_id` with `/extract?ref_id=<id>` or `/screenshot?ref_id=<id>`, or MCP tools `web_fetch` / `web_page_screenshot` with `ref_id`."
-    );
+    lines.push("", "*Square brackets contain reference IDs.*");
   } else {
     lines.push("", "No results returned.");
   }
@@ -704,9 +699,6 @@ function formatOpenPageResponse(payload) {
           lines.push(`    ${textLines[i]}`);
         }
       }
-    }
-    if (entry?.linkRefs?.length) {
-      lines.push(`  - Links: ${entry.linkRefs.length} (use web_page_links(ref_id: ${entry.ref_id}) to list)`);
     }
   });
 
@@ -857,22 +849,15 @@ async function openTargetsParallel(targetUrls, maxChars, maxParallel, includeSeo
           ...page
         };
 
-        // Register links in memory for ref_id-based resolution
-        if (page.extractedLinks?.length) {
-          const linkRefs = [];
-          for (const link of page.extractedLinks) {
-            const linkRef = rememberLink(link.href);
-            if (linkRef) {
-              linkRefs.push({ ref_id: linkRef, url: link.href, text: link.text });
-            }
+        // Replace markdown links [text](url) with [text][ref_id] inline
+        if (page.links?.length && result.text) {
+          for (const link of page.links) {
+            rememberLink(link.href);
           }
-          if (linkRefs.length) {
-            result.linkRefs = linkRefs;
-            if (result.ref_id) {
-              pageLinksByPageRef.set(result.ref_id, linkRefs);
-            }
-            // Links stored in pageLinksByPageRef — accessible via web_page_links(ref_id)
-          }
+          result.text = result.text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+            const ref = linkMemoryByUrl.get(url);
+            return ref ? `[${text}][${ref}]` : match;
+          });
         }
 
         return result;
@@ -1002,14 +987,14 @@ function getToolsListResponse() {
               type: "array",
               items: {
                 type: "string",
-                enum: ["select_best", "duckduckgo_api", "bing_lp", "mojeek_lp", "google_ch", "duckduckgo_ch"]
+                enum: ["select_best", "duckduckgo_api", "bing_lp", "mojeek_lp", "google_cb", "bing_cb", "duckduckgo_cb"]
               },
               description: "Specific search engines to run. Prefer `select_best` by default. Only send concrete engines if the user explicitly requests certain engines or asks about engine behavior. If `select_best` appears anywhere in this list, it takes priority and automatic fallback/circuit-breaker selection is used."
             },
             engine: {
               type: "string",
               default: "select_best",
-              enum: ["select_best", "duckduckgo_api", "bing_lp", "mojeek_lp", "google_ch", "duckduckgo_ch"],
+              enum: ["select_best", "duckduckgo_api", "bing_lp", "mojeek_lp", "google_cb", "bing_cb", "duckduckgo_cb"],
               description: "Preferred default: `select_best`. Only send a concrete engine if the user explicitly requests one engine or asks about engine behavior. `select_best` uses automatic fallback and circuit-breaker logic."
             }
           },
@@ -1109,16 +1094,20 @@ function getToolsListResponse() {
       {
         name: "web_page_links",
         description:
-          "List links extracted from a previously fetched page. Given a page ref_id (from web_fetch output), returns the extracted links with their link ref_ids so you can call web_fetch or web_page_screenshot using a specific link's ref_id.",
+          "Resolve one or more link ref_ids (shown inline in web_fetch output as [ref_id]) to their full URLs. Provide a single ref_id or multiple ref_ids. Returns the URL for each ref_id.",
         inputSchema: {
           type: "object",
           properties: {
             ref_id: {
               type: "number",
-              description: "Page ref_id from a previous web_fetch call (e.g. [1])"
+              description: "Single link ref_id to resolve (e.g. 4)"
+            },
+            ref_ids: {
+              type: "array",
+              items: { type: "number" },
+              description: "Multiple link ref_ids to resolve (e.g. [4, 5, 6])"
             }
           },
-          required: ["ref_id"],
           additionalProperties: false
         }
       },
@@ -1559,17 +1548,21 @@ async function handleToolCall(name, args = {}) {
   }
 
   if (name === "web_page_links") {
-    const refId = parsePositiveInt(args.ref_id, "ref_id");
-    let linkRefs = pageLinksByPageRef.get(refId);
-    if (!linkRefs) {
-      throw new Error(`No link data found for page ref_id ${refId}.`);
+    const singleRef = args.ref_id !== undefined ? parsePositiveInt(args.ref_id, "ref_id") : null;
+    const multipleRefs = Array.isArray(args.ref_ids) ? args.ref_ids.map((v) => parsePositiveInt(v, "ref_ids")) : null;
+    if (singleRef === null && !multipleRefs) throw new Error("Provide ref_id (number) or ref_ids (number[])");
+
+    const ids = singleRef !== null ? [singleRef] : multipleRefs;
+    const out = [];
+    for (const id of ids) {
+      const url = linkMemoryByRef.get(id);
+      if (url) {
+        out.push(`- [${id}]: ${url}`);
+      } else {
+        out.push(`- [${id}]: (no link registered for this ref_id)`);
+      }
     }
-    const out = [`Links extracted from page ref_id ${refId}:`];
-    for (const link of linkRefs) {
-      const snippet = (link.text || "").trim().slice(0, 120);
-      out.push(`- ${snippet || '(no text)'} — [${link.ref_id}]`);
-    }
-    timer.step("list_links", mark);
+    timer.step("resolve_links", mark);
     timer.end({ status: "ok" });
     return asMarkdownContent(out.join("\n"));
   }

@@ -298,6 +298,35 @@ describe("BrowserManager", () => {
     });
   });
 
+  describe("newPage engine dispatch", () => {
+    const cases = [
+      ["bing_cb", "cloakbrowser"],
+      ["duckduckgo_cb", "cloakbrowser"],
+      ["google_cb", "cloakbrowser"],
+      ["duckduckgo_ch", "chromium"],
+      ["google_ch", "chromium"],
+      ["bing_lp", "lightpanda"],
+      ["google_lp", "lightpanda"],
+      ["mojeek_lp", "lightpanda"],
+    ];
+
+    for (const [engine, backend] of cases) {
+      it(`routes ${engine} through ${backend}`, async () => {
+        const manager = new BrowserManager(makeConfig());
+        const pages = {
+          cloakbrowser: { id: "cb" },
+          chromium: { id: "ch" },
+          lightpanda: { id: "lp" },
+        };
+        manager._newCloakbrowserPage = vi.fn().mockResolvedValue(pages.cloakbrowser);
+        manager._newChromiumPage = vi.fn().mockResolvedValue(pages.chromium);
+        manager._newLightpandaPage = vi.fn().mockResolvedValue(pages.lightpanda);
+
+        await expect(manager.newPage({ engine })).resolves.toBe(pages[backend]);
+      });
+    }
+  });
+
   describe("_poolMaxWindows", () => {
     it("returns 1 for shared pool with non-chromium backend", () => {
       const manager = new BrowserManager(makeConfig({ defaultBackend: "cloakbrowser", searchMaxWorkingWindows: 10 }));
@@ -309,9 +338,47 @@ describe("BrowserManager", () => {
       expect(manager._poolMaxWindows("google_cb")).toBe(10);
     });
 
-    it("returns searchMaxWorkingWindows for shared with chromium", () => {
+    it("keeps the Lightpanda shared pool to one page with chromium", () => {
       const manager = new BrowserManager(makeConfig({ defaultBackend: "chromium", searchMaxWorkingWindows: 10 }));
-      expect(manager._poolMaxWindows("_shared")).toBe(10);
+      expect(manager._poolMaxWindows("_shared")).toBe(1);
+    });
+  });
+
+  describe("Lightpanda lifecycle", () => {
+    it("clears stale shared pages and wakes queued searches on disconnect", () => {
+      const manager = new BrowserManager(makeConfig());
+      const pool = manager.getEnginePool("_shared");
+      const waiter = vi.fn();
+      pool.windows.push({ page: { isClosed: () => false }, inUse: true, pending: false });
+      pool.waiters.push(waiter);
+      const handlers = new Map();
+      const browser = { on: vi.fn((event, handler) => handlers.set(event, handler)) };
+      manager.lightpandaBrowser = browser;
+
+      manager._watchLightpandaBrowser(browser);
+      handlers.get("disconnected")();
+
+      expect(manager.lightpandaBrowser).toBeNull();
+      expect(pool.windows).toEqual([]);
+      expect(waiter).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("acquireSearchWindow", () => {
+    it("preserves the Lightpanda engine while using its shared pool", async () => {
+      const manager = new BrowserManager(makeConfig({ searchKeepMinWorkingWindows: 0 }));
+      const page = { isClosed: () => false, on: vi.fn() };
+      manager.ensureMinWorkingWindows = vi.fn();
+      manager.newPage = vi.fn().mockResolvedValue(page);
+
+      await manager.acquireSearchWindow("bing_lp");
+
+      expect(manager.ensureMinWorkingWindows).toHaveBeenCalledWith(
+        "_shared",
+        expect.objectContaining({ browserEngine: "bing_lp" })
+      );
+      expect(manager.newPage).toHaveBeenCalledWith({ engine: "bing_lp" });
+      expect(manager.getEnginePool("_shared").windows[0].page).toBe(page);
     });
   });
 

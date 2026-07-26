@@ -34,7 +34,9 @@ function parsePathPattern(raw) {
 
 function getPathname(urlStr) {
   try {
-    return new URL(urlStr).pathname;
+    let p = new URL(urlStr).pathname;
+    if (p !== "/" && p.endsWith("/")) p = p.slice(0, -1);
+    return p;
   } catch {
     return "/";
   }

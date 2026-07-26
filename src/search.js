@@ -1361,8 +1361,27 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-async function waitForAnySelector(page, selectors, timeout) {
-  await Promise.any(selectors.map((selector) => page.waitForSelector(selector, { timeout })));
+async function assertSearchPageIsNotBlocked(page, engine) {
+  const text = await page.evaluate(() => document.body?.innerText || "");
+  const pageUrl = page.url();
+
+  if (engine.startsWith("google_") && (/\/sorry\//.test(pageUrl) || /unusual traffic|not a robot/i.test(text))) {
+    throw new Error("Google blocked this request with a CAPTCHA page");
+  }
+
+  if (engine === "mojeek_lp" && /403\s*-?\s*forbidden|automated queries/i.test(text)) {
+    throw new Error("Mojeek blocked this request as automated traffic");
+  }
+}
+
+async function waitForAnySelector(page, selectors, timeout, engine) {
+  await assertSearchPageIsNotBlocked(page, engine);
+  try {
+    await Promise.any(selectors.map((selector) => page.waitForSelector(selector, { timeout })));
+  } catch (error) {
+    await assertSearchPageIsNotBlocked(page, engine);
+    throw error;
+  }
 
   for (const selector of selectors) {
     const handle = await page.$(selector);
@@ -1512,13 +1531,13 @@ async function submitSearchFromHomepage({ page, query, engine, config }) {
     }, query);
     // Wait for navigation to complete after form submit
     await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: config.browserOpTimeoutMs }).catch(() => {});
-    await waitForAnySelector(page, engineConfig.resultSelectors, config.browserOpTimeoutMs);
+    await waitForAnySelector(page, engineConfig.resultSelectors, config.browserOpTimeoutMs, engine);
     return;
   }
 
   await page.waitForSelector("body", { timeout: config.browserOpTimeoutMs }).catch(() => {});
   await new Promise((r) => setTimeout(r, 500));
-  await waitForAnySelector(page, engineConfig.resultSelectors, config.browserOpTimeoutMs);
+  await waitForAnySelector(page, engineConfig.resultSelectors, config.browserOpTimeoutMs, engine);
 }
 
 async function runSearchEngine({ manager, query, engine, config }) {
@@ -1715,6 +1734,15 @@ async function runSearchEngine({ manager, query, engine, config }) {
     console.error(`⏱️  ${engine}: acquire_window=${Math.round(t1 - t0)}ms → search_submit=${Math.round(t2 - t1)}ms → extract_results=${Math.round(t3 - t2)}ms | total=${Math.round(t3 - t0)}ms`);
 
     return result;
+  } catch (error) {
+    // Lightpanda may detach a page when a cross-engine navigation fails.
+    // Do not return that page to the shared pool for a later request.
+    try {
+      await page.close();
+    } catch {
+      // Ignore a page that has already detached or closed.
+    }
+    throw error;
   } finally {
     await manager.releaseSearchWindow(engine, page);
   }
@@ -1722,7 +1750,7 @@ async function runSearchEngine({ manager, query, engine, config }) {
 
 function routeConcurrencyForEngines(engines, config) {
   const hasLightpandaRoute = engines.some((engine) => ENGINE_BACKENDS[engine] === "lightpanda");
-  if (hasLightpandaRoute && config.defaultBackend !== "chromium" && config.defaultBackend !== "cloakbrowser") return 1;
+  if (hasLightpandaRoute) return 1;
   return Math.max(1, engines.length);
 }
 
@@ -1733,14 +1761,18 @@ async function runSearchRoute({ manager, query, engine, config, explicit }) {
   }
 
   try {
-    const value = await manager.withPageSlot(() =>
-      runSearchEngine({
-        manager,
-        query,
-        engine,
-        config
-      })
+    const execute = () => manager.withPageSlot(() =>
+      runSearchEngine({ manager, query, engine, config })
     );
+    let value;
+    try {
+      value = await execute();
+    } catch (error) {
+      if (ENGINE_BACKENDS[engine] !== "lightpanda" || !/detached frame|targetalreadyloaded/i.test(String(error?.message || error))) {
+        throw error;
+      }
+      value = await execute();
+    }
     recordRouteSuccess(engine);
     return value;
   } catch (error) {
@@ -2172,12 +2204,8 @@ export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAn
       const selectedText = extracted.text || seoAnalysis?.mainContentText || "";
 
       let finalText = selectedText || extracted.text || "";
-      let extractedLinks = [];
 
       const links = extractLinksFromHtml({ html, url: resolvedUrl });
-      if (links.length) {
-        extractedLinks = links;
-      }
 
       if (extracted.tables?.length) {
         finalText = stripTableNoise(finalText);
@@ -2192,7 +2220,7 @@ export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAn
       const result = {
         ...extracted,
         text: finalText,
-        ...(extractedLinks.length ? { extractedLinks } : {}),
+        ...(links.length ? { links } : {}),
         ...(seoAnalysis ? { seo: seoAnalysis } : {})
       };
 
