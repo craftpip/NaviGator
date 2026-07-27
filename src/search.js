@@ -852,6 +852,37 @@ function insertTablesInline(text, tables) {
   return result.join("\n").trim();
 }
 
+function renderHintFields(element, fields, baseUrl) {
+  const output = [];
+  for (const field of fields) {
+    const nodes = Array.from(element.querySelectorAll(field.selector));
+    if (!nodes.length) continue;
+
+    const values = nodes.map((node) => {
+      if (field.format === "text" || field.format === "list") {
+        return cleanWhitespace(node.textContent || "");
+      }
+      return htmlToMarkdown(node.innerHTML || "", { baseUrl }).trim();
+    }).filter(Boolean);
+    if (!values.length) continue;
+
+    if (field.format === "list") {
+      output.push(`**${field.label}:**`);
+      output.push(...values.map((value) => `- ${value}`));
+      continue;
+    }
+
+    if (field.format === "text") {
+      output.push(`**${field.label}:** ${values.join(" ")}`);
+      continue;
+    }
+
+    output.push(`**${field.label}:**`);
+    output.push(values.join("\n\n"));
+  }
+  return output.join("\n\n");
+}
+
 function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows, hint, browserText }) {
   const rawHtml = typeof html === "string" ? html : "";
   const safeHtml = rawHtml.replace(/<style[\s\S]*?<\/style>/gi, "");
@@ -887,13 +918,21 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
       const sorted = [...hint.content.sections].sort(
         (a, b) => (order[a.priority] || 1) - (order[b.priority] || 1)
       );
-      for (const section of sorted) {
-        const elements = doc.querySelectorAll(section.selector);
-        if (!elements.length) continue;
-        let markdown = "";
-        for (const el of elements) {
-          markdown += htmlToMarkdown(el.innerHTML || "", { baseUrl: url }) + "\n";
-        }
+        for (const section of sorted) {
+          const elements = doc.querySelectorAll(section.selector);
+          if (!elements.length) continue;
+          let markdown = "";
+          if (section.fields?.length) {
+            markdown = Array.from(elements).map((el, index) => {
+              const content = renderHintFields(el, section.fields, url);
+              if (!content) return "";
+              return section.itemLabel ? `#### ${section.itemLabel} ${index + 1}\n\n${content}` : content;
+            }).filter(Boolean).join("\n\n");
+          } else {
+            for (const el of elements) {
+              markdown += htmlToMarkdown(el.innerHTML || "", { baseUrl: url }) + "\n";
+            }
+          }
         markdown = markdown.trim();
         if (!markdown) continue;
         if (section.priority === "medium" && markdown.length < 50) continue;
@@ -2172,7 +2211,7 @@ export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAn
           const title = document.title || "";
           const bodyText = (document.body?.innerText || "").trim();
           const html = (document.documentElement?.outerHTML || "").toLowerCase();
-          if (html.includes("cf-browser-verification") || html.includes("__cf_challenge")) return "Cloudflare challenge";
+          if (html.includes("cf-browser-verification") || html.includes("__cf_challenge") || /just a moment|performing security verification|security service to protect/i.test(`${title}\n${bodyText}`)) return "Cloudflare challenge";
           if (html.includes("data-dome") || bodyText.includes("Please enable JS") || bodyText.includes("disable any ad blocker")) return "DataDome challenge";
           if (!title || /^[a-z0-9-]+\.[a-z]{2,}$/i.test(title)) return `Bot block detected (title: "${title}")`;
           return null;

@@ -282,7 +282,7 @@ describe("mcp-server HTTP endpoints", () => {
       const webFetch = body.result.tools.find((tool) => tool.name === "web_fetch");
       expect(webFetch.inputSchema.additionalProperties).toBe(false);
       expect(Object.keys(webFetch.inputSchema.properties).sort()).toEqual([
-        "maxChars", "maxTableRows", "ref_id", "ref_ids", "url", "urls"
+        "bypassCache", "maxChars", "maxTableRows", "ref_id", "ref_ids", "url", "urls"
       ]);
     });
 
@@ -445,6 +445,9 @@ describe("mcp-server HTTP endpoints", () => {
       expect(status).toBe(200);
       const text = body.result.content[0].text;
       expect(text).toContain("Example Page");
+      expect(text).toContain("### [");
+      expect(text).toContain("page content here");
+      expect(text).not.toContain("  - page content here");
     });
 
     it("forwards normalized extraction limits to the page extractor", async () => {
@@ -1022,32 +1025,87 @@ describe("mcp-server HTTP endpoints", () => {
       expect(body.error).toMatch(/No link found/);
     });
 
-    it("does not reuse search results when caching is disabled", async () => {
+    it("caches search results by argument key", async () => {
       const searchMod = await import("../src/search.js");
+      const query = `cached query ${Date.now()}`;
       searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
-        query: "cached query",
+        query,
         results: [{ title: "Cached Result", url: "https://cached.example.com", snippet: "cached" }],
       }));
 
       const r1 = await mcpPost({
         jsonrpc: "2.0", id: 20, method: "tools/call",
-        params: { name: "web_search", arguments: { query: "cached query" } },
+        params: { name: "web_search", arguments: { query } },
       });
       expect(r1.status).toBe(200);
 
       searchMod.browserSearch.mockReset();
-      searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
-        query: "cached query",
-        results: [{ title: "Fresh Result", url: "https://fresh.example.com", snippet: "fresh" }],
-      }));
 
       const r2 = await mcpPost({
         jsonrpc: "2.0", id: 21, method: "tools/call",
-        params: { name: "web_search", arguments: { query: "cached query" } },
+        params: { name: "web_search", arguments: { query } },
       });
       expect(r2.status).toBe(200);
-      expect(r2.body.result.content[0].text).toContain("Fresh Result");
-      expect(searchMod.browserSearch).toHaveBeenCalledOnce();
+      expect(r2.body.result.content[0].text).toContain("Cached Result");
+      expect(searchMod.browserSearch).not.toHaveBeenCalled();
+    });
+
+    it("bypasses cached search and fetch responses then refreshes them", async () => {
+      const searchMod = await import("../src/search.js");
+      const query = `bypass cache ${Date.now()}`;
+      const url = `https://bypass-${Date.now()}.example.com`;
+
+      searchMod.browserSearch.mockReset();
+      searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
+        query,
+        results: [{ title: "Cached Search", url, snippet: "cached" }]
+      }));
+      await mcpPost({
+        jsonrpc: "2.0", id: 59, method: "tools/call",
+        params: { name: "web_search", arguments: { query } }
+      });
+
+      searchMod.browserSearch.mockReset();
+      searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
+        query,
+        results: [{ title: "Fresh Search", url, snippet: "fresh" }]
+      }));
+      const bypassSearch = await mcpPost({
+        jsonrpc: "2.0", id: 60, method: "tools/call",
+        params: { name: "web_search", arguments: { query, bypassCache: true } }
+      });
+      expect(bypassSearch.body.result.content[0].text).toContain("Fresh Search");
+
+      searchMod.browserSearch.mockReset();
+      const cachedSearch = await mcpPost({
+        jsonrpc: "2.0", id: 61, method: "tools/call",
+        params: { name: "web_search", arguments: { query } }
+      });
+      expect(cachedSearch.body.result.content[0].text).toContain("Fresh Search");
+      expect(searchMod.browserSearch).not.toHaveBeenCalled();
+
+      searchMod.browserOpenAndExtract.mockReset();
+      searchMod.browserOpenAndExtract.mockResolvedValueOnce({ text: "cached page", title: "Cached Page", url });
+      await mcpPost({
+        jsonrpc: "2.0", id: 62, method: "tools/call",
+        params: { name: "web_fetch", arguments: { url } }
+      });
+
+      searchMod.browserOpenAndExtract.mockReset();
+      searchMod.browserOpenAndExtract.mockResolvedValueOnce({ text: "fresh page", title: "Fresh Page", url });
+      const bypassFetch = await mcpPost({
+        jsonrpc: "2.0", id: 63, method: "tools/call",
+        params: { name: "web_fetch", arguments: { url, bypassCache: true } }
+      });
+      expect(bypassFetch.body.result.content[0].text).toContain("Fresh Page");
+
+      searchMod.browserOpenAndExtract.mockReset();
+      const cachedFetch = await mcpPost({
+        jsonrpc: "2.0", id: 64, method: "tools/call",
+        params: { name: "web_fetch", arguments: { url } }
+      });
+      expect(cachedFetch.body.result.content[0].text).toContain("Fresh Page");
+      expect(searchMod.browserOpenAndExtract).not.toHaveBeenCalled();
     });
   });
 

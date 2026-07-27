@@ -120,13 +120,37 @@
     "pathPattern": "/questions/**",
     "pageType": "article",
     "comment": "QA page with question and answers. Cloudflare protection on some pages.",
+    "testUrls": [
+      "https://stackoverflow.com/questions/6818875/new-line-on-php-cli",
+      "https://stackoverflow.com/questions/11227809/why-is-processing-a-sorted-array-faster-than-processing-an-unsorted-array"
+    ],
+    "waitForSelector": "#question .js-post-body",
     "navigationWait": 2000,
     "preferReadability": false,
     "flags": { "botProtected": true },
     "content": {
       "sections": [
-        { "selector": "#question", "label": "Question", "priority": "high" },
-        { "selector": ".answer", "label": "Answers", "priority": "high" }
+        {
+          "selector": "#question",
+          "label": "Question",
+          "priority": "high",
+          "fields": [
+            { "selector": ".js-vote-count", "label": "Votes", "format": "text" },
+            { "selector": ".js-post-body", "label": "Content", "format": "markdown" },
+            { "selector": "[id^=\"follow-ups-list-\"] [itemprop=\"text\"]", "label": "Comments", "format": "list" }
+          ]
+        },
+        {
+          "selector": ".answer",
+          "label": "Answers",
+          "itemLabel": "Answer",
+          "priority": "high",
+          "fields": [
+            { "selector": ".js-vote-count", "label": "Votes", "format": "text" },
+            { "selector": ".js-post-body", "label": "Content", "format": "markdown" },
+            { "selector": "[id^=\"follow-ups-list-\"] [itemprop=\"text\"]", "label": "Comments", "format": "list" }
+          ]
+        }
       ]
     }
   },
@@ -242,11 +266,55 @@
   },
   {
     "domain": "www.hindustantimes.com",
+    "pathPattern": "/india-news",
+    "pageType": "section-listing",
+    "comment": "India news listing. Next.js SPA with headline cards.",
+    "testUrls": ["https://www.hindustantimes.com/india-news"],
+    "waitForSelector": "section#dataHolder",
+    "navigationWait": 2000,
+    "preferReadability": false,
+    "content": {
+      "sections": [
+        {
+          "selector": "section#dataHolder .cartHolder",
+          "label": "Latest Headlines",
+          "itemLabel": "Headline",
+          "priority": "high",
+          "fields": [
+            { "selector": "h2", "label": "Title", "format": "text" },
+            { "selector": ".dateTime", "label": "Published", "format": "text" }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "domain": "www.hindustantimes.com",
     "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "News homepage. Next.js SPA with live blog and headline cards.",
-    "waitForSelector": "div#__next",
-    "navigationWait": 2000
+    "pageType": "article-or-generic",
+    "comment": "Article pages use dataHolder for metadata and artContent for the story body; other pages use Readability fallback.",
+    "testUrls": ["https://www.hindustantimes.com/india-news/rahul-targets-amit-shah-over-pellet-guns-at-cjp-march-govt-plans-bill-move-as-parliament-session-resumes-101785083843946.html"],
+    "navigationWait": 2000,
+    "content": {
+      "sections": [
+        {
+          "selector": "#dataHolder .articleDetail",
+          "label": "Article",
+          "priority": "high",
+          "fields": [
+            { "selector": "h1.artTitle", "label": "Title", "format": "text" },
+            { "selector": "h2.artIntro", "label": "Summary", "format": "markdown" },
+            { "selector": ".artTimes", "label": "Published", "format": "text" },
+            { "selector": ".storyBy", "label": "Byline", "format": "text" }
+          ]
+        },
+        {
+          "selector": "#dataHolder .artContent",
+          "label": "Story",
+          "priority": "high"
+        }
+      ]
+    }
   },
   {
     "domain": "www.indiatimes.com",

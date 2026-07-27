@@ -26,7 +26,8 @@ function sampleUrl(hint) {
   };
   const knownPaths = {
     "en.wikipedia.org": "/wiki/Web_scraping",
-    "stackoverflow.com": "/questions/1/example",
+    "stackoverflow.com": "/questions/6818875/new-line-on-php-cli",
+    "www.hindustantimes.com": "/india-news",
     "www.youtube.com": "/watch?v=dQw4w9WgXcQ",
     "www.freecodecamp.org": "/news/javascript-map-method/"
   };
@@ -59,6 +60,10 @@ describe("domain hints", () => {
       expect(hint.pathPattern).toMatch(/^\//);
       expect(hint.pageType).toEqual(expect.any(String));
       expect(hint.comment).toEqual(expect.any(String));
+      for (const testUrl of hint.testUrls || []) {
+        expect(testUrl).toMatch(/^https:\/\//);
+        expect(findDomainHint(testUrl, rawHints)).toBe(hint);
+      }
 
       if (hint.waitForSelector) {
         expect(() => validateSelector(hint.waitForSelector)).not.toThrow();
@@ -70,6 +75,14 @@ describe("domain hints", () => {
         expect(section.label).toEqual(expect.any(String));
         expect(["high", "medium", "low"]).toContain(section.priority);
         expect(() => validateSelector(section.selector)).not.toThrow();
+        if (section.itemLabel !== undefined) {
+          expect(section.itemLabel).toEqual(expect.any(String));
+        }
+        for (const field of section.fields || []) {
+          expect(field.label).toEqual(expect.any(String));
+          expect(["markdown", "text", "list"]).toContain(field.format);
+          expect(() => validateSelector(field.selector)).not.toThrow();
+        }
       }
       expect([undefined, "content", "disabled"]).toContain(hint.tableExtraction);
       expect([undefined, true, false]).toContain(hint.preferReadability);
@@ -83,7 +96,7 @@ describe("domain hints", () => {
   it.each(rawHints.map((hint, index) => [index + 1, hint]))(
     "matches its intended URL first: hint %i: %s",
     (_, hint) => {
-      const url = sampleUrl(hint);
+      const url = hint.testUrls?.[0] || sampleUrl(hint);
       expect(findDomainHint(url, rawHints)).toBe(hint);
     }
   );

@@ -54,7 +54,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.4",
     "@mozilla/readability": "^0.6.0",
-    "cloakbrowser": "^0.3.31",
+    "cloakbrowser": "^0.5.2",
     "jsdom": "^27.0.0",
     "puppeteer-core": "^24.21.0",
     "turndown": "^7.2.4",

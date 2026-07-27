@@ -31,7 +31,7 @@ COPY package.json ./
 RUN npm install --omit=dev
 
 # Install CloakBrowser stealth Chromium binary
-RUN npx cloakbrowser install
+RUN npx --no-install cloakbrowser install
 
 COPY src ./src
 COPY docker/entrypoint.sh /entrypoint.sh

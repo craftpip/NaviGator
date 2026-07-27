@@ -260,6 +260,68 @@ describe("browserOpenAndExtract", () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("renders structured hint fields without post UI noise", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-hints-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([{
+      domain: "example.com",
+      pathPattern: "/**",
+      navigationWait: 0,
+      content: {
+        sections: [
+          {
+            selector: "#question",
+            label: "Question",
+            priority: "high",
+            fields: [
+              { selector: ".vote", label: "Votes", format: "text" },
+              { selector: ".body", label: "Content", format: "markdown" },
+              { selector: ".comment", label: "Comments", format: "list" }
+            ]
+          },
+          {
+            selector: ".answer",
+            label: "Answers",
+            itemLabel: "Answer",
+            priority: "high",
+            fields: [
+              { selector: ".vote", label: "Votes", format: "text" },
+              { selector: ".body", label: "Content", format: "markdown" },
+              { selector: ".comment", label: "Comments", format: "list" }
+            ]
+          }
+        ]
+      }
+    }]));
+
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+      hintsPath,
+      html: `<!doctype html><html><body>
+        <div id="question"><button>Upvote</button><span class="vote">12</span><div class="body"><p>Question body.</p><pre><code>question()</code></pre></div><span class="comment">Question comment</span></div>
+        <div class="answer"><button>Upvote</button><span class="vote">7</span><div class="body"><p>Answer body.</p></div><span class="comment">Answer comment</span></div>
+      </body></html>`
+    }));
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({
+        url: "https://example.com/structured",
+        includeSeoAnalysis: false
+      });
+
+      expect(result.text).toContain("### Question");
+      expect(result.text).toContain("**Votes:** 12");
+      expect(result.text).toContain("Question body.");
+      expect(result.text).toContain("- Question comment");
+      expect(result.text).toContain("#### Answer 1");
+      expect(result.text).toContain("**Votes:** 7");
+      expect(result.text).toContain("- Answer comment");
+      expect(result.text).not.toContain("Upvote");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("browserCaptureScreenshot", () => {

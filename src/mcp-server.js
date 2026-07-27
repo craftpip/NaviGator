@@ -22,7 +22,7 @@ const linkMemoryByUrl = new Map();
 let nextLinkRef = 1;
 const screenshotDownloadById = new Map();
 const screenshotStorageDir = path.join(process.cwd(), "screenshots");
-const TOOL_CACHE_TTL_MS = 0;
+const TOOL_CACHE_TTL_MS = 5 * 60 * 1000;
 const SCREENSHOT_DOWNLOAD_TTL_MS = 60 * 60 * 1000;
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 const MAX_LINK_MEMORY_ENTRIES = 2000;
@@ -45,6 +45,12 @@ function stableStringify(value) {
 
 function getCacheKey(args) {
   return stableStringify(args || {});
+}
+
+function getCacheArgs(args) {
+  if (!args || typeof args !== "object") return args;
+  const { bypassCache, ...cacheArgs } = args;
+  return cacheArgs;
 }
 
 function getCachedToolResult(toolName, args) {
@@ -245,6 +251,7 @@ function mcpRequestSummary(body) {
   if (eng) parts.push(`[${eng}]`);
   if (args.limit && args.limit !== 5) parts.push(`limit=${args.limit}`);
   if (args.maxChars && args.maxChars !== 8000) parts.push(`maxc=${args.maxChars}`);
+  if (args.bypassCache === true) parts.push("no-cache");
   if (args.format) parts.push(args.format);
   if (args.fullPage === false) parts.push("no-fullpage");
   return parts.join("  ");
@@ -670,35 +677,25 @@ function formatOpenPageResponse(payload) {
 
   const successCount = entries.filter((entry) => entry?.ok !== false).length;
   const total = payload?.count ?? entries.length;
-  const lines = [`- Processed ${total} page(s); ${successCount} succeeded.`];
+  const lines = [`Processed ${total} page(s); ${successCount} succeeded.`];
 
   entries.forEach((entry, index) => {
     const refLabel = entry?.ref_id ? `[${entry.ref_id}]` : `#${index + 1}`;
     const title = entry?.title || entry?.url || `Page ${index + 1}`;
-    lines.push("", `- ${refLabel} **${title}**`);
-    lines.push(`  - Status: ${entry?.ok === false ? "Failed" : "Success"}`);
+    lines.push("", `### ${refLabel} ${title}`);
+    lines.push(`- Status: ${entry?.ok === false ? "Failed" : "Success"}`);
     if (entry?.url) {
-      lines.push(`  - URL: ${entry.url}`);
+      lines.push(`- URL: ${entry.url}`);
     }
     if (entry?.error) {
-      lines.push(`  - Error: ${entry.error}`);
+      lines.push(`- Error: ${entry.error}`);
       return;
     }
     if (entry?.tables?.length) {
-      lines.push(`  - Tables extracted: ${entry.tables.length}`);
+      lines.push(`- Tables extracted: ${entry.tables.length}`);
     }
     if (entry?.text) {
-      const textLines = entry.text.trim().split("\n");
-      if (textLines.length > 0 && textLines[0].startsWith("  - ")) {
-        for (const tl of textLines) {
-          lines.push(tl);
-        }
-      } else {
-        lines.push(`  - ${textLines[0]}`);
-        for (let i = 1; i < textLines.length; i++) {
-          lines.push(`    ${textLines[i]}`);
-        }
-      }
+      lines.push("", entry.text.trim());
     }
   });
 
@@ -983,6 +980,11 @@ function getToolsListResponse() {
               description: "Multiple query variations to run"
             },
             limit: { type: "number", default: 5 },
+            bypassCache: {
+              type: "boolean",
+              default: false,
+              description: "Skip cached data and refresh the cached response"
+            },
             engines: {
               type: "array",
               items: {
@@ -1025,7 +1027,12 @@ function getToolsListResponse() {
               description: "Multiple result ids returned by a previous web_search call"
             },
             maxChars: { type: "number", default: 8000 },
-            maxTableRows: { type: "number", description: "Optional maximum number of rows to extract per table. Omit for no row limit." }
+            maxTableRows: { type: "number", description: "Optional maximum number of rows to extract per table. Omit for no row limit." },
+            bypassCache: {
+              type: "boolean",
+              default: false,
+              description: "Skip cached data and refresh the cached response"
+            }
           },
           description: "Provide one of: url, urls, ref_id, or ref_ids. Prefer ref_id/ref_ids from web_search when available.",
           additionalProperties: false
@@ -1125,7 +1132,8 @@ async function handleToolCall(name, args = {}) {
   let mark = performance.now();
 
   if (name === "web_search") {
-    const cached = getCachedToolResult(name, args);
+    const bypassCache = args.bypassCache === true;
+    const cached = bypassCache ? null : await getCachedToolResult(name, args);
     if (cached) {
       timer.step("cache_hit", mark);
       timer.end({ cacheHit: true, status: "ok" });
@@ -1151,14 +1159,15 @@ async function handleToolCall(name, args = {}) {
     mark = timer.step("browser_search", mark);
     const response = formatSearchResponse(decorateSearchPayload(results));
     mark = timer.step("format_response", mark);
-    setCachedToolResult(name, args, response);
+    await setCachedToolResult(name, getCacheArgs(args), response);
     timer.step("cache_store", mark);
     timer.end({ cacheHit: false, status: "ok" });
     return response;
   }
 
   if (name === "web_fetch") {
-    const cached = getCachedToolResult(name, args);
+    const bypassCache = args.bypassCache === true;
+    const cached = bypassCache ? null : await getCachedToolResult(name, args);
     if (cached) {
       timer.step("cache_hit", mark);
       timer.end({ cacheHit: true, status: "ok" });
@@ -1191,7 +1200,7 @@ async function handleToolCall(name, args = {}) {
     mark = timer.step("open_targets", mark);
     const response = formatOpenPageResponse(result);
     mark = timer.step("format_response", mark);
-    setCachedToolResult(name, args, response);
+    await setCachedToolResult(name, getCacheArgs(args), response);
     timer.step("cache_store", mark);
     timer.end({ cacheHit: false, status: "ok" });
     return response;

@@ -5,3 +5,4 @@ screenshots/*.png
 !screenshots/.gitkeep
 .idea/
 .ai/
+.cache/

@@ -21,7 +21,8 @@ function sampleUrl(hint) {
   };
   const knownPaths = {
     "en.wikipedia.org": "/wiki/Web_scraping",
-    "stackoverflow.com": "/questions/1/example",
+    "stackoverflow.com": "/questions/6818875/new-line-on-php-cli",
+    "www.hindustantimes.com": "/india-news",
     "www.youtube.com": "/watch?v=dQw4w9WgXcQ",
     "www.freecodecamp.org": "/news/javascript-map-method/"
   };
@@ -30,13 +31,15 @@ function sampleUrl(hint) {
 }
 
 const runLiveHints = process.env.LIVE_DOMAIN_HINTS === "1";
+const liveChecks = liveHints.flatMap((hint) =>
+  (hint.testUrls?.length ? hint.testUrls : [sampleUrl(hint)]).map((url) => ({ hint, url }))
+);
 
 describe.runIf(runLiveHints)("live domain hints", () => {
-  it.each(liveHints)("finds configured selectors on $domain ($pageType)", async (hint) => {
+  it.each(liveChecks)("finds configured selectors on $hint.domain ($hint.pageType): $url", async ({ hint, url }) => {
     const manager = await getBrowserManager();
     await manager.withPageSlot(async () => {
       const page = await manager.newPage({ backend: manager.config.defaultBackend });
-      const url = sampleUrl(hint);
       try {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout: manager.config.browserOpTimeoutMs });
         if (hint.waitForSelector) {
@@ -46,6 +49,14 @@ describe.runIf(runLiveHints)("live domain hints", () => {
           await page.waitForSelector(section.selector, { timeout: 20000 });
           const count = await page.$$eval(section.selector, (elements) => elements.length);
           expect(count, `${url} no longer matches ${section.selector}`).toBeGreaterThan(0);
+          for (const field of section.fields || []) {
+            const fieldCount = await page.$$eval(
+              section.selector,
+              (elements, selector) => elements.reduce((total, element) => total + element.querySelectorAll(selector).length, 0),
+              field.selector
+            );
+            expect(fieldCount, `${url} no longer matches ${section.selector} ${field.selector}`).toBeGreaterThan(0);
+          }
         }
       } finally {
         if (!page.isClosed()) await page.close();
