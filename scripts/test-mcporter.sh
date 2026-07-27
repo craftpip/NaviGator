@@ -3,7 +3,7 @@ set -euo pipefail
 
 BASE_URL="${MCP_HTTP_URL:-http://127.0.0.1:3000/mcp}"
 HEALTH_URL="${MCP_HEALTH_URL:-http://127.0.0.1:3000/health}"
-SERVER_NAME="local-browser-search"
+SERVER_NAME="local-navigator"
 CONFIG_PATH="$(mktemp /tmp/mcporter-browser-search.XXXXXX.json)"
 printf '{"mcpServers":{}}\n' >"$CONFIG_PATH"
 

@@ -1,7 +1,7 @@
 {
-  "name": "browser-search-mcp",
+  "name": "navigator-mcp",
   "version": "1.0.1",
-  "description": "MCP server for real Chromium browser search and extraction",
+  "description": "MCP server with a real browser for search, extraction, and screenshots",
   "license": "Apache-2.0",
   "type": "module",
   "main": "src/mcp-server.js",
@@ -16,11 +16,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/craftpip/browser-search-mcp.git"
+    "url": "git+https://github.com/craftpip/navigator.git"
   },
-  "homepage": "https://github.com/craftpip/browser-search-mcp#readme",
+  "homepage": "https://github.com/craftpip/navigator#readme",
   "bugs": {
-    "url": "https://github.com/craftpip/browser-search-mcp/issues"
+    "url": "https://github.com/craftpip/navigator/issues"
   },
   "keywords": [
     "mcp",

@@ -18,7 +18,7 @@ function samplePath(pathPattern) {
 function sampleUrl(hint) {
   const githubPaths = {
     profile: "/craftpip",
-    repo: "/craftpip/browser-search-mcp",
+    repo: "/craftpip/navigator",
     issues: "/microsoft/vscode/issues",
     prs: "/microsoft/vscode/pulls",
     "issue-detail": "/microsoft/vscode/issues/1",

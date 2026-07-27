@@ -1,6 +1,6 @@
-# Browser Search MCP Skill
+# NaviGator Skill
 
-This skill provides instructions for working with the browser-search-mcp project.
+This skill provides instructions for working with the navigator project.
 
 ## Project Overview
 
@@ -27,8 +27,8 @@ npm run test:mcporter
 
 ### Docker
 ```bash
-docker build -t browser-search-mcp .
-docker run -d --name browser-search-mcp -p 3000:3000 browser-search-mcp
+docker build -t navigator .
+docker run -d --name navigator -p 3000:3000 navigator
 ```
 
 ## Tool Usage

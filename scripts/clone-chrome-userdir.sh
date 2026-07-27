@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-SERVICE_NAME="${SERVICE_NAME:-browser-search-mcp}"
+SERVICE_NAME="${SERVICE_NAME:-navigator}"
 DEST_DIR="${DEST_DIR:-/data/chrome}"
 WIPE_DEST=0
 VERBOSE=0
@@ -22,7 +22,7 @@ Options:
   --help            Show this help message.
 
 Environment overrides:
-  SERVICE_NAME      docker compose service name (default: browser-search-mcp)
+  SERVICE_NAME      docker compose service name (default: navigator)
   DEST_DIR          destination in container (default: /data/chrome)
 
 Notes:

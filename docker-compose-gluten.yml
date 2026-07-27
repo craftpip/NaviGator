@@ -1,6 +1,6 @@
 services:
-  browser-search-mcp-gluetun:
-    container_name: "browser-search-mcp-gluetun"
+  navigator-gluetun:
+    container_name: "navigator-gluetun"
     restart: unless-stopped
     build:
       context: .
@@ -46,7 +46,7 @@ services:
       NOVNC_PORT: ${NOVNC_PORT:-7900}
 
       ENABLE_HTTP_HEALTH: ${ENABLE_HTTP_HEALTH:-1}
-      MCP_API_HOST: ${MCP_API_HOST:-http://browser-search-mcp-gluetun}
+      MCP_API_HOST: ${MCP_API_HOST:-http://navigator-gluetun}
 
       ENABLE_SCREENSHOT_DOWNLOAD_LINK: ''
       ENABLE_SCREENSHOT_PATH: ''
@@ -66,4 +66,4 @@ services:
 
 volumes:
   chrome_profile_data_gluetun:
-    name: browser-search-mcp_gluetun_chrome_profile_data
+    name: navigator_gluetun_chrome_profile_data

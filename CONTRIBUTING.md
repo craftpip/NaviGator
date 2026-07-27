@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to Browser Search MCP.
+Thanks for contributing to NaviGator.
 
 ## Before you start
 

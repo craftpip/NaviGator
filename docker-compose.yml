@@ -1,8 +1,9 @@
-name: browser-search-mcp
+name: navigator
 
 services:
-  browser-search-mcp:
-    container_name: "browser-search-mcp"
+  navigator:
+    container_name: "navigator"
+    image: navigator:latest
     restart: unless-stopped
     build:
       context: .
@@ -57,7 +58,7 @@ services:
       ENABLE_HANG_RESTART: ${ENABLE_HANG_RESTART:-0}
       HANG_RESTART_TIMEOUT_MS: ${HANG_RESTART_TIMEOUT_MS:-120000}
     volumes:
-      - /home/boniface/www/browser-search-mcp:/app
+      - .:/app
       - /tmp/screenshots:/app/screenshots
       - chrome_profile_data:/data/chrome
     ports:
@@ -67,4 +68,4 @@ services:
 
 volumes:
   chrome_profile_data:
-    name: browser-search-mcp_chrome_profile_data
+    name: navigator_chrome_profile_data

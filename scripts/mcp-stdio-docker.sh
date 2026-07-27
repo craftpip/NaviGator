@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-IMAGE="${MCP_DOCKER_IMAGE:-browser-search-mcp-browser-search-mcp:latest}"
-CONTAINER="${MCP_DOCKER_CONTAINER:-browser-search-mcp-landing}"
+IMAGE="${MCP_DOCKER_IMAGE:-navigator-navigator:latest}"
+CONTAINER="${MCP_DOCKER_CONTAINER:-navigator-landing}"
 PROFILE_VOLUME="${MCP_PROFILE_VOLUME:-chrome_profile_data}"
 HOST_VNC_PORT="${MCP_VNC_PORT:-5901}"
 HOST_NOVNC_PORT="${MCP_NOVNC_PORT:-7901}"
@@ -24,8 +24,8 @@ DISPLAY="${DISPLAY:-:99}"
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
   echo "Docker image not found: $IMAGE" >&2
   echo "Build or tag it first, for example:" >&2
-  echo "  docker build -t browser-search-mcp ." >&2
-  echo "  docker tag browser-search-mcp:latest $IMAGE" >&2
+  echo "  docker build -t navigator ." >&2
+  echo "  docker tag navigator:latest $IMAGE" >&2
   exit 1
 fi
 

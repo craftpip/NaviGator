@@ -1,6 +1,6 @@
-# Browser Search MCP Server
+# NaviGator
 
-Browser Search MCP gives your MCP client a real browser for:
+NaviGator gives your MCP client a real browser for:
 
 - web search
 - readable page extraction
@@ -123,8 +123,8 @@ This is the best setup for most users.
 1. Clone the repo:
 
 ```bash
-git clone https://github.com/craftpip/browser-search-mcp.git
-cd browser-search-mcp
+git clone https://github.com/craftpip/navigator.git
+cd navigator
 ```
 
 2. Copy the example config:
@@ -204,7 +204,7 @@ Example client config:
   "mcpServers": {
     "browser-search": {
       "command": "node",
-      "args": ["/absolute/path/to/browser-search-mcp/src/mcp-server.js"]
+      "args": ["/absolute/path/to/navigator/src/mcp-server.js"]
     }
   }
 }
@@ -223,7 +223,7 @@ Example client config:
 {
   "mcpServers": {
     "browser-search": {
-      "command": "/absolute/path/to/browser-search-mcp/scripts/mcp-stdio-docker.sh"
+      "command": "/absolute/path/to/navigator/scripts/mcp-stdio-docker.sh"
     }
   }
 }

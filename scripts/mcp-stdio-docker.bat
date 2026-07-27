@@ -1,8 +1,8 @@
 @echo off
 setlocal
 
-if "%MCP_DOCKER_IMAGE%"=="" set "MCP_DOCKER_IMAGE=browser-search-mcp-browser-search-mcp:latest"
-if "%MCP_DOCKER_CONTAINER%"=="" set "MCP_DOCKER_CONTAINER=browser-search-mcp-landing"
+if "%MCP_DOCKER_IMAGE%"=="" set "MCP_DOCKER_IMAGE=navigator-navigator:latest"
+if "%MCP_DOCKER_CONTAINER%"=="" set "MCP_DOCKER_CONTAINER=navigator-landing"
 if "%MCP_PROFILE_VOLUME%"=="" set "MCP_PROFILE_VOLUME=chrome_profile_data"
 if "%MCP_VNC_PORT%"=="" set "MCP_VNC_PORT=5901"
 if "%MCP_NOVNC_PORT%"=="" set "MCP_NOVNC_PORT=7901"
@@ -25,8 +25,8 @@ docker image inspect "%MCP_DOCKER_IMAGE%" >nul 2>&1
 if errorlevel 1 (
   echo Docker image not found: %MCP_DOCKER_IMAGE% 1>&2
   echo Build or tag it first, for example: 1>&2
-  echo   docker build -t browser-search-mcp . 1>&2
-  echo   docker tag browser-search-mcp:latest %MCP_DOCKER_IMAGE% 1>&2
+  echo   docker build -t navigator . 1>&2
+  echo   docker tag navigator:latest %MCP_DOCKER_IMAGE% 1>&2
   exit /b 1
 )
 

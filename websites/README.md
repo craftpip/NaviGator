@@ -5,8 +5,8 @@ Tracking how our extraction tools perform across different websites.
 ## How to test
 
 ```bash
-docker exec browser-search-mcp sh -c "curl ... web_fetch ..."
-docker exec browser-search-mcp sh -c "curl ... web_page_screenshot ..."
+docker exec navigator sh -c "curl ... web_fetch ..."
+docker exec navigator sh -c "curl ... web_page_screenshot ..."
 ```
 
 ## Legend
@@ -47,5 +47,5 @@ See [../notes/extraction-patterns.md](../notes/extraction-patterns.md) for a com
 ## Verify a Hint
 
 ```bash
-docker exec browser-search-mcp curl -s "http://localhost:3000/extract?url=https://example.com&maxChars=1000"
+docker exec navigator curl -s "http://localhost:3000/extract?url=https://example.com&maxChars=1000"
 ```

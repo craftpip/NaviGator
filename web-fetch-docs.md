@@ -422,14 +422,14 @@ curl "http://localhost:3000/extract?url=https://example.com&maxChars=2000"
 ### MCP Test
 
 ```bash
-npx --yes mcporter call local-browser-search.web_fetch '{"url": "https://example.com"}'
+npx --yes mcporter call local-navigator.web_fetch '{"url": "https://example.com"}'
 ```
 
 ### Container Deploy
 
 ```bash
 docker compose build && docker compose down && docker compose up -d
-sleep 10 && docker exec browser-search-mcp curl -s localhost:3000/health
+sleep 10 && docker exec navigator curl -s localhost:3000/health
 ```
 
 ---

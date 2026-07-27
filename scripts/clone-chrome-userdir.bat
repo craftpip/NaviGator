@@ -2,7 +2,7 @@
 setlocal enableextensions enabledelayedexpansion
 
 set "SERVICE_NAME=%SERVICE_NAME%"
-if "%SERVICE_NAME%"=="" set "SERVICE_NAME=browser-search-mcp"
+if "%SERVICE_NAME%"=="" set "SERVICE_NAME=navigator"
 
 set "DEST_DIR=%DEST_DIR%"
 if "%DEST_DIR%"=="" set "DEST_DIR=/data/chrome"
@@ -141,7 +141,7 @@ echo   --progress        Show periodic size-based progress updates.
 echo   --help            Show this help message.
 echo.
 echo Environment overrides:
-echo   SERVICE_NAME      docker compose service name (default: browser-search-mcp)
+echo   SERVICE_NAME      docker compose service name (default: navigator)
 echo   DEST_DIR          destination in container (default: /data/chrome)
 echo.
 echo Notes:

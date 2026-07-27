@@ -15,7 +15,7 @@ Six major tools dominate the web-fetch-for-LLMs space. Three architectures, each
 | **Jina Reader** | Hosted Chrome + curl-impersonate | Readability + Turndown + optional ReaderLM-v2 | Docker compose | 11k |
 | **Spider Cloud** | Rust HTTP + headless Chrome (3 modes) | Readability + CSS extraction map + AI | MIT (spider-rs) | — |
 | **weblens-mcp** | Self-hosted Playwright | Readability + JSDOM (MCP server) | npm package | small |
-| **browser-search-mcp** (us) | Multi-backend browser (Cloakbrowser/Chromium/Lightpanda) | Readability + domain hints + candidate blocks + JSDOM tables | Docker compose | — |
+| **NaviGator** (us) | Multi-backend browser (Cloakbrowser/Chromium/Lightpanda) | Readability + domain hints + candidate blocks + JSDOM tables | Docker compose | — |
 
 ---
 

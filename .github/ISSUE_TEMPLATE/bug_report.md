@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a problem with Browser Search MCP
+about: Report a problem with NaviGator
 title: "[Bug] "
 labels: bug
 assignees: ""

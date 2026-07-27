@@ -199,9 +199,9 @@ docker compose down && up -d       # Restart containers
 
 All tests run inside the container only:
 ```bash
-docker compose exec browser-search-mcp npm install --include=dev   # First time only
-docker compose exec browser-search-mcp npx vitest run              # Run all tests
-docker compose exec browser-search-mcp npx vitest run tests/mcp-server.test.js  # Single file
+docker compose exec navigator npm install --include=dev   # First time only
+docker compose exec navigator npx vitest run              # Run all tests
+docker compose exec navigator npx vitest run tests/mcp-server.test.js  # Single file
 ```
 
 ---
@@ -272,10 +272,10 @@ Creating extraction hints for a website is an iterative process. One site at a t
 
 8. **Deploy and test:**
    ```bash
-   docker cp /workspace/src/search.js browser-search-mcp:/app/src/search.js
-   docker cp /workspace/src/mcp-server.js browser-search-mcp:/app/src/mcp-server.js
-   docker cp /workspace/domain-hints.json browser-search-mcp:/app/domain-hints.json
-   docker restart browser-search-mcp
+   docker cp /workspace/src/search.js navigator:/app/src/search.js
+   docker cp /workspace/src/mcp-server.js navigator:/app/src/mcp-server.js
+   docker cp /workspace/domain-hints.json navigator:/app/domain-hints.json
+   docker restart navigator
    sleep 8
    curl "http://localhost:3000/extract?url=https://example.com/page&maxChars=2000"
    ```
@@ -356,8 +356,8 @@ Hermes agent reported browser tools disappearing after ~5 min. Container logs sh
 **Verification:**
 
 - `curl -s http://localhost:3000/mcp -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` returns tool metadata.
-- `npx --yes mcporter list local-browser-search --config <config>` succeeds.
-- `npx --yes mcporter call local-browser-search.web_search ...` succeeds.
+- `npx --yes mcporter list local-navigator --config <config>` succeeds.
+- `npx --yes mcporter call local-navigator.web_search ...` succeeds.
 - `/health` ends with `pageLimiter.inUse: 0` after page and screenshot tests.
 
 ### Git Push Safety

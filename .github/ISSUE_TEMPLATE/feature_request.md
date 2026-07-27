@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an improvement for Browser Search MCP
+about: Suggest an improvement for NaviGator
 title: "[Feature] "
 labels: enhancement
 assignees: ""

@@ -2,7 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { spawn } from "node:child_process";
 
-const WORKDIR = "/mnt/c/www/browser-search-mcp";
+const WORKDIR = "/mnt/c/www/navigator";
 const HOST_HTTP_BASE = process.env.HOST_HTTP_BASE || "http://host.docker.internal:3000";
 
 process.chdir(WORKDIR);
@@ -127,7 +127,7 @@ async function runShell(command) {
 
 async function testWebInDocker() {
   const probe = await runShell(
-    "docker exec browser-search-mcp-landing node -e \"fetch('http://127.0.0.1:3000/health').then(r=>r.text()).then(t=>process.stdout.write(t)).catch(e=>{console.error(e);process.exit(1);})\""
+    "docker exec navigator-landing node -e \"fetch('http://127.0.0.1:3000/health').then(r=>r.text()).then(t=>process.stdout.write(t)).catch(e=>{console.error(e);process.exit(1);})\""
   );
 
   if (probe.code !== 0) {
@@ -140,7 +140,7 @@ async function testWebInDocker() {
   }
 
   const multi = await runShell(
-    "docker exec browser-search-mcp-landing node -e \"fetch('http://127.0.0.1:3000/extract?urls=' + encodeURIComponent('https://example.com||https://modelcontextprotocol.io')).then(r=>r.text()).then(t=>process.stdout.write(t)).catch(e=>{console.error(e);process.exit(1);})\""
+    "docker exec navigator-landing node -e \"fetch('http://127.0.0.1:3000/extract?urls=' + encodeURIComponent('https://example.com||https://modelcontextprotocol.io')).then(r=>r.text()).then(t=>process.stdout.write(t)).catch(e=>{console.error(e);process.exit(1);})\""
   );
 
   if (multi.code !== 0) {
@@ -189,7 +189,7 @@ async function main() {
           "ENABLE_HTTP_MCP=0",
           "-e",
           "ENABLE_HTTP_HEALTH=0",
-          "browser-search-mcp-landing",
+          "navigator-landing",
           "node",
           "src/mcp-server.js"
         ])

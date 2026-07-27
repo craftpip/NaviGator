@@ -1,7 +1,7 @@
 {
   "entryPoints": ["src/"],
   "out": "doc",
-  "name": "Browser Search MCP",
+  "name": "NaviGator",
   "readme": "README.md",
   "includeVersion": true,
   "plugin": [],
