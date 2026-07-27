@@ -256,15 +256,15 @@ Unlike Firecrawl, Jina Reader doesn't have waterfall pattern:
 
 ## What We Can Learn
 
-### 1. MarkifyService (High Impact)
+### 1. MarkifyService (High Impact) ✅ Done
 
 **What they do:** Custom HTML-to-markdown converter with rule-based processing.
 
-**What we could adopt:**
-- Build DOM-to-markdown converter (Priority 2 in our roadmap)
-- Walk visible DOM tree
-- Convert structural elements to markdown
-- Better output than plain text for many page types
+**What we adopted:**
+- Built DOM-to-markdown converter via TurndownService + GFM (`src/markdown.js`)
+- Noise selector filtering before conversion
+- Relative URL resolution, details/dl/sub/sup/abbr/q handling
+- Integrated end-to-end into `web_fetch` extraction pipeline
 
 ### 2. DOM Narrowing (Medium Impact)
 
@@ -293,14 +293,11 @@ Unlike Firecrawl, Jina Reader doesn't have waterfall pattern:
 - Split output by headers
 - Useful for long documentation pages
 
-### 5. Curl Engine (Medium Impact)
+### 5. Curl Engine (Medium Impact) ❌ Rejected
 
 **What they do:** Lightweight HTTP fetch for simple pages.
 
-**What we could adopt:**
-- Add HTTP-first fetching (like Essence)
-- Fall back to browser if needed
-- Speed: ~100ms vs ~2-5s
+**Our decision:** Not adopting — bot detection makes bare HTTP unreliable, and with prelaunched browser pooling the speed gap doesn't justify the complexity.
 
 ---
 
@@ -308,7 +305,7 @@ Unlike Firecrawl, Jina Reader doesn't have waterfall pattern:
 
 ### What Jina Reader Does Better
 
-1. **MarkifyService** — Custom HTML-to-markdown with proper formatting. We only output plain text.
+1. ~~**MarkifyService** — Custom HTML-to-markdown with proper formatting. We only output plain text.~~ ✅ **Adopted** — TurndownService + GFM, integrated end-to-end.
 2. **DOM narrowing** — Pre-filtering before Readability. We only remove a few selectors.
 3. **VLM integration** — Image descriptions for LLM context. We don't describe images.
 4. **Chunking** — Header-based splitting for RAG. We don't chunk output.
@@ -322,14 +319,14 @@ Unlike Firecrawl, Jina Reader doesn't have waterfall pattern:
 
 ### Adoption Priority
 
-| Improvement | Effort | Impact | Priority |
-|-------------|--------|--------|----------|
-| DOM-to-markdown converter | High | High | 1 |
-| HTTP-first fetching | Medium | High | 2 |
-| DOM narrowing | Medium | Medium | 3 |
+| Improvement | Effort | Impact | Priority | Status |
+|-------------|--------|--------|----------|--------|
+| DOM-to-markdown converter | High | High | 1 | ✅ Done |
+| HTTP-first fetching | Medium | High | 2 | ❌ Rejected |
+| DOM narrowing | Medium | Medium | 3 | ❌ Pending |
 | Header-based chunking | Low | Medium | 4 |
 | VLM image descriptions | High | Low | 5 |
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-27*

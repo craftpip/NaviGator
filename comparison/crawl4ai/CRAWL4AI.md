@@ -313,7 +313,7 @@ if not result.markdown.fit_markdown:
 
 1. **Content filters** — BM25 and Pruning remove noise before extraction. We rely on Readability which can be too aggressive.
 2. **Citation system** — Links as footnotes give cleaner LLM input. Our inline links add noise.
-3. **Multiple output variants** — Raw, fit, citation markdown. We only have one format.
+3. **Multiple output variants** — Raw, fit, citation markdown. We have one format (Turndown + GFM).
 4. **Extraction strategies** — LLM, CSS, Cosine options. We only have Readability.
 
 ### What We Do Better
@@ -335,4 +335,4 @@ if not result.markdown.fit_markdown:
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-27*

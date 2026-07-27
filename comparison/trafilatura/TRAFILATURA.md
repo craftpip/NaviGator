@@ -276,14 +276,14 @@ Recall escalation accepted if:
 - Use longer/more-complete extraction
 - Add recall escalation for short extractions
 
-### 2. Link Density Scoring (Medium Impact)
+### 2. Link Density Scoring (Medium Impact) ✅ Done
 
 **What they do:** Score content blocks by link density (link-heavy = navigation).
 
-**What we could adopt:**
-- Improve `scoreTextBlock()` with link density penalty
-- Current scoring only has basic word count
-- Link density is a strong signal for navigation vs content
+**What we adopted:**
+- Link density scoring in candidate block selection (`search.js:1216`)
+- Penalty: `linkDensity * 400` subtracted from score
+- Strong signal for navigation vs content, now integrated
 
 ### 3. Metadata Extraction (Medium Impact)
 
@@ -302,14 +302,14 @@ Recall escalation accepted if:
 - Our candidate block scoring is similar
 - Could add more aggressive baseline when Readability fails
 
-### 5. Formatting Preservation (Medium Impact)
+### 5. Formatting Preservation (Medium Impact) ✅ Done
 
 **What they do:** Preserve paragraphs, headings, lists, code, quotes.
 
-**What we could adopt:**
-- DOM-to-markdown converter (Priority 2)
-- Preserve structure instead of plain text
-- Better output for documentation, code, lists
+**What we adopted:**
+- DOM-to-markdown converter via TurndownService + GFM (`src/markdown.js`)
+- Preserves headings, bold, code, lists, links, tables
+- Integrated end-to-end into `web_fetch` extraction pipeline
 
 ---
 
@@ -318,9 +318,9 @@ Recall escalation accepted if:
 ### What Trafilatura Does Better
 
 1. **Heuristic cascade** — 4-stage extraction with comparison. We only have Readability + candidate blocks.
-2. **Link density scoring** — Strong signal for navigation vs content. We don't use this.
+2. ~~**Link density scoring** — Strong signal for navigation vs content. We don't use this.~~ ✅ **Adopted**
 3. **Metadata extraction** — Title, author, date, language. We only have SEO analysis.
-4. **Formatting preservation** — Preserve structure. We output plain text.
+4. ~~**Formatting preservation** — Preserve structure. We output plain text.~~ ✅ **Adopted** — Markdown via Turndown + GFM
 5. **Recall escalation** — Retry when extraction is short. We don't have this.
 
 ### What We Do Better
@@ -333,14 +333,14 @@ Recall escalation accepted if:
 
 ### Adoption Priority
 
-| Improvement | Effort | Impact | Priority |
-|-------------|--------|--------|----------|
-| jusText fallback | Low | High | 1 |
-| Link density scoring | Low | Medium | 2 |
-| Metadata extraction | Low | Medium | 3 |
-| DOM-to-markdown | High | High | 4 |
-| Recall escalation | Medium | Medium | 5 |
+| Improvement | Effort | Impact | Priority | Status |
+|-------------|--------|--------|----------|--------|
+| jusText fallback | Low | High | 1 | ❌ Pending |
+| Link density scoring | Low | Medium | 2 | ✅ Done |
+| Metadata extraction | Low | Medium | 3 | ❌ Pending |
+| DOM-to-markdown | High | High | 4 | ✅ Done |
+| Recall escalation | Medium | Medium | 5 | ❌ Pending |
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-27*

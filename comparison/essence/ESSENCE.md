@@ -284,27 +284,28 @@ RETRY_MAX_DELAY_MS = 30000
 
 ## What We Can Learn
 
-### 1. HTTP-First Fetching (High Impact)
+### 1. HTTP-First Fetching (High Impact) ❌ Rejected
 
 **What they do:** Try HTTP first, fall back to browser if needed.
 
-**What we could adopt:**
-- Add HTTP-first fetching for simple pages
-- Fall back to Chromium if content density low
-- Speed: ~100ms vs ~2-5s
-- This is Priority 1 in our roadmap
+**Our decision:** Not adopting for our project. Rationale:
+- Bot detection (Cloudflare, bot challenges) on simple sites makes bare HTTP unreliable
+- No reliable way to know in advance if a page needs a browser — always-runs, always-wastes
+- We prelaunch and pool browser pages, so incremental cost is already low
+- Most real-world sites in 2026 are JS-heavy and need the browser anyway
+- Would add a wasted round-trip on top of browser for the dominant case
 
-### 2. Content Density Detection (Medium Impact)
+### 2. Content Density Detection (Medium Impact) ❌ Rejected
 
 **What they do:** Analyze HTML to decide if browser is needed.
 
-**What we could adopt:**
-- Measure text-to-HTML ratio
-- Check for hydration markers
-- Decide if browser rendering is necessary
-- Avoid browser overhead for simple pages
+**Our decision:** Rejected along with HTTP-first — same rationale applies.
 
-### 3. Hydration Marker Detection (Low Impact)
+### 3. Hydration Marker Detection (Low Impact) ❌ Rejected
+
+**What they do:** Check for `__NEXT_DATA__`, `__NUXT__`, etc.
+
+**Our decision:** Rejected as prerequisite for HTTP-first, which we're not doing.
 
 **What they do:** Check for `__NEXT_DATA__`, `__NUXT__`, etc.
 
@@ -313,14 +314,15 @@ RETRY_MAX_DELAY_MS = 30000
 - Trigger browser rendering for SPAs
 - Skip browser for static pages
 
-### 4. In-Memory Caching (Medium Impact)
+### 4. In-Memory Caching (Medium Impact) ✅ Done
 
 **What they do:** Cache results in memory via `moka`.
 
-**What we could adopt:**
-- Add URL-based caching
-- TTL-based expiration
-- Our `pageLinksByPageRef` is similar but process-local
+**What we adopted:**
+- Tool caching with 5-min TTL (`mcp-server.js`)
+- Per-tool cache (`web_search`, `web_fetch`)
+- `bypassCache` parameter to force refresh
+- Max 200 cache entries with LRU pruning
 
 ### 5. Robots.txt Compliance (Low Impact)
 
@@ -337,10 +339,10 @@ RETRY_MAX_DELAY_MS = 30000
 
 ### What Essence Does Better
 
-1. **HTTP-first fetching** — Fast for simple pages. We always use browser.
-2. **Content density detection** — Decide if browser needed. We always render.
-3. **Hydration markers** — Detect SPAs automatically. We don't check.
-4. **In-memory caching** — Fast repeat requests. We don't cache.
+1. ~~**HTTP-first fetching** — Fast for simple pages.~~ ❌ **Rejected** — Bot detection makes HTTP unreliable for us; browser pooling makes the gap smaller.
+2. ~~**Content density detection** — Decide if browser needed.~~ ❌ **Rejected** — Same rationale.
+3. ~~**Hydration markers** — Detect SPAs automatically.~~ ❌ **Rejected** — Prerequisite for HTTP-first.
+4. ~~**In-memory caching** — Fast repeat requests. We don't cache.~~ ✅ **Adopted** — Tool caching with 5-min TTL and bypass
 5. **Robots.txt** — Polite crawling. We don't check.
 
 ### What We Do Better
@@ -353,14 +355,14 @@ RETRY_MAX_DELAY_MS = 30000
 
 ### Adoption Priority
 
-| Improvement | Effort | Impact | Priority |
-|-------------|--------|--------|----------|
-| HTTP-first fetching | Medium | High | 1 |
-| Content density detection | Low | High | 2 |
-| In-memory caching | Low | Medium | 3 |
-| Hydration marker detection | Low | Low | 4 |
-| Robots.txt compliance | Low | Low | 5 |
+| Improvement | Effort | Impact | Priority | Status |
+|-------------|--------|--------|----------|--------|
+| HTTP-first fetching | Medium | High | 1 | ❌ Rejected |
+| Content density detection | Low | High | 2 | ❌ Rejected |
+| In-memory caching | Low | Medium | 3 | ✅ Done |
+| Hydration marker detection | Low | Low | 4 | ❌ Rejected |
+| Robots.txt compliance | Low | Low | 5 | ❌ Pending |
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-27*

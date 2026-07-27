@@ -36,11 +36,11 @@
 
 ## What We Can Learn
 
-### 1. Simple Markdown Conversion (Low Impact)
+### 1. Simple Markdown Conversion (Low Impact) ✅ Done
 
 **What they do:** Simple browser → markdown pipeline.
 
-**Relevance:** We could add markdown output option to `web_fetch`.
+**Relevance:** We've adopted markdown output (TurndownService + GFM, `src/markdown.js`). Our `web_fetch` now returns markdown natively.
 
 ---
 
@@ -51,11 +51,12 @@
 
 **What we do better:**
 1. Domain hints
-2. Tables and links extraction
-3. MCP integration
+2. Markdown conversion (Turndown + GFM)
+3. Tables and links extraction
+4. MCP integration
 
 **Adoption priority:** Low — WebToMD is too simple for our needs.
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-27*

@@ -40,28 +40,28 @@ Lightweight HTTP fetching:
 
 ## What We Can Learn
 
-### 1. Clean Markdown Conversion (Medium Impact)
+### 1. Clean Markdown Conversion (Medium Impact) ✅ Done
 
 **What they do:** Focus on clean, LLM-friendly markdown.
 
-**Relevance:** We output plain text. Could adopt markdown conversion for better structure.
+**Relevance:** We've adopted markdown conversion (TurndownService + GFM, `src/markdown.js`). Now matches their output quality.
 
 ---
 
 ## Lessons for Us
 
 **What Pulldown does better:**
-1. Clean markdown conversion
-2. Fast HTTP fetching
+1. Fast HTTP fetching
 
 **What we do better:**
 1. Browser rendering (SPAs)
 2. Domain hints
-3. Tables and links extraction
-4. MCP integration
+3. Markdown conversion (Turndown + GFM)
+4. Tables and links extraction
+5. MCP integration
 
 **Adoption priority:** Low — Pulldown is a simple conversion library. We need more features.
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-27*

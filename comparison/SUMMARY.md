@@ -10,12 +10,19 @@
 
 **What we do differently:** Domain hints, browserText fallback, tables always extracted, links with ref_ids.
 
-**What we're missing:** HTTP-first fetching, content filters, DOM-to-markdown conversion, LLM extraction.
+**What we've added since:** DOM-to-markdown conversion (Turndown + GFM), tool caching, link density scoring, truncation indicator, domain hint structured fields, auth wall detection.
 
-**Top 3 improvements to adopt:**
-1. HTTP-first fetching (like Essence) — Speed up simple pages
-2. Content filters (like Crawl4AI) — Remove noise before Readability
-3. DOM-to-markdown conversion (like Jina) — Better structure than plain text
+**What we're still missing:** Content filters (BM25/pruning), Readability retry, LLM extraction.
+
+**Remaining improvements to adopt:**
+1. Content filters (like Crawl4AI) — Remove noise before Readability
+2. Readability retry with different options — Higher success rate for edge cases
+
+**What we've already adopted:**
+- ✅ DOM-to-markdown conversion via TurndownService + GFM
+- ✅ Tool caching with per-tool TTL and bypass param
+- ✅ Link density scoring in candidate block selection
+- ✅ Truncation indicator when output exceeds maxChars
 
 ---
 
@@ -23,7 +30,7 @@
 
 | Project | Language | Browser | HTTP-First | Fallback Chain |
 |---------|----------|---------|------------|----------------|
-| **Us** | JavaScript | Chromium | No | Readability → candidate blocks |
+| **Us** | JavaScript | Chromium | Rejected | Markdown → Readability → candidate blocks + caching |
 | Firecrawl | TypeScript | Playwright | No | Multi-engine waterfall |
 | Crawl4AI | Python | Playwright | No | Content filters |
 | Jina Reader | TypeScript | Puppeteer | No | Browser/Curl auto |
@@ -31,7 +38,7 @@
 | Readability.js | JavaScript | None | Yes | N/A (library) |
 | Essence | Rust | Chromium | Yes | HTTP → Browser |
 
-**Key insight:** Most projects use HTTP-first with browser fallback. We always use browser.
+**Key insight:** HTTP-first works for others because they cold-launch browsers. Since we prelaunch and pool pages, browser overhead is already minimal. Bot detection on HTTP-only requests makes it unreliable for our use case.
 
 ---
 
@@ -39,7 +46,7 @@
 
 | Project | Primary | Fallback | LLM | Content Filters |
 |---------|---------|----------|-----|-----------------|
-| **Us** | Readability | BrowserText, candidate blocks | No | No |
+| **Us** | Markdown (Turndown) | BrowserText, candidate blocks, link density | No | No |
 | Firecrawl | Readability | Multi-engine | Yes (extract) | No |
 | Crawl4AI | HTML-to-text | Content filters | Yes (optional) | BM25, Pruning |
 | Jina Reader | Readability | Custom Markify | Yes (VLM) | No |
@@ -55,7 +62,7 @@
 
 | Project | Markdown | Tables | Links | Metadata | Citations |
 |---------|----------|--------|-------|----------|-----------|
-| **Us** | Plain text | Always | With ref_ids | SEO analysis | No |
+| **Us** | Markdown (Turndown + GFM) | Always | With ref_ids | SEO analysis | No |
 | Firecrawl | Yes | Yes | Yes | Yes | No |
 | Crawl4AI | Yes | Basic | Yes | Yes | Yes |
 | Jina Reader | Yes | Yes | Yes | Yes | Yes |
@@ -63,33 +70,23 @@
 | Readability.js | HTML | No | No | Yes | No |
 | Essence | Yes | Yes | Yes | Yes | No |
 
-**Key insight:** Most projects output markdown. We output plain text. Jina and Crawl4AI have citation systems.
+**Key insight:** Most projects output markdown. We now output markdown too (Turndown + GFM). Jina and Crawl4AI have citation systems.
 
 ---
 
 ## What Everyone Does Well
 
-### 1. HTTP-First Fetching (Essence, Trafilatura)
-- Try HTTP first (~100ms)
-- Fall back to browser if needed (~2-5s)
-- 10-50x faster for simple pages
-
-### 2. Content Filters (Crawl4AI)
+### 1. Content Filters (Crawl4AI)
 - BM25 for query-specific extraction
 - Pruning for general noise removal
 - Better than Readability for non-article pages
 
-### 3. DOM-to-Markdown (Jina, Crawl4AI)
-- Convert HTML structure to markdown
-- Preserve headings, code, lists
-- Better output than plain text
-
-### 4. Multi-Engine Fallback (Firecrawl)
+### 3. Multi-Engine Fallback (Firecrawl)
 - Try multiple engines in parallel
 - First success wins
 - Higher success rate
 
-### 5. LLM Extraction (Firecrawl, Crawl4AI)
+### 4. LLM Extraction (Firecrawl, Crawl4AI)
 - Extract structured data from unstructured content
 - User defines schema
 - LLM extracts matching data
@@ -108,17 +105,22 @@
 - Use browser text if significantly more content
 - Catches cases where Readability misses
 
-### 3. Tables Always Extracted
+### 3. Markdown Output
+- TurndownService + GFM plugin
+- Preserves headings, bold, code, lists, links, tables
+- Matches industry standard output format
+
+### 4. Tables Always Extracted
 - Clean pipe-separated format
 - No flag needed (always on)
 - Better than most projects
 
-### 4. Links with ref_ids
+### 5. Links with ref_ids
 - Always extract links
 - Store for web_page_links tool
 - Unique to our MCP integration
 
-### 5. MCP Integration
+### 6. MCP Integration
 - Built-in MCP server
 - Tools for search, fetch, screenshot, links
 - Other projects don't have this
@@ -127,22 +129,25 @@
 
 ## Top Improvements to Adopt
 
-### Priority 1: HTTP-First Fetching (High Impact, Medium Effort)
+### ✅ Already Adopted
 
-**What:** Try HTTP first, fall back to browser if content density low.
+| Feature | Status | Where |
+|---------|--------|-------|
+| DOM-to-markdown conversion | ✅ Done | `src/markdown.js` via TurndownService + GFM |
+| Tool caching | ✅ Done | `mcp-server.js` — per-tool cache with 5 min TTL, `bypassCache` param |
+| Link density scoring | ✅ Done | `search.js:1216` — candidate scoring with link density penalty |
+| Truncation indicator | ✅ Done | `search.js:2257` — appended when output exceeds maxChars |
 
-**How:**
-1. Fetch HTML with `reqwest` (or similar)
-2. Check content density (text-to-HTML ratio)
-3. Check for hydration markers (`__NEXT_DATA__`, `__NUXT__`)
-4. If density OK and no markers → use HTTP result
-5. If density low or markers found → use browser
+### ❌ Rejected: HTTP-First Fetching
 
-**Benefit:** 10-50x faster for simple pages (blogs, docs, news).
+**Decision:** Not adopting. Rationale:
+- Bot detection on bare HTTP (Wikipedia, Stack Overflow, etc.) makes success unreliable
+- No reliable way to know in advance if a page needs a browser — always-runs, always-wastes
+- Browser is prelaunched and pooled, so incremental cost is already low
+- Most real-world sites (JS-heavy, SPA, Cloudflare) need the browser anyway
+- Would add a wasted HTTP round-trip on top of browser for the dominant case
 
-**Reference:** Essence (HTTP → Browser waterfall)
-
-### Priority 2: Content Filters (High Impact, Medium Effort)
+### Priority 1: Content Filters (High Impact, Medium Effort)
 
 **What:** Add BM25 and Pruning filters to remove noise before Readability.
 
@@ -156,41 +161,7 @@
 
 **Reference:** Crawl4AI (BM25, Pruning filters)
 
-### Priority 3: DOM-to-Markdown Conversion (High Impact, High Effort)
-
-**What:** Convert HTML structure to markdown instead of plain text.
-
-**How:**
-1. Walk visible DOM tree
-2. Convert structural elements:
-   - Headings → `#`, `##`, `###`
-   - Bold → `**text**`
-   - Links → `[text](url)`
-   - Code blocks → ``` ``` ```
-   - Lists → `- item`
-3. Filter out noise (scripts, styles, nav)
-
-**Benefit:** Better output for documentation, code, lists.
-
-**Reference:** Jina Reader (MarkifyService), Crawl4AI (DefaultMarkdownGenerator)
-
-### Priority 4: Link Density Scoring (Medium Impact, Low Effort)
-
-**What:** Use link density as signal for navigation vs content.
-
-**How:**
-1. Calculate link density for each text block:
-   ```
-   linkDensity = textInLinks / totalText
-   ```
-2. Penalize high link density (navigation)
-3. Boost low link density (content)
-
-**Benefit:** Better extraction for link-heavy pages.
-
-**Reference:** Readability.js (link density check), Trafilatura (link density scoring)
-
-### Priority 5: Retry with Different Options (Medium Impact, Low Effort)
+### Priority 3: Readability Retry (Medium Impact, Low Effort)
 
 **What:** Retry Readability with different options if result too short.
 
@@ -227,78 +198,80 @@
 
 ## Cross-Project Patterns
 
-### Pattern 1: HTTP-First, Browser-Second
-Almost every project tries HTTP first, falls back to browser. We should too.
-
-### Pattern 2: Content Filters Before Readability
+### Pattern 1: Content Filters Before Readability
 Projects that use filters (Crawl4AI) get better results than those that don't (us).
 
-### Pattern 3: Markdown > Plain Text
-All projects output markdown. We output plain text. Markdown preserves structure.
+### Pattern 2: Markdown Standard
+All projects output markdown. We now do too (Turndown + GFM). Matches the industry standard.
 
-### Pattern 4: Citation Systems
+### Pattern 3: Citation Systems
 Jina and Crawl4AI convert links to footnotes for cleaner LLM input. Worth considering.
 
-### Pattern 5: Retry/Cascade
+### Pattern 4: Retry/Cascade
 Projects with fallback chains (Trafilatura, Firecrawl) have higher success rates.
 
 ---
 
-## Implementation Roadmap
+## Implementation Status
 
-### Phase 1: Quick Wins (1-2 days)
-1. Link density scoring (low effort, medium impact)
-2. Retry with different Readability options (low effort, medium impact)
+### ✅ Phase 1: Quick Wins (Done)
+1. ~~Link density scoring (low effort, medium impact)~~ ✅ Done
+2. Tool caching with bypass (medium effort, high impact) ✅ Done
+3. Truncation indicator (low effort, medium impact) ✅ Done
+4. ~~Retry with different Readability options (low effort, medium impact)~~ Still pending
 
-### Phase 2: HTTP-First (1-2 weeks)
-1. Add HTTP fetching (reqwest or similar)
-2. Content density detection
-3. Hydration marker detection
-4. HTTP → Browser fallback
+### ✅ Phase 2: DOM-to-Markdown (Done)
+1. ~~TurndownService integration~~ ✅ Done (`src/markdown.js`)
+2. ~~GFM plugin support~~ ✅ Done
+3. ~~Noise selector filtering~~ ✅ Done
+4. ~~Integration with extraction pipeline~~ ✅ Done
+
+### ❌ Phase 3: HTTP-First — Rejected
+1. ~~Add HTTP fetching~~ — Bot detection makes it unreliable
+2. ~~Content density detection~~ — Always-runs, always-wastes with prelaunched browser
+3. ~~Hydration marker detection~~ — Dominant case needs browser anyway
+4. ~~HTTP → Browser fallback~~ — Extra latency for no benefit
 
 ### Phase 3: Content Filters (2-3 weeks)
 1. PruningContentFilter implementation
 2. BM25ContentFilter implementation
 3. Integration with extraction pipeline
 
-### Phase 4: DOM-to-Markdown (3-4 weeks)
-1. DOM walker implementation
-2. Structural element conversion
-3. Noise filtering
-4. Integration with extraction pipeline
-
 ---
 
 ## Key Questions Answered
 
 ### 1. Should we add HTTP-first fetching?
-**Yes.** Almost every project does this. 10-50x faster for simple pages.
+**No.** Rejected — bot detection on simple sites makes it unreliable, and with a prelaunched browser pool the savings don't materialize.
 
 ### 2. Should we add content filters?
 **Yes.** Crawl4AI's filters improve accuracy significantly. Low effort, high impact.
 
 ### 3. Should we add DOM-to-markdown conversion?
-**Yes.** We output plain text, everyone else outputs markdown. Higher quality output.
+**Yes — and we did.** TurndownService + GFM, integrated into the full extraction pipeline. Output is now markdown.
 
 ### 4. Should we add LLM extraction?
 **Maybe.** Only if users need structured data. Domain hints are faster and cheaper.
 
 ### 5. Should we add multi-engine fallback?
-**Maybe.** HTTP-first fetching covers most cases. Full multi-engine is complex.
+**Maybe.** Our circuit-breaker + fallback chain already handles engine failures. Full multi-parallel is complex and likely not worth it since the fallback chain already works.
 
 ---
 
 ## Conclusion
 
-Our tool has unique strengths (domain hints, browserText fallback, tables, links, MCP) but is missing key features that other projects have (HTTP-first, content filters, markdown conversion).
+Our tool has unique strengths (domain hints, browserText fallback, tables, links, MCP, markdown output) but is still missing content filters for noise removal before Readability.
 
-The top 3 improvements to adopt:
-1. **HTTP-first fetching** — Speed up simple pages
-2. **Content filters** — Remove noise before Readability
-3. **DOM-to-markdown** — Better structure than plain text
+**What we've adopted since the research began:**
+- ✅ DOM-to-markdown conversion (Turndown + GFM)
+- ✅ Tool caching (per-tool TTL, bypass param)
+- ✅ Link density scoring
+- ✅ Truncation indicator
 
-These would bring us in line with the best practices in the field while keeping our unique advantages.
+**Remaining improvements:**
+1. **Content filters** — Remove noise before Readability
+2. **Readability retry** — Higher success rate for edge cases
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-27*

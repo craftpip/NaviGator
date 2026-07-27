@@ -226,23 +226,24 @@ When certain errors occur, automatically adjusts feature flags:
 
 ## What We Can Learn
 
-### 1. Multi-Engine Fallback (High Impact)
+### 1. Multi-Engine Fallback (Medium Impact)
 
 **What they do:** Try multiple engines in parallel with waterfall pattern. First success wins.
 
 **What we could adopt:**
-- Add HTTP-first fetching (like Essence) for pages that don't need JavaScript
-- Fall back to browser if content density is low or hydration markers detected
-- Speed: HTTP fetch is ~100ms vs browser ~2-5s
+- Currently we have single-engine (Chromium) with fallback chain
+- Could try multiple strategies in parallel and pick first success
+- Already partially covered: Readability → browserText → candidate blocks
 
-### 2. Index Cache (Medium Impact)
+### 2. Index Cache (Medium Impact) ✅ Done
 
 **What they do:** Cache results with TTL. Return cached version if fresh enough.
 
-**What we could adopt:**
-- Cache extraction results by URL
-- Return cached results for repeated requests
-- Our `pageLinksByPageRef` already does something similar (process-local)
+**What we adopted:**
+- Tool caching with 5-min TTL (`mcp-server.js`)
+- Per-tool cache for `web_search` and `web_fetch`
+- `bypassCache` parameter to force refresh
+- Max 200 cache entries with LRU pruning
 
 ### 3. LLM-Powered Extraction (High Impact)
 
@@ -277,9 +278,9 @@ When certain errors occur, automatically adjusts feature flags:
 
 ### What Firecrawl Does Better
 
-1. **Multi-engine fallback** — We only have one engine (Chromium). Adding HTTP-first would speed up simple pages.
+1. **Multi-engine fallback** — We have one primary engine with fallback chain. Adding parallel strategies could improve success rate.
 2. **LLM extraction** — We don't have structured data extraction. Adding optional LLM extraction would be powerful.
-3. **Caching** — We don't cache results. Adding URL-based caching would improve performance.
+3. ~~**Caching** — We don't cache results. Adding URL-based caching would improve performance.~~ ✅ **Adopted** — Tool caching with 5-min TTL and bypass
 4. **Diff tracking** — We don't track changes. Adding diff would help with monitoring.
 
 ### What We Do Better
@@ -291,14 +292,14 @@ When certain errors occur, automatically adjusts feature flags:
 
 ### Adoption Priority
 
-| Improvement | Effort | Impact | Priority |
-|-------------|--------|--------|----------|
-| HTTP-first fetching | Medium | High | 1 |
-| Index cache | Low | Medium | 2 |
-| LLM extraction | High | High | 3 |
-| Smart scrape | Medium | Medium | 4 |
-| Diff tracking | Low | Low | 5 |
+| Improvement | Effort | Impact | Priority | Status |
+|-------------|--------|--------|----------|--------|
+| HTTP-first fetching | Medium | High | 1 | ❌ Rejected |
+| Index cache | Low | Medium | 2 | ✅ Done |
+| LLM extraction | High | High | 3 | ❌ Pending |
+| Smart scrape | Medium | Medium | 4 | ❌ Pending |
+| Diff tracking | Low | Low | 5 | ❌ Pending |
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-27*

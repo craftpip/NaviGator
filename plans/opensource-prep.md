@@ -2,12 +2,22 @@
 
 ## Current State
 
-The repo (`craftpip/browser-search-mcp`) is being renamed to `craftpip/navigator`. Most open-source boilerplate already exists — license, CoC, security policy, contributing guide, issue/PR templates, release workflow.
+The repo (`craftpip/browser-search-mcp`) is being renamed to `craftpip/navigator`. Most open-source boilerplate already exists — license, CoC, security policy, contributing guide.
 
 **What this project needs to go public well:**
 1. A new contributor must be able to go from `git clone` to a working server in under 5 minutes
 2. A potential contributor must know what's worth working on and how to start
 3. The project must look actively maintained (CI green, responsive, clear scope)
+
+**Note on what does NOT exist yet (all of these are additions this plan needs to create):**
+- No `.github/` directory at all — no issue templates, no PR template, no workflows, no Dependabot
+- No `.editorconfig` — editors will fight on indent/style
+- No ESLint / Prettier config — every PR will have formatting noise
+- No `CHANGELOG.md` — users can't see what changed between versions
+- No `examples/` directory — no quick demo scripts for users
+- No `FUNDING.yml`
+- Docker runs as root (needs non-root hardening)
+- No multi-arch Docker builds
 
 ---
 
@@ -23,6 +33,7 @@ The rename is underway per `plans/rename-to-navigator.md`. All items below assum
 - [ ] Update `web-fetch-docs.md`, `websites/README.md`
 - [ ] Rename repo on GitHub → `git remote set-url origin`
 - [ ] Clean up old containers/volumes after rename
+- [NEW] Verify `package.json` metadata — name, description, keywords, repo URL, bugs URL, homepage all point to `craftpip/navigator`
 
 ---
 
@@ -122,6 +133,38 @@ updates:
       interval: "weekly"
 ```
 
+### [NEW] 2.5 Add Docker image publish workflow
+
+Create `.github/workflows/docker-publish.yml` to build and push to GHCR on release/tags:
+
+- Tag with `latest`, `X.Y.Z`, and `major.minor`
+- Multi-arch build (linux/amd64 + linux/arm64) — requires QEMU setup
+- Only runs on tagged releases, not every push
+
+### [NEW] 2.6 Add npm publish workflow (if publishing to npm)
+
+Create `.github/workflows/npm-publish.yml`:
+
+- Runs `npm publish` when a GitHub release is published
+- Requires `NPM_TOKEN` secret
+- Version must already be bumped in `package.json`
+
+### [NEW] 2.7 Add stale bot for issue management
+
+Create `.github/stale.yml` or use the GitHub Actions `actions/stale`:
+
+- Mark issues/PRs as stale after 90 days of inactivity
+- Close after 14 more days
+- Exempt labels: `good-first-issue`, `help-wanted`, `discussion`, `enhancement`
+
+### [NEW] 2.8 Add PR labeler workflow
+
+Auto-label PRs based on changed paths (e.g., `src/` → `core`, `docs/` → `documentation`, `tests/` → `testing`).
+
+### [NEW] 2.9 Add semantic PR title check (optional)
+
+Enforce conventional commits (`feat:`, `fix:`, `docs:`, etc.) via `amannn/action-semantic-pull-request`. Keeps release notes clean if auto-generating.
+
 ---
 
 ## Phase 3 — Content Pruning & Documentation (Medium Priority)
@@ -182,6 +225,28 @@ docs/
 
 This cleans up the root directory and makes the project look organized.
 
+### [NEW] 3.4 Create issue and PR templates
+
+Create `.github/ISSUE_TEMPLATE/bug-report.md` and `feature-request.md`:
+- Bug template: steps to reproduce, expected vs actual, logs, environment
+- Feature template: problem statement, proposed solution, alternatives considered
+
+Create `.github/PULL_REQUEST_TEMPLATE.md`:
+- Checklist: tested, docs updated, self-reviewed, no unrelated changes
+- Description of what and why
+
+### [NEW] 3.5 Add `.editorconfig`
+
+Ensures consistent indentation (2 spaces), charset, line endings across all editors. Place at repo root.
+
+### [NEW] 3.6 Add basic ESLint config
+
+Even a minimal config (`npx eslint --init` with `@eslint/js` recommended rules) catches obvious bugs and reduces PR formatting noise. Add a `lint` script to `package.json` and run it in CI.
+
+### [NEW] 3.7 Create `CHANGELOG.md`
+
+Start with initial entries for current state, keep format consistent with [Keep a Changelog](https://keepachangelog.com/). Link from README.
+
 ---
 
 ## Phase 4 — README Rewrite (Medium Priority)
@@ -237,6 +302,42 @@ At the top:
 [![Docker Pulls](https://img.shields.io/docker/pulls/craftpip/navigator)](https://hub.docker.com/r/craftpip/navigator)  # if published
 ```
 
+### [NEW] 4.1 Add examples directory
+
+Create `examples/` with 2-3 practical scripts:
+- `examples/web-search.mjs` — perform a search and print results
+- `examples/web-fetch.mjs` — fetch a URL and print clean text
+- `examples/web-screenshot.mjs` — capture a screenshot to file
+
+Each script is self-contained, runnable with `node examples/xxx.mjs`, and shows the MCP tool call pattern.
+
+### [NEW] 4.2 Add FAQ section or separate FAQ doc
+
+Common questions to address:
+- What's the difference between the backends (cloakbrowser vs chromium vs lightpanda)?
+- Do I need a real browser? Can I use a headless one?
+- How do I connect this from Claude / VS Code / Cursor / etc.?
+- What ports need to be exposed?
+- Why is search failing? (circuit breakers, network issues)
+- Can I use this without Docker?
+
+### [NEW] 4.3 Add public roadmap
+
+A brief section in README or a `ROADMAP.md`:
+- Planned features (e.g., ASCII screenshot shipping, more backends)
+- Known limitations
+- How to influence priorities (open issues, upvote)
+
+Signal to contributors that the project has direction.
+
+### [NEW] 4.4 State versioning policy
+
+Explicitly state in README: "This project follows [SemVer](https://semver.org/). Until 1.0.0, minor versions may include breaking changes."
+
+### [NEW] 4.5 Add logo / banner image (optional but high impact)
+
+Even a simple text-based banner or a clean SVG logo at the top of README makes the project look established. A terminal recording (asciicast) in the demo section is even better.
+
 ---
 
 ## Phase 5 — Pre-Launch Audit (Critical)
@@ -274,7 +375,30 @@ npm audit
 
 Document any high/critical findings. If there are unfixable issues, add a note to the README.
 
-### 5.4 Verify gitignore covers everything
+### 5.4 Add FUNDING.yml
+
+Create `.github/FUNDING.yml` with GitHub Sponsors link. Even if you don't expect funding, having this file signals the project is professionally maintained.
+
+### [NEW] 5.5 Docker hardening: run as non-root
+
+Check the `Dockerfile` — if the app runs as root, add a non-root user (`node` user exists in Node images):
+```dockerfile
+USER node
+```
+Or create a dedicated user. Running containers as root is a security red flag for production/enterprise users.
+
+### [NEW] 5.6 Multi-arch Docker builds
+
+Update the Docker publish workflow (2.5) to build for `linux/amd64` and `linux/arm64`. Requires:
+- `docker/setup-qemu-action@v3`
+- `docker/setup-buildx-action@v3`
+- Platform-aware dependencies (puppeteer/chromium on arm64)
+
+### [NEW] 5.7 Container security scanning (optional)
+
+Add a CI job that scans the built Docker image with `docker/scout-action` or Trivy. Shows commitment to supply-chain security.
+
+### 5.8 Verify gitignore covers everything
 
 Current `.gitignore`:
 ```
@@ -307,8 +431,13 @@ dist/
 - [ ] Auto-delete head branches on merge
 - [ ] Set repo description and topics (see below)
 - [ ] Enable Discussions (optional, for Q&A / feature requests)
+- [NEW] Configure Discussion categories: "General", "Q&A", "Show and tell", "Ideas"
 
-### Topics
+### [NEW] Repo description
+
+```
+MCP server with a real browser — search, extract, screenshot any webpage
+```
 
 `mcp`, `model-context-protocol`, `browser`, `search`, `chromium`, `puppeteer`, `http-server`, `ai`, `llm`, `web-scraping`
 
@@ -339,14 +468,14 @@ dist/
 |-------|--------|-----------------|
 | 0 — Identity | 1–2h | Yes (rename plan exists) |
 | 1 — First-Run Experience | 2–3h | No (needs testing) |
-| 2 — CI & Automation | 1–2h | Yes |
-| 3 — Content Pruning | 2–4h | Yes |
-| 4 — README Rewrite | 2–3h | Yes |
-| 5 — Pre-Launch Audit | 1–2h | Yes |
+| 2 — CI & Automation | 2–4h | Yes |
+| 3 — Content Pruning & Tooling | 3–5h | Yes |
+| 4 — README Rewrite | 3–5h | Yes |
+| 5 — Pre-Launch Audit | 2–3h | Yes |
 | 6 — Launch | 30min | No (must be last) |
 | 7 — Post-Launch | Ongoing | N/A |
 
-**Total up-front effort: ~10–18h**
+**Total up-front effort: ~13–23h** (expanded from original 10–18h with new items)
 
 ---
 

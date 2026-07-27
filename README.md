@@ -1,4 +1,4 @@
-# NaviGator
+# 🐊 NaviGator
 
 NaviGator gives your MCP client a real browser for:
 

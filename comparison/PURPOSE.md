@@ -57,12 +57,10 @@ We're analyzing these projects across7 dimensions:
 
 After reading all analyses, we should be able to answer:
 
-1. Should we add HTTP-first fetching (like Essence) for pages that don't need JavaScript?
-2. Should we adopt content filters (like Crawl4AI's BM25/Pruning) instead of relying on Readability?
-3. Should we implement a DOM-to-markdown converter (like Jina's MarkifyService) instead of plain text?
-4. Should we add auto-retry with fallback (like Firecrawl's waterfall pattern)?
-5. Should we consider ML-based extraction (like Trafilatura's heuristic cascade) for better accuracy?
-6. What's the right balance between browser rendering (our current approach) and HTTP-only (faster)?
+1. Should we adopt content filters (like Crawl4AI's BM25/Pruning) instead of relying on Readability?
+2. ~~Should we implement a DOM-to-markdown converter (like Jina's MarkifyService) instead of plain text?~~ ✅ **Done** — TurndownService + GFM, integrated end-to-end
+3. Should we add Readability retry with different options for short extractions?
+4. Should we consider ML-based extraction (like Trafilatura's heuristic cascade) for better accuracy?
 
 ## Our Current Approach
 
@@ -73,28 +71,35 @@ URL → Browser (Chromium) → page.goto()
   → Wait for content (stabilization)
   → Capture HTML + browserText
   → Domain hint lookup (first-match wins)
-    → IF hint.sections → section-based extraction (early return)
+    → IF hint.flags.authWall/visualOnly → early return with error
+    → IF hint.sections → section-based extraction via htmlToMarkdown (early return)
     → ELSE → Readability extraction
-      → IF browserText has 1.5x+ more content → use browserText instead
-    → ELSE → candidate block scoring
+      → IF browserText has 1.5x+ more content → full DOM htmlToMarkdown instead
+    → ELSE → candidate block scoring (link density + content heuristics)
   → Always extract tables → append as ### Table N
   → Always extract links → store for web_page_links tool
-  → Return markdown with text + tables
+  → Convert all HTML to Markdown via TurndownService + GFM
+  → Append truncation indicator if output exceeds maxChars
+  → Cache result (5 min TTL, bypassable via bypassCache param)
 ```
 
 **Strengths:**
 - Real browser renders JavaScript (SPAs work)
 - Domain hints give precise extraction for known sites
+- **Markdown output** via TurndownService + GFM plugin (preserves headings, bold, code, lists, links)
 - BrowserText fallback catches cases where Readability misses content
-- Tables always extracted in clean format
+- Tables always extracted in clean pipe-separated format
+- Link density scoring in candidate block selection
+- Tool caching with per-tool TTL and bypass
+- Links always extracted with ref_id system for `web_page_links` tool
+- Domain hint structured fields (`text`, `list`, `markdown` formats)
+- Auth wall / visual-only page detection
 
 **Weaknesses:**
-- Always uses browser (slow for simple pages)
-- Readability struggles with non-article pages (profiles, card grids, dashboards)
 - No content filtering (BM25, pruning) for query-specific extraction
-- No DOM-to-markdown conversion (plain text loses structure)
-- No auto-retry with different strategies when primary fails
+- No Readability retry with different options when primary extraction fails
+- No LLM extraction for structured data
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-27*

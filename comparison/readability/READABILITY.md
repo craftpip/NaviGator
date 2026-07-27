@@ -265,14 +265,14 @@ If initial extraction is too short:
 
 ## What We Can Learn
 
-### 1. Link Density Modifier (High Impact)
+### 1. Link Density Modifier (High Impact) ✅ Done
 
 **What they do:** Configurable link density threshold.
 
-**What we could adopt:**
-- Add link density penalty to `scoreTextBlock()`
-- Current scoring doesn't consider link density
-- Strong signal for navigation vs content
+**What we adopted:**
+- Link density scoring in candidate block selection (`search.js:1216`)
+- Penalty: `linkDensity * 400` subtracted from score
+- Strong signal for navigation vs content, now integrated
 
 ### 2. Score Propagation (Medium Impact)
 
@@ -317,7 +317,7 @@ If initial extraction is too short:
 ### What Readability Does Better
 
 1. **Score propagation** — Parent containers get child scores. We don't propagate.
-2. **Link density** — Strong signal for navigation vs content. We don't use this.
+2. ~~**Link density** — Strong signal for navigation vs content. We don't use this.~~ ✅ **Adopted** — Link density scoring integrated in candidate selection
 3. **Retry logic** — Less aggressive cleanup if result too short. We don't retry.
 4. **Metadata extraction** — JSON-LD, OpenGraph, meta tags. We only have SEO analysis.
 5. **Conditional cleanup** — Remove only when junk. We remove aggressively.
@@ -332,14 +332,14 @@ If initial extraction is too short:
 
 ### Adoption Priority
 
-| Improvement | Effort | Impact | Priority |
-|-------------|--------|--------|----------|
-| Link density scoring | Low | High | 1 |
-| Score propagation | Medium | Medium | 2 |
-| Retry with different options | Low | Medium | 3 |
-| JSON-LD metadata | Low | Low | 4 |
-| Conditional cleanup | Medium | Medium | 5 |
+| Improvement | Effort | Impact | Priority | Status |
+|-------------|--------|--------|----------|--------|
+| Link density scoring | Low | High | 1 | ✅ Done |
+| Score propagation | Medium | Medium | 2 | ❌ Pending |
+| Retry with different options | Low | Medium | 3 | ❌ Pending |
+| JSON-LD metadata | Low | Low | 4 | ❌ Pending |
+| Conditional cleanup | Medium | Medium | 5 | ❌ Pending |
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-27*
