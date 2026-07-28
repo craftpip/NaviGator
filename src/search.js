@@ -599,6 +599,18 @@ function extractTablesFromDocument(doc, {
     if (columnCount < 2 || rows.length < 1) continue;
     if (columnCount === 2 && rows.length === 1) continue;
 
+    // Trim leading/trailing columns where all body cells are empty (chart icons, spacers, etc.)
+    const isColumnEmpty = (colIdx) =>
+      rows.every((row) => !(row[colIdx] || "").replace(/\s+/g, ""));
+    let trimStart = 0;
+    while (trimStart < columnCount && isColumnEmpty(trimStart)) trimStart += 1;
+    let trimEnd = columnCount - 1;
+    while (trimEnd > trimStart && isColumnEmpty(trimEnd)) trimEnd -= 1;
+    if (trimStart > 0 || trimEnd < columnCount - 1) {
+      headers = headers.slice(trimStart, trimEnd + 1);
+      rows = rows.map((row) => row.slice(trimStart, trimEnd + 1));
+    }
+
     // Skip tables with no meaningful data — all body cells (beyond first column) are empty
     const hasDataContent = rows.some((row) =>
       row.slice(1).some((cell) => (cell || "").replace(/\s+/g, "").length > 2)
