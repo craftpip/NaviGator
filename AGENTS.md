@@ -324,6 +324,10 @@ Creating extraction hints for a website is an iterative process. One site at a t
 
 ## Project Learnings
 
+### Do Not Remove Debug Console Logs
+
+Do not remove `console.log` / `console.error` calls from `src/search.js` or other server source files. These are the primary debugging tool for tracing server behavior in production. Only remove them if the user explicitly asks.
+
 ### SSE Keepalive and Stream Lifecycle
 
 **Created:** 2026-07-15
@@ -534,6 +538,24 @@ Hermes agent reported browser tools disappearing after ~5 min. Container logs sh
 **Verified on:** NSE India option chain (0 tab rows in output, clean structured table)
 
 ---
+
+---
+
+### `[text][ref_id]` Format Ambiguity With Numeric Link Text
+
+**Created:** 2026-07-28
+
+**What:** The `[text][ref_id]` inline format is ambiguous when link text is numeric.
+`Python [5][88] [1][89]` — the LLM can't tell whether `[1]`, `[5]`, `[20]` etc. are
+link text or ref_id markers. Both are just `[number]`. The ref_id registry also has
+nav-chrome links (ref_id 1 = page URL, ref_id 20 = `https://github.com/features`)
+which match the numeric text values, so guessing wrong resolves to the wrong URL.
+
+**Trigger:** Debugging web_fetch output for `https://github.com/craftpip` — spent
+too long analyzing code paths instead of reading the output the user showed.
+
+**Impact:** Any page with numbers as link text (star counts, fork counts, follower
+counts) produces unparseable output for LLMs.
 
 ---
 

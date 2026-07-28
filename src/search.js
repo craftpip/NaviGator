@@ -362,17 +362,6 @@ const MAX_SEO_CANDIDATES = 5;
 const MAX_MAIN_TEXT_CHARS = 24000;
 const MAX_MAIN_HTML_CHARS = 60000;
 
-const WEATHER_KEYWORDS = [
-  "weather",
-  "forecast",
-  "temperature",
-  "humidity",
-  "wind",
-  "rain",
-  "max",
-  "min"
-];
-
 function uniqueLines(lines) {
   const seen = new Set();
   const output = [];
@@ -399,7 +388,7 @@ function isLikelyJunkLine(line) {
   if (line.length < 20) return false;
   if (/(read more|see all maps|privacy policy|all rights reserved)/i.test(lower)) return true;
   if (/^[a-z]{2,4}\d{2}/i.test(lower)) return true;
-  if (/^(night|am|pm|nnw|wnw|ssw|ene|w|nw|sw|ne|se)(\s|$)/i.test(lower)) return true;
+
   return false;
 }
 
@@ -410,12 +399,8 @@ function scoreTextBlock(text) {
   const words = cleaned.split(/\s+/).length;
   const links = (cleaned.match(/https?:\/\//g) || []).length;
   const punctuation = (cleaned.match(/[\.!?]/g) || []).length;
-  const keywordHits = WEATHER_KEYWORDS.reduce(
-    (total, keyword) => total + (cleaned.toLowerCase().includes(keyword) ? 1 : 0),
-    0
-  );
 
-  return words + punctuation * 2 + keywordHits * 8 - links * 5;
+  return words + punctuation * 2 - links * 5;
 }
 
 function collectCandidateBlocks(doc) {
@@ -436,24 +421,6 @@ function collectCandidateBlocks(doc) {
   }
 
   return candidates.sort((a, b) => b.score - a.score);
-}
-
-function extractWeatherSummary(lines) {
-  const weatherLines = lines.filter((line) => {
-    const lower = line.toLowerCase();
-    return WEATHER_KEYWORDS.some((keyword) => lower.includes(keyword));
-  });
-
-  if (!weatherLines.length) return null;
-
-  const headline = weatherLines.find((line) => /forecast|weather/i.test(line)) || weatherLines[0];
-  const today = weatherLines.find((line) => /today|1.?3 days|mostly|warm/i.test(line));
-  const shortRange = weatherLines.find((line) => /4.?7 days|next week|10 day|7.?10 days/i.test(line));
-
-  const summary = [headline, today, shortRange].filter(Boolean);
-  const cleanedSummary = uniqueLines(summary);
-  if (!cleanedSummary.length) return null;
-  return cleanedSummary;
 }
 
 function buildCleanText(lines, maxChars) {
@@ -884,6 +851,7 @@ function renderHintFields(element, fields, baseUrl) {
 }
 
 function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows, hint, browserText }) {
+  console.log(">>> extractTextFromHtml called for:", url);
   const rawHtml = typeof html === "string" ? html : "";
   const safeHtml = rawHtml.replace(/<style[\s\S]*?<\/style>/gi, "");
   let dom;
@@ -911,6 +879,10 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
     const tables = tableExtractionDisabled
       ? []
       : extractTablesFromDocument(doc, { maxRowsPerTable: maxTableRows });
+
+    if (tables.length) {
+      doc.querySelectorAll("table").forEach((t) => t.remove());
+    }
 
     if (hint?.content?.sections?.length) {
       const sectionOutput = [];
@@ -965,14 +937,18 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
     }
 
     if (article?.textContent?.trim()) {
+      console.log(">>> Readability SUCCEEDED, textContent length:", article.textContent.trim().length);
       const articleLines = toLines(article.textContent);
-      const weatherSummary = extractWeatherSummary(articleLines);
+      console.log(">>> articleLines count:", articleLines.length, "first 5 lines:", JSON.stringify(articleLines.slice(0,5)));
+      console.log(">>> browserText exists:", !!browserText, "type:", typeof browserText, "length:", browserText?.length);
 
-      if (!weatherSummary && browserText) {
+      if (browserText) {
         const articleLen = article.textContent.trim().length;
         const browserLen = browserText.trim().length;
+        console.log(">>> browserText check:", {articleLen, browserLen, condition: browserLen > articleLen * 1.5 && browserLen - articleLen > 200});
         if (browserLen > articleLen * 1.5 && browserLen - articleLen > 200) {
           const fullMarkdown = htmlToMarkdown(doc.body.innerHTML, { baseUrl: url });
+          console.log(">>> Using htmlToMarkdown(doc.body.innerHTML), length:", fullMarkdown.length, "preview:", fullMarkdown.substring(0,200));
           return {
             title: cleanWhitespace(article.title || fallbackTitle || ""),
             url,
@@ -985,11 +961,9 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
 
       let text;
       let textOriginalLength;
-      if (weatherSummary) {
-        text = cleanAndTruncateText(weatherSummary.join("\n"), maxChars);
-        textOriginalLength = weatherSummary.join("\n").length;
-      } else if (article.content) {
+      if (article.content) {
         const raw = htmlToMarkdown(article.content, { baseUrl: url });
+        console.log(">>> article.content path, article.content length:", article.content.length, "raw length:", raw.length, "raw preview:", raw.substring(0,300));
         text = safeTruncateText(raw, maxChars);
         textOriginalLength = raw.length;
         return {
@@ -1002,7 +976,9 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
       } else {
         text = buildCleanText(articleLines, maxChars);
         textOriginalLength = articleLines.join("\n").length;
+        console.log(">>> Readability path: using buildCleanText, length:", text?.length, "preview:", text?.substring(0,200));
       }
+      console.log(">>> returning from readability path, text length:", text?.length, "tables:", tables?.length);
       return {
         title: cleanWhitespace(article.title || fallbackTitle || ""),
         url,
@@ -1016,14 +992,12 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
     try {
       candidates = collectCandidateBlocks(doc);
       bestText = candidates[0]?.text || doc.body?.textContent || "";
+      console.log(">>> FALLBACK: collectCandidateBlocks, candidates:", candidates?.length, "bestText length:", bestText?.length, "bestText preview:", bestText?.substring(0,200));
     } catch {
       bestText = doc.body?.textContent || "";
     }
     const lines = toLines(bestText);
-    const weatherSummary = extractWeatherSummary(lines);
-    const fullText = weatherSummary
-      ? cleanAndTruncateText(weatherSummary.join("\n"), maxChars)
-      : buildCleanText(lines, maxChars);
+    const fullText = buildCleanText(lines, maxChars);
     return {
       title: cleanWhitespace(doc.title || fallbackTitle || ""),
       url,
@@ -2041,6 +2015,52 @@ export async function browserSearch({ query, queries, limit = 5, engines }) {
   };
 }
 
+function enrichNumericLinkText(a, text, href) {
+  if (!/^\d+$/.test(text)) return text;
+
+  const ariaLabel = (a.getAttribute("aria-label") || "").trim();
+  if (ariaLabel && !/^\d+$/.test(ariaLabel)) {
+    return ariaLabel.length > 60 ? ariaLabel.slice(0, 60).trim() + "..." : ariaLabel;
+  }
+
+  const title = (a.getAttribute("title") || "").trim();
+  if (title && !/^\d+$/.test(title)) {
+    return title.length > 60 ? title.slice(0, 60).trim() + "..." : title;
+  }
+
+  const img = a.querySelector("img");
+  if (img) {
+    const alt = (img.getAttribute("alt") || "").trim();
+    if (alt && !/^\d+$/.test(alt)) {
+      return alt.length > 60 ? alt.slice(0, 60).trim() + "..." : alt;
+    }
+  }
+
+  const svg = a.querySelector("svg");
+  if (svg) {
+    const svgLabel = (svg.getAttribute("aria-label") || "").trim();
+    if (svgLabel && !/^\d+$/.test(svgLabel)) {
+      return `${text} ${svgLabel}`;
+    }
+  }
+
+  try {
+    const path = new URL(href).pathname;
+    const segments = path.split("/").filter(Boolean);
+    if (segments.length > 0) {
+      const last = decodeURIComponent(segments[segments.length - 1])
+        .replace(/[-_]/g, " ")
+        .replace(/^\d+\s*/, "")
+        .trim();
+      if (last && !/^\d+$/.test(last) && last.length < 30) {
+        return `${text} ${last}`;
+      }
+    }
+  } catch {}
+
+  return text;
+}
+
 function extractLinksFromHtml({ html, url }) {
   const cleanHtml = (html || "").replace(/<style[\s\S]*?<\/style>/gi, "");
   const dom = new JSDOM(cleanHtml || "<body></body>", { url });
@@ -2101,7 +2121,7 @@ function extractLinksFromHtml({ html, url }) {
       seen.add(absoluteHref);
 
       links.push({
-        text: (a.textContent || "").replace(/\s+/g, " ").trim().slice(0, 200),
+        text: enrichNumericLinkText(a, (a.textContent || "").replace(/\s+/g, " ").trim(), absoluteHref).slice(0, 200),
         href: absoluteHref,
         rel: a.getAttribute("rel") || "",
         type: a.getAttribute("type") || "",
