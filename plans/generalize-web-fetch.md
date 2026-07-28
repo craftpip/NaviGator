@@ -8,11 +8,8 @@ The `web_fetch` tool is not a generic web page extractor. It was built empirical
 
 ### CRITICAL — Fix Now
 
-**1. Weather extraction hijacks every page**
-`src/search.js:365-457, 976-1041`
-`extractWeatherSummary()` runs unconditionally. If any text line contains `weather`, `temperature`, `humidity`, `wind`, `rain`, `max`, or `min`, it replaces the full article with a 1-3 line summary. `scoreTextBlock()` also gives +8 per weather keyword hit, biasing candidate block selection on non-weather pages.
-
-**Fix:** Remove `extractWeatherSummary()` entirely or gate it behind a domain hint flag. Remove weather keywords from `scoreTextBlock()`. The weather-specific regex patterns (`today|1.?3 days|mostly|warm`, `4.?7 days|next week|10 day|7.?10 days`) do not belong in generic scoring.
+~~**1. Weather extraction hijacks every page** — FIXED~~
+`extractWeatherSummary()` removed. Weather keywords removed from `scoreTextBlock()` and `isLikelyJunkLine()`. The weather-specific regex patterns are gone from the generic pipeline.
 
 **2. Stock options table trimming in generic pipeline**
 `src/search.js:550-569`
@@ -138,7 +135,7 @@ Lines 887, 973, 975-978, 983, 986, 1004, 1017, 1019, 1033 — dozens of debug lo
 
 ## Fix Order
 
-1. Weather hijack (#1) — actively corrupts output
+1. ~~Weather hijack (#1)~~ — DONE
 2. Default navigation wait → 0 (#4) — biggest perf win
 3. `includeSeoAnalysis` in MCP schema (#7) — lets callers opt out
 4. Tab-line stripping → gate behind table extraction (#3)

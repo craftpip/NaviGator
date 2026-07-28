@@ -514,28 +514,6 @@ function expandTableRows(rowNodes, maxCellChars) {
   return grid;
 }
 
-function trimSparseTableColumns(headers, rows) {
-  if (!headers.length) return { headers, rows };
-
-  let start = 0;
-  let end = headers.length - 1;
-  const hasBodyValueAt = (columnIndex) => rows.some((row) => cleanWhitespace(row[columnIndex] || ""));
-  const isGroupOnlyHeader = (columnIndex) => /^(calls|puts)$/i.test(cleanWhitespace(headers[columnIndex] || ""));
-
-  while (start <= end && (!cleanWhitespace(headers[start] || "") || isGroupOnlyHeader(start)) && !hasBodyValueAt(start)) {
-    start += 1;
-  }
-
-  while (end >= start && (!cleanWhitespace(headers[end] || "") || isGroupOnlyHeader(end)) && !hasBodyValueAt(end)) {
-    end -= 1;
-  }
-
-  return {
-    headers: headers.slice(start, end + 1),
-    rows: rows.map((row) => row.slice(start, end + 1))
-  };
-}
-
 function extractTablesFromDocument(doc, {
   maxTables = 8,
   maxRowsPerTable,
@@ -616,8 +594,6 @@ function extractTablesFromDocument(doc, {
     if (!headers.length && rows.length) {
       headers = rows.shift() || [];
     }
-
-    ({ headers, rows } = trimSparseTableColumns(headers, rows));
 
     const columnCount = Math.max(headers.length, ...rows.map((row) => row.length), 0);
     if (columnCount < 2 || rows.length < 1) continue;
@@ -767,10 +743,6 @@ function insertLinksInline(text, links) {
   return cleaned.join("\n").trim();
 }
 
-function stripTableNoise(text) {
-  if (!text) return text;
-  return text.split("\n").filter((line) => !line.includes("\t")).join("\n");
-}
 
 function insertTablesInline(text, tables) {
   if (!text || !tables.length) return text;
@@ -2269,7 +2241,6 @@ export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAn
       const links = extractLinksFromHtml({ html, url: resolvedUrl });
 
       if (extracted.tables?.length) {
-        finalText = stripTableNoise(finalText);
         finalText = insertTablesInline(finalText, extracted.tables);
       }
 
