@@ -912,6 +912,10 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
       ? []
       : extractTablesFromDocument(doc, { maxRowsPerTable: maxTableRows });
 
+    if (tables.length) {
+      doc.querySelectorAll("table").forEach((t) => t.remove());
+    }
+
     if (hint?.content?.sections?.length) {
       const sectionOutput = [];
       const order = { high: 0, medium: 1, low: 2 };
