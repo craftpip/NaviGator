@@ -2041,6 +2041,52 @@ export async function browserSearch({ query, queries, limit = 5, engines }) {
   };
 }
 
+function enrichNumericLinkText(a, text, href) {
+  if (!/^\d+$/.test(text)) return text;
+
+  const ariaLabel = (a.getAttribute("aria-label") || "").trim();
+  if (ariaLabel && !/^\d+$/.test(ariaLabel)) {
+    return ariaLabel.length > 60 ? ariaLabel.slice(0, 60).trim() + "..." : ariaLabel;
+  }
+
+  const title = (a.getAttribute("title") || "").trim();
+  if (title && !/^\d+$/.test(title)) {
+    return title.length > 60 ? title.slice(0, 60).trim() + "..." : title;
+  }
+
+  const img = a.querySelector("img");
+  if (img) {
+    const alt = (img.getAttribute("alt") || "").trim();
+    if (alt && !/^\d+$/.test(alt)) {
+      return alt.length > 60 ? alt.slice(0, 60).trim() + "..." : alt;
+    }
+  }
+
+  const svg = a.querySelector("svg");
+  if (svg) {
+    const svgLabel = (svg.getAttribute("aria-label") || "").trim();
+    if (svgLabel && !/^\d+$/.test(svgLabel)) {
+      return `${text} ${svgLabel}`;
+    }
+  }
+
+  try {
+    const path = new URL(href).pathname;
+    const segments = path.split("/").filter(Boolean);
+    if (segments.length > 0) {
+      const last = decodeURIComponent(segments[segments.length - 1])
+        .replace(/[-_]/g, " ")
+        .replace(/^\d+\s*/, "")
+        .trim();
+      if (last && !/^\d+$/.test(last) && last.length < 30) {
+        return `${text} ${last}`;
+      }
+    }
+  } catch {}
+
+  return text;
+}
+
 function extractLinksFromHtml({ html, url }) {
   const cleanHtml = (html || "").replace(/<style[\s\S]*?<\/style>/gi, "");
   const dom = new JSDOM(cleanHtml || "<body></body>", { url });
@@ -2101,7 +2147,7 @@ function extractLinksFromHtml({ html, url }) {
       seen.add(absoluteHref);
 
       links.push({
-        text: (a.textContent || "").replace(/\s+/g, " ").trim().slice(0, 200),
+        text: enrichNumericLinkText(a, (a.textContent || "").replace(/\s+/g, " ").trim(), absoluteHref).slice(0, 200),
         href: absoluteHref,
         rel: a.getAttribute("rel") || "",
         type: a.getAttribute("type") || "",
