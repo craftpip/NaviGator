@@ -53,6 +53,12 @@ function getCacheArgs(args) {
   return cacheArgs;
 }
 
+function excludeMaxChars(args) {
+  if (!args || typeof args !== "object") return args;
+  const { maxChars, ...rest } = args;
+  return rest;
+}
+
 function getCachedToolResult(toolName, args) {
   const bucket = toolResultCache[toolName];
   if (!bucket) return null;
@@ -669,6 +675,27 @@ async function applyScreenshotStorage(payload, config, { outputMode } = {}) {
   return payload;
 }
 
+function truncateResultsText(payload, maxChars) {
+  if (!payload || !maxChars || !Number.isFinite(maxChars) || maxChars <= 0) return payload;
+
+  const entries = normalizeResultEntries(payload);
+  if (!entries.length) return payload;
+
+  const needsTruncation = entries.some((e) => e?.text && e.text.length > maxChars);
+  if (!needsTruncation) return payload;
+
+  const truncate = (e) => {
+    if (!e || !e.text || e.text.length <= maxChars) return e;
+    const size = e.textOriginalLength || e.text.length;
+    return { ...e, text: e.text.slice(0, maxChars).trimEnd() + `\n\n*(Response truncated — full page is ${size} chars, increase maxChars to see more)*` };
+  };
+
+  if (payload.results) {
+    return { ...payload, results: payload.results.map(truncate) };
+  }
+  return truncate(payload);
+}
+
 function formatOpenPageResponse(payload) {
   const entries = normalizeResultEntries(payload);
   if (!entries.length) {
@@ -832,13 +859,13 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-async function openTargetsParallel(targetUrls, maxChars, maxParallel, includeSeoAnalysis = false) {
+async function openTargetsParallel(targetUrls, maxParallel, includeSeoAnalysis = false) {
   const opened = await mapWithConcurrency(
     targetUrls,
     maxParallel,
     async (targetUrl, index) => {
       try {
-        const page = await browserOpenAndExtract({ url: targetUrl, maxChars, includeSeoAnalysis });
+        const page = await browserOpenAndExtract({ url: targetUrl, includeSeoAnalysis });
         const result = {
           index,
           ok: true,
@@ -1173,11 +1200,14 @@ async function handleToolCall(name, args = {}) {
 
   if (name === "web_fetch") {
     const bypassCache = args.bypassCache === true;
-    const cached = bypassCache ? null : await getCachedToolResult(name, args);
+    const cacheKeyArgs = excludeMaxChars(getCacheArgs(args));
+    const cached = bypassCache ? null : await getCachedToolResult(name, cacheKeyArgs);
     if (cached) {
+      const maxChars = parseMaxChars(args.maxChars, DEFAULT_MAX_CHARS);
+      const truncated = truncateResultsText(cached, maxChars);
       timer.step("cache_hit", mark);
       timer.end({ cacheHit: true, status: "ok" });
-      return cached;
+      return formatOpenPageResponse(truncated);
     }
     mark = timer.step("cache_miss", mark);
     let targetUrls;
@@ -1197,14 +1227,15 @@ async function handleToolCall(name, args = {}) {
     const includeSeoAnalysis = args.includeSeoAnalysis !== false;
     const manager = await getBrowserManager();
     mark = timer.step("prepare_execution", mark);
-    const result = await runWithHangGuard(`mcp:${name}`, () =>
-      openTargetsParallel(targetUrls, maxChars, manager.config.openPageMaxParallel, includeSeoAnalysis)
+    const fullResult = await runWithHangGuard(`mcp:${name}`, () =>
+      openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, includeSeoAnalysis)
     );
     mark = timer.step("open_targets", mark);
-    const response = formatOpenPageResponse(result);
-    mark = timer.step("format_response", mark);
-    await setCachedToolResult(name, getCacheArgs(args), response);
+    await setCachedToolResult(name, cacheKeyArgs, fullResult);
     timer.step("cache_store", mark);
+    const truncated = truncateResultsText(fullResult, maxChars);
+    const response = formatOpenPageResponse(truncated);
+    mark = timer.step("format_response", mark);
     timer.end({ cacheHit: false, status: "ok" });
     return response;
   }
@@ -1943,10 +1974,11 @@ async function maybeStartHttpServer(managerOverride) {
 
         const maxChars = parseMaxChars(url.searchParams.get("maxChars"), DEFAULT_MAX_CHARS);
         const payload = await runWithHangGuard("http:/extract", () =>
-          openTargetsParallel(targetUrls, maxChars, manager.config.openPageMaxParallel, false)
+          openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false)
         );
         mark = timer.step("open_targets", mark);
-        const markdown = formatOpenPageResponse(payload).content[0].text;
+        const truncated = truncateResultsText(payload, maxChars);
+        const markdown = formatOpenPageResponse(truncated).content[0].text;
         timer.step("format_response", mark);
         timer.end({ status: "ok" });
         logEvent("http.response", { method, path: url.pathname, result: payload });
