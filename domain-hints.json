@@ -26,7 +26,6 @@
     "pageType": "profile",
     "comment": "User profile page — sidebar (name, bio, stats, orgs) + pinned repos + contribution graph.",
     "waitForSelector": "turbo-frame#user-profile-frame",
-    "navigationWait": 2000,
     "preferReadability": false,
     "content": {
       "sections": [
@@ -42,7 +41,6 @@
     "pageType": "repo",
     "comment": "Repository page — README, file list, metadata. README is in a markdown-body element.",
     "waitForSelector": "[class*=\"markdown-body\"]",
-    "navigationWait": 3000,
     "content": {
       "sections": [
         { "selector": "[class*=\"markdown-body\"]", "label": "README", "priority": "high" }
@@ -55,7 +53,6 @@
     "pageType": "issues",
     "comment": "Issue list page — each issue row has title, status, number, author.",
     "waitForSelector": "turbo-frame#repo-content-turbo-frame",
-    "navigationWait": 3000,
     "content": {
       "sections": [
         { "selector": "li[role=\"listitem\"]", "label": "Issues", "priority": "high" }
@@ -68,7 +65,6 @@
     "pageType": "prs",
     "comment": "Pull request list page — each PR row has title, status, reviewers.",
     "waitForSelector": "turbo-frame#repo-content-turbo-frame",
-    "navigationWait": 2000,
     "content": {
       "sections": [
         { "selector": "div.js-issue-row", "label": "Pull Requests", "priority": "high" }
@@ -125,7 +121,6 @@
       "https://stackoverflow.com/questions/11227809/why-is-processing-a-sorted-array-faster-than-processing-an-unsorted-array"
     ],
     "waitForSelector": "#question .js-post-body",
-    "navigationWait": 2000,
     "preferReadability": false,
     "flags": { "botProtected": true },
     "content": {
@@ -172,8 +167,7 @@
     "domain": "www.afternoonvoice.com",
     "pathPattern": "/**",
     "pageType": "homepage",
-    "comment": "TagDiv WordPress theme. Local Mumbai news with article cards.",
-    "navigationWait": 2000
+    "comment": "TagDiv WordPress theme. Local Mumbai news with article cards."
   },
   {
     "domain": "www.bbc.com",
@@ -207,8 +201,7 @@
     "domain": "www.deccanherald.com",
     "pathPattern": "/**",
     "pageType": "homepage",
-    "comment": "News homepage with headlines and article cards. Classless div layout.",
-    "navigationWait": 1000
+    "comment": "News homepage with headlines and article cards. Classless div layout."
   },
   {
     "domain": "www.divyamarathi.com",
@@ -230,7 +223,6 @@
     "pathPattern": "/**",
     "pageType": "homepage",
     "comment": "Business news homepage. JS-heavy, needs extra time to settle.",
-    "navigationWait": 3000,
     "preferReadability": false,
     "content": {
       "sections": [
@@ -261,8 +253,7 @@
     "domain": "www.freepressjournal.in",
     "pathPattern": "/**",
     "pageType": "homepage",
-    "comment": "News homepage with good heading hierarchy. Readability works.",
-    "navigationWait": 1000
+    "comment": "News homepage with good heading hierarchy. Readability works."
   },
   {
     "domain": "www.hindustantimes.com",
@@ -271,7 +262,6 @@
     "comment": "India news listing. Next.js SPA with headline cards.",
     "testUrls": ["https://www.hindustantimes.com/india-news"],
     "waitForSelector": "section#dataHolder",
-    "navigationWait": 2000,
     "preferReadability": false,
     "content": {
       "sections": [
@@ -294,7 +284,6 @@
     "pageType": "article-or-generic",
     "comment": "Article pages use dataHolder for metadata and artContent for the story body; other pages use Readability fallback.",
     "testUrls": ["https://www.hindustantimes.com/india-news/rahul-targets-amit-shah-over-pellet-guns-at-cjp-march-govt-plans-bill-move-as-parliament-session-resumes-101785083843946.html"],
-    "navigationWait": 2000,
     "content": {
       "sections": [
         {
@@ -320,8 +309,7 @@
     "domain": "www.indiatimes.com",
     "pathPattern": "/**",
     "pageType": "homepage",
-    "comment": "News homepage. Article content in div.article-detail-content.",
-    "navigationWait": 1000
+    "comment": "News homepage. Article content in div.article-detail-content."
   },
   {
     "domain": "www.irctc.co.in",
@@ -329,7 +317,6 @@
     "pageType": "homepage",
     "comment": "Railway booking portal. Angular SPA with language popup. Wait for Angular bootstrap.",
     "waitForSelector": "app-root, app-home, app-main-page",
-    "navigationWait": 3000,
     "skipSelectors": [".language-popup", ".cdk-overlay-container"]
   },
   {
@@ -337,15 +324,13 @@
     "pathPattern": "/**",
     "pageType": "homepage",
     "comment": "Business news homepage. Next.js app — content renders after JS hydration.",
-    "waitForSelector": "div#__next",
-    "navigationWait": 2000
+    "waitForSelector": "div#__next"
   },
   {
     "domain": "www.loksatta.com",
     "pathPattern": "/**",
     "pageType": "homepage",
-    "comment": "Marathi news. WordPress Newpack theme with <main> and <article>.",
-    "navigationWait": 1000
+    "comment": "Marathi news. WordPress Newpack theme with <main> and <article>."
   },
   {
     "domain": "maharashtratimes.com",
@@ -366,15 +351,13 @@
     "pathPattern": "/**",
     "pageType": "homepage",
     "comment": "Mumbai news. Next.js SPA with live blog and good heading hierarchy.",
-    "waitForSelector": "div#__next",
-    "navigationWait": 2000
+    "waitForSelector": "div#__next"
   },
   {
     "domain": "www.moneycontrol.com",
     "pathPattern": "/**",
     "pageType": "homepage",
     "comment": "Market data and news. Interstitial ad on first load — needs extra wait.",
-    "navigationWait": 5000,
     "preferReadability": false
   },
   {
@@ -390,7 +373,6 @@
     "pageType": "homepage",
     "comment": "News homepage. Next.js SPA — content renders after hydration.",
     "waitForSelector": "main, article[id^='story-'], div#__next",
-    "navigationWait": 2000,
     "content": {
       "sections": [
         { "selector": "main", "label": "Headlines", "priority": "high" }
