@@ -859,7 +859,8 @@ async function openTargetsParallel(targetUrls, maxChars, maxParallel, includeSeo
             const ref = linkMemoryByUrl.get(url);
             if (!ref) return match;
             const enriched = enrichedTextByUrl.get(url);
-            return `[${enriched || text}][${ref}]`;
+            const isNumeric = /^\d+$/.test(text);
+            return `[${isNumeric && enriched ? enriched : text}][${ref}]`;
           });
         }
 
