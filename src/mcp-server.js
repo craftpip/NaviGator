@@ -851,9 +851,15 @@ async function openTargetsParallel(targetUrls, maxChars, maxParallel, includeSeo
           for (const link of page.links) {
             rememberLink(link.href);
           }
+          const enrichedTextByUrl = new Map();
+          for (const link of page.links) {
+            enrichedTextByUrl.set(link.href, link.text);
+          }
           result.text = result.text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
             const ref = linkMemoryByUrl.get(url);
-            return ref ? `[${text}][${ref}]` : match;
+            if (!ref) return match;
+            const enriched = enrichedTextByUrl.get(url);
+            return `[${enriched || text}][${ref}]`;
           });
         }
 
