@@ -555,7 +555,8 @@ function extractTablesFromDocument(doc, {
   maxTables = 8,
   maxRowsPerTable,
   maxCellChars = 120,
-  maxRenderChars
+  maxRenderChars,
+  container
 } = {}) {
   const tables = [];
   let renderedChars = 0;
@@ -569,7 +570,8 @@ function extractTablesFromDocument(doc, {
   };
 
   // Build heading position map for context
-  const allHeadings = Array.from(doc.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+  const scopeRoot = container || doc;
+  const allHeadings = Array.from((container || doc).querySelectorAll("h1, h2, h3, h4, h5, h6"));
   const headingMap = new Map();
   for (const h of allHeadings) {
     headingMap.set(h, (h.textContent || "").replace(/\s+/g, " ").trim().slice(0, 120));
@@ -590,7 +592,11 @@ function extractTablesFromDocument(doc, {
     return "";
   };
 
-  for (const table of doc.querySelectorAll("table")) {
+  const tableNodes = container?.matches?.("table")
+    ? [container]
+    : Array.from((container || doc).querySelectorAll("table"));
+
+  for (const table of tableNodes) {
     if (tables.length >= maxTables || (Number.isFinite(maxRenderChars) && renderedChars >= maxRenderChars)) break;
     if (shouldSkipTable(table)) continue;
 
@@ -661,7 +667,8 @@ function extractTablesFromDocument(doc, {
       caption,
       headers,
       rows,
-      context: findNearestHeading(table)
+      context: findNearestHeading(table),
+      node: table
     });
   }
 
@@ -794,7 +801,8 @@ function insertLinksInline(text, links) {
 
 
 function insertTablesInline(text, tables) {
-  if (!text || !tables.length) return text;
+  if (!tables.length) return text || "";
+  if (!text) text = "";
 
   const lines = text.split("\n");
   const headingRegex = /^#{1,6}\s+(.+)/;
@@ -871,7 +879,7 @@ function renderHintFields(element, fields, baseUrl) {
   return output.join("\n\n");
 }
 
-function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows, hint, browserText }) {
+function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText }) {
   console.log(">>> extractTextFromHtml called for:", url);
   const rawHtml = typeof html === "string" ? html : "";
   const safeHtml = rawHtml.replace(/<style[\s\S]*?<\/style>/gi, "");
@@ -896,25 +904,22 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
       }
     }
 
-    const tableExtractionDisabled = hint?.tableExtraction === "disabled";
-    const tables = tableExtractionDisabled
-      ? []
-      : extractTablesFromDocument(doc, { maxRowsPerTable: maxTableRows });
-
-    if (tables.length) {
-      doc.querySelectorAll("table").forEach((t) => t.remove());
-    }
-
+    console.log(">>> sections check:", { hasHint: !!hint, hasContent: !!hint?.content, sectionsLen: hint?.content?.sections?.length });
     if (hint?.content?.sections?.length) {
+      console.log(">>> entering sections path, selector:", hint.content.sections[0].selector);
       const sectionOutput = [];
+      const allSectionTables = [];
+      let hadAnyTable = false;
       const order = { high: 0, medium: 1, low: 2 };
       const sorted = [...hint.content.sections].sort(
         (a, b) => (order[a.priority] || 1) - (order[b.priority] || 1)
       );
         for (const section of sorted) {
           const elements = doc.querySelectorAll(section.selector);
+          console.log(">>> section selector:", section.selector, "matched:", elements.length);
           if (!elements.length) continue;
           let markdown = "";
+          let sectionHadTable = false;
           if (section.fields?.length) {
             markdown = Array.from(elements).map((el, index) => {
               const content = renderHintFields(el, section.fields, url);
@@ -923,28 +928,47 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
             }).filter(Boolean).join("\n\n");
           } else {
             for (const el of elements) {
+              const elTables = extractTablesFromDocument(doc, { container: el });
+              if (elTables.length) {
+                for (const t of elTables) {
+                  t.node?.remove();
+                }
+                const clean = elTables.map(({ node, ...rest }) => rest);
+                allSectionTables.push(...clean);
+                sectionHadTable = true;
+                hadAnyTable = true;
+              }
+              if (el.matches?.("table")) continue;
               markdown += htmlToMarkdown(el.innerHTML || "", { baseUrl: url }) + "\n";
             }
           }
         markdown = markdown.trim();
-        if (!markdown) continue;
-        if (section.priority === "medium" && markdown.length < 50) continue;
+        if (!markdown && !sectionHadTable) continue;
+        if (section.priority === "medium" && markdown.length < 50 && !sectionHadTable) continue;
         sectionOutput.push(`### ${section.label}`);
         sectionOutput.push("");
         sectionOutput.push(markdown);
         sectionOutput.push("");
       }
       if (sectionOutput.length) {
+        console.log(">>> sections produced output, length:", sectionOutput.length, "tables:", allSectionTables.length);
         let text = sectionOutput.join("\n");
         return {
           title: cleanWhitespace(doc.title || fallbackTitle || ""),
           url,
           text: safeTruncateText(text, maxChars),
           textOriginalLength: text.length,
-          ...(tables.length ? { tables } : {})
+          ...(allSectionTables.length ? { tables: allSectionTables } : {})
         };
       }
+      console.log(">>> sections produced no output");
     }
+
+    const globalTables = extractTablesFromDocument(doc);
+    for (const t of globalTables) {
+      t.node?.remove();
+    }
+    const tables = globalTables.map(({ node, ...rest }) => rest);
 
     const skipReadability = hint?.preferReadability === false;
     let article = null;
@@ -999,7 +1023,6 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, maxTableRows,
         textOriginalLength = articleLines.join("\n").length;
         console.log(">>> Readability path: using buildCleanText, length:", text?.length, "preview:", text?.substring(0,200));
       }
-      console.log(">>> returning from readability path, text length:", text?.length, "tables:", tables?.length);
       return {
         title: cleanWhitespace(article.title || fallbackTitle || ""),
         url,
@@ -2156,7 +2179,7 @@ function extractLinksFromHtml({ html, url }) {
   }
 }
 
-export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS, includeSeoAnalysis = true, maxTableRows }) {
+export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS, includeSeoAnalysis = true }) {
   const manager = await getBrowserManager();
 
   const hints = await getDomainHints(manager.config);
@@ -2273,7 +2296,6 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
         url: resolvedUrl,
         maxChars,
         fallbackTitle: pageTitle,
-        maxTableRows,
         hint,
         browserText
       });

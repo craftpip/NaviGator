@@ -429,7 +429,16 @@
     "comment": "Option chain page — CALLS/PUTS data in an HTML table with colspan group headers. Skip nav, filters, sidebar, footer.",
     "waitForSelector": "table#optionChainTable-indices",
     "stabilizeStrategy": "mutation",
-    "preferReadability": false
+    "preferReadability": false,
+    "content": {
+      "sections": [
+        {
+          "selector": "table#optionChainTable-indices",
+          "label": "Option Chain",
+          "priority": "high"
+        }
+      ]
+    }
   }, 
   {
     "domain": "www.youtube.com",

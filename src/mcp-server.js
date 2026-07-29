@@ -832,13 +832,13 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-async function openTargetsParallel(targetUrls, maxChars, maxParallel, includeSeoAnalysis = false, maxTableRows) {
+async function openTargetsParallel(targetUrls, maxChars, maxParallel, includeSeoAnalysis = false) {
   const opened = await mapWithConcurrency(
     targetUrls,
     maxParallel,
     async (targetUrl, index) => {
       try {
-        const page = await browserOpenAndExtract({ url: targetUrl, maxChars, includeSeoAnalysis, maxTableRows });
+        const page = await browserOpenAndExtract({ url: targetUrl, maxChars, includeSeoAnalysis });
         const result = {
           index,
           ok: true,
@@ -1034,7 +1034,6 @@ function getToolsListResponse() {
               description: "Multiple result ids returned by a previous web_search call"
             },
             maxChars: { type: "number", default: DEFAULT_MAX_CHARS },
-            maxTableRows: { type: "number", description: "Optional maximum number of rows to extract per table. Omit for no row limit." },
             bypassCache: {
               type: "boolean",
               default: false,
@@ -1198,11 +1197,8 @@ async function handleToolCall(name, args = {}) {
     const includeSeoAnalysis = args.includeSeoAnalysis !== false;
     const manager = await getBrowserManager();
     mark = timer.step("prepare_execution", mark);
-    const maxTableRows = args.maxTableRows === undefined || args.maxTableRows === null
-      ? undefined
-      : parsePositiveInt(args.maxTableRows, "maxTableRows");
     const result = await runWithHangGuard(`mcp:${name}`, () =>
-      openTargetsParallel(targetUrls, maxChars, manager.config.openPageMaxParallel, includeSeoAnalysis, maxTableRows)
+      openTargetsParallel(targetUrls, maxChars, manager.config.openPageMaxParallel, includeSeoAnalysis)
     );
     mark = timer.step("open_targets", mark);
     const response = formatOpenPageResponse(result);
@@ -1946,10 +1942,8 @@ async function maybeStartHttpServer(managerOverride) {
         mark = timer.step("resolve_targets", mark);
 
         const maxChars = parseMaxChars(url.searchParams.get("maxChars"), DEFAULT_MAX_CHARS);
-        const maxTableRowsParam = String(url.searchParams.get("maxTableRows") || "").trim();
-        const maxTableRows = maxTableRowsParam ? parsePositiveInt(maxTableRowsParam, "maxTableRows") : undefined;
         const payload = await runWithHangGuard("http:/extract", () =>
-          openTargetsParallel(targetUrls, maxChars, manager.config.openPageMaxParallel, false, maxTableRows)
+          openTargetsParallel(targetUrls, maxChars, manager.config.openPageMaxParallel, false)
         );
         mark = timer.step("open_targets", mark);
         const markdown = formatOpenPageResponse(payload).content[0].text;
