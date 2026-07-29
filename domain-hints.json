@@ -446,7 +446,7 @@
     "pageType": "option-chain",
     "comment": "Option chain page — CALLS/PUTS data in an HTML table with colspan group headers. Skip nav, filters, sidebar, footer.",
     "waitForSelector": "table#optionChainTable-indices",
-    "navigationWait": 2000,
+    "stabilizeStrategy": "mutation",
     "preferReadability": false
   }, 
   {

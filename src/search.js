@@ -41,6 +41,42 @@ async function waitForContent(page, { pollInterval = 300, stableMs = 500, minCha
   }
 }
 
+async function waitForMutations(page, { maxWait = 5000, stableMs = 500 } = {}) {
+  try {
+    await page.waitForFunction(
+      (stableMs) => {
+        if (!window.__mutationSettled) {
+          window.__mutationSettled = false;
+          let timer;
+          const observer = new MutationObserver(() => {
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+              window.__mutationSettled = true;
+              observer.disconnect();
+            }, stableMs);
+          });
+          observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            characterData: true
+          });
+          timer = setTimeout(() => {
+            if (!window.__mutationSettled) {
+              window.__mutationSettled = true;
+              observer.disconnect();
+            }
+          }, stableMs);
+        }
+        return window.__mutationSettled;
+      },
+      { timeout: maxWait },
+      stableMs
+    );
+  } catch {
+    // timeout or page closed
+  }
+}
+
 const SUPPORTED_ENGINES = new Set(["bing_cb", "bing_lp", "duckduckgo_api", "duckduckgo_cb", "duckduckgo_ch", "google_cb", "google_ch", "google_lp", "mojeek_lp"]);
 const ENGINE_BACKENDS = {
   bing_cb: "cloakbrowser",
@@ -2186,6 +2222,8 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
           maxWait: 5000,
           extraSelectors: hint?.contentSelectors
         }).catch(() => {});
+      } else if (stabilizeStrategy === "mutation") {
+        await waitForMutations(page, { maxWait: 5000 }).catch(() => {});
       }
 
       const seoSnapshot =

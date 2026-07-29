@@ -27,6 +27,7 @@ const BROWSER_BACKEND_VALUES = new Set(["chromium", "cloakbrowser", "lightpanda"
 const STABILIZE_STRATEGY_VALUES = new Set([
   "network_idle",
   "content_idle",
+  "mutation",
   "none"
 ]);
 
