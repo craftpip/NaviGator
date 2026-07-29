@@ -24,6 +24,17 @@ const SEARCH_ENGINE_VALUES = new Set([
 
 const BROWSER_BACKEND_VALUES = new Set(["chromium", "cloakbrowser", "lightpanda"]);
 
+const STABILIZE_STRATEGY_VALUES = new Set([
+  "network_idle",
+  "content_idle",
+  "none"
+]);
+
+function parseStabilizeStrategy(value, fallback) {
+  if (value && STABILIZE_STRATEGY_VALUES.has(value)) return value;
+  return fallback;
+}
+
 function parseBoolean(value, fallback) {
   if (value === undefined || value === null || value === "") return fallback;
   const normalized = String(value).trim().toLowerCase();
@@ -261,6 +272,7 @@ export async function loadConfig() {
     hangRestartTimeoutMs: parseNumber(process.env.HANG_RESTART_TIMEOUT_MS, 120000),
     startupUrl: process.env.STARTUP_URL || "about:blank",
     domainHintsPath,
+    stabilizeStrategy: parseStabilizeStrategy(process.env.STABILIZE_STRATEGY, "network_idle"),
     searchRouteWarmupEngines: parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, ["duckduckgo_api", "google_cb", "google_lp", "bing_lp", "duckduckgo_cb", "bing_cb"]),
     searchFallback: process.env.SEARCH_FALLBACK
       ? parseEngines(process.env.SEARCH_FALLBACK, [])

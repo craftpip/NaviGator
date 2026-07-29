@@ -2176,18 +2176,16 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
         }).catch(() => {});
       }
 
-      await waitForContent(page, {
-        maxWait: 5000,
-        extraSelectors: hint?.contentSelectors
-      }).catch(() => {});
-
-      try {
-        await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 });
-      } catch {}
-
-      const navigationWaitMs = hint?.navigationWait != null ? hint.navigationWait : 2000;
-      if (navigationWaitMs > 0) {
-        await new Promise(r => setTimeout(r, navigationWaitMs));
+      const stabilizeStrategy = hint?.stabilizeStrategy || manager.config.stabilizeStrategy || "network_idle";
+      if (stabilizeStrategy === "network_idle") {
+        try {
+          await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 });
+        } catch {}
+      } else if (stabilizeStrategy === "content_idle") {
+        await waitForContent(page, {
+          maxWait: 5000,
+          extraSelectors: hint?.contentSelectors
+        }).catch(() => {});
       }
 
       const seoSnapshot =
