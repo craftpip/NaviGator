@@ -496,5 +496,23 @@
         { "selector": "article.post-full", "label": "Article", "priority": "high" }
       ]
     }
+  },
+  {
+    "domain": "www.bseindia.com",
+    "pathPattern": "/markets/derivatives/**",
+    "pageType": "option-chain",
+    "comment": "Derivatives option chain — CALLS/PUTS data in an HTML table with colspan group headers. Angular SPA. Data loads after JS hydration.",
+    "waitForSelector": "table.index-option-table",
+    "stabilizeStrategy": "mutation",
+    "preferReadability": false,
+    "content": {
+      "sections": [
+        {
+          "selector": "table.index-option-table",
+          "label": "Option Chain",
+          "priority": "high"
+        }
+      ]
+    }
   }
 ]
