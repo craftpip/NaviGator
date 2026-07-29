@@ -1,4 +1,5 @@
 import { getBrowserManager } from "./browser.js";
+import { DEFAULT_MAX_CHARS } from "./config.js";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { performance } from "node:perf_hooks";
@@ -2119,7 +2120,7 @@ function extractLinksFromHtml({ html, url }) {
   }
 }
 
-export async function browserOpenAndExtract({ url, maxChars = 8000, includeSeoAnalysis = true, maxTableRows }) {
+export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS, includeSeoAnalysis = true, maxTableRows }) {
   const manager = await getBrowserManager();
 
   const hints = await getDomainHints(manager.config);

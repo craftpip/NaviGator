@@ -11,7 +11,7 @@ import {
   ListToolsRequestSchema,
   isInitializeRequest
 } from "@modelcontextprotocol/sdk/types.js";
-import { formatBrowserBackendShort, parseBrowserBackend } from "./config.js";
+import { formatBrowserBackendShort, parseBrowserBackend, DEFAULT_MAX_CHARS } from "./config.js";
 import { getBrowserManager } from "./browser.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth } from "./search.js";
 import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot } from "./devtools.js";
@@ -250,7 +250,7 @@ function mcpRequestSummary(body) {
     : normalizeSearchEngineSelection(args.engines, args.engine).join(",");
   if (eng) parts.push(`[${eng}]`);
   if (args.limit && args.limit !== 5) parts.push(`limit=${args.limit}`);
-  if (args.maxChars && args.maxChars !== 8000) parts.push(`maxc=${args.maxChars}`);
+  if (args.maxChars && args.maxChars !== DEFAULT_MAX_CHARS) parts.push(`maxc=${args.maxChars}`);
   if (args.bypassCache === true) parts.push("no-cache");
   if (args.format) parts.push(args.format);
   if (args.fullPage === false) parts.push("no-fullpage");
@@ -340,7 +340,7 @@ function summarizeToolArgs(tool, args = {}) {
       ...base,
       urlCount,
       refCount,
-      maxChars: tool === "web_fetch" ? parseMaxChars(args.maxChars, 8000) : undefined,
+      maxChars: tool === "web_fetch" ? parseMaxChars(args.maxChars, DEFAULT_MAX_CHARS) : undefined,
       format: tool === "web_page_screenshot" ? (args.format || "png") : undefined,
       fullPage: tool === "web_page_screenshot" ? (args.fullPage === undefined ? true : Boolean(args.fullPage)) : undefined
     };
@@ -1026,7 +1026,7 @@ function getToolsListResponse() {
               items: { type: "number" },
               description: "Multiple result ids returned by a previous web_search call"
             },
-            maxChars: { type: "number", default: 8000 },
+            maxChars: { type: "number", default: DEFAULT_MAX_CHARS },
             maxTableRows: { type: "number", description: "Optional maximum number of rows to extract per table. Omit for no row limit." },
             bypassCache: {
               type: "boolean",
@@ -1187,7 +1187,7 @@ async function handleToolCall(name, args = {}) {
       throw error;
     }
     mark = timer.step("resolve_targets", mark);
-    const maxChars = parseMaxChars(args.maxChars, 8000);
+    const maxChars = parseMaxChars(args.maxChars, DEFAULT_MAX_CHARS);
     const includeSeoAnalysis = args.includeSeoAnalysis !== false;
     const manager = await getBrowserManager();
     mark = timer.step("prepare_execution", mark);
@@ -1938,7 +1938,7 @@ async function maybeStartHttpServer(managerOverride) {
         }
         mark = timer.step("resolve_targets", mark);
 
-        const maxChars = parseMaxChars(url.searchParams.get("maxChars"), 8000);
+        const maxChars = parseMaxChars(url.searchParams.get("maxChars"), DEFAULT_MAX_CHARS);
         const maxTableRowsParam = String(url.searchParams.get("maxTableRows") || "").trim();
         const maxTableRows = maxTableRowsParam ? parsePositiveInt(maxTableRowsParam, "maxTableRows") : undefined;
         const payload = await runWithHangGuard("http:/extract", () =>

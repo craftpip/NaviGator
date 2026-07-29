@@ -190,6 +190,7 @@ export async function findLightpandaPath() {
 }
 
 const headlessDefault = !process.env.DISPLAY;
+export const DEFAULT_MAX_CHARS = parseInteger(process.env.WEB_FETCH_MAX_CHARS, 90000);
 
 export async function loadConfig() {
   const navWaitUntilRaw = process.env.NAV_WAIT_UNTIL || "domcontentloaded";
@@ -250,6 +251,7 @@ export async function loadConfig() {
     screenshotPathPrefix: screenshotPathPrefix.trim() || null,
     searchKeepMinWorkingWindows,
     searchMaxWorkingWindows,
+    maxChars: DEFAULT_MAX_CHARS,
     searchRouteCircuitOpenMs: parseNumber(process.env.SEARCH_ROUTE_CIRCUIT_OPEN_MS, 300000),
     openPageMaxParallel: Math.max(1, Math.min(20, parseInteger(process.env.OPEN_PAGE_MAX_PARALLEL, 6))),
     maxConcurrentPageOps: Math.max(1, Math.min(30, parseInteger(process.env.MAX_CONCURRENT_PAGE_OPS, 30))),
