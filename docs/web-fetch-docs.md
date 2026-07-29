@@ -16,52 +16,92 @@ The goal: given any URL, return structured text content, tables, links, and meta
 ## Pipeline Flow
 
 ```
-User calls web_fetch(url: "https://example.com")
-  │
-  ├── 1. URL Resolution
-  │     resolveOpenTarget() — resolves ref_id or direct URL to URL array
-  │
-  ├── 2. Parallel Fetch
-  │     openTargetsParallel() — concurrent extraction with page pool limits
-  │
-  ├── 3. Per-URL Extraction (browserOpenAndExtract)
-  │     │
-  │     ├── 3a. Domain Hint Lookup
-  │     │     findDomainHint(url, hints) — first-match wins
-  │     │
-  │     ├── 3b. Browser Navigation
-  │     │     manager.newPage() → page.goto(url, waitUntil: domcontentloaded)
-  │     │
-  │     ├── 3c. Content Stabilization
-  │     │     waitForSelector (if hint) → waitForContent (poll innerText) → waitForNetworkIdle → navigationWait
-  │     │
-  │     ├── 3d. Data Capture
-  │     │     captureSeoSnapshot() — DOM scoring, headings, candidates
-  │     │     page.content() — serialized HTML
-  │     │     page.evaluate(document.body.innerText) — browser-computed text (browserText)
-  │     │
-  │     ├── 3e. Bot Detection
-  │     │     Cloudflare, DataDome, empty title checks
-  │     │
-  │     ├── 3f. Text Extraction (extractTextFromHtml)
-  │     │     │
-  │     │     ├── Strip <style> tags, parse into JSDOM
-  │     │     ├── Remove non-content nodes (scripts, nav, footer, cookies)
-  │     │     ├── Extract tables (always)
-  │     │     ├── IF hint.sections → section-based output (early return)
-  │     │     ├── ELSE IF Readability succeeds → article text
-  │     │     │     └── IF browserText has 1.5x+ more content → use browserText instead
-  │     │     ├── ELSE → candidate block scoring → best text
-  │     │     └── Append tables as ### Table N blocks
-  │     │
-  │     ├── 3g. Link Extraction (extractLinksFromHtml)
-  │     │     Always runs. Stores links for web_page_links tool.
-  │     │
-  │     └── 3h. Format Response
-  │           formatOpenPageResponse() — markdown with text + tables
-  │
-  └── 4. Cache & Return
-        Store result in tool cache, return to caller
+web_fetch()
+└─ handleToolCall()
+   │  args: { url/urls/ref_id/ref_ids, maxChars, ... }
+   │
+   ├─ resolveOpenTarget(args)        # resolves args → targetUrls[]
+   │
+   └─ openTargetsParallel(urls, maxChars, maxParallel, includeSeoAnalysis)
+       │  param: targetUrls[], maxChars, maxParallel, includeSeoAnalysis
+       │
+       └─ for each url (concurrent)
+          └─ browserOpenAndExtract({ url, maxChars, includeSeoAnalysis })
+             │  param: { url, maxChars, includeSeoAnalysis }
+             │  1. Get domain hint for URL
+             │  2. Open browser page
+             │  3. page.goto(url, { waitUntil: "domcontentloaded" })
+             │     └─ hint.flags.authWall? → return early
+             │  4. hint.waitForSelector? → page.waitForSelector()
+             │  5. Stabilization (network_idle / content_idle / mutation)
+             │  6. captureSeoSnapshot(page) — only if includeSeoAnalysis !== false
+             │  7. Serialize → (html, resolvedUrl, pageTitle, browserText)
+             │  8. Bot challenge check → return early if blocked
+             │
+             ├─ extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText })
+             │   param: { html, url, maxChars, fallbackTitle, hint, browserText }
+             │  │
+             │  ├─ Step A: Remove NON_CONTENT_SELECTORS from JSDOM document
+             │  ├─ Step B: Remove hint.skipSelectors from document
+             │  │
+             │  ├─ Step C: SECTIONS PATH (if hint.content.sections.length > 0)
+             │  │   param: hint.content.sections[{ selector, label, priority, fields?, itemLabel? }]
+             │  │  │
+             │  │  ├─ For each section (sorted by priority: high → medium → low):
+             │  │  │   ├─ doc.querySelectorAll(selector) → elements[]
+             │  │  │   ├─ If has fields[] → renderHintFields(el, fields, url)
+             │  │  │   ├─ Else → extractTablesFromDocument() + htmlToMarkdown()
+             │  │  │   ├─ Skip if medium priority + markdown < 50 chars + no table
+             │  │  │   └─ Push "### {label}" + markdown → sectionOutput[]
+             │  │  │
+             │  │  ├─ sectionOutput.length > 0?
+             │  │  │   ✓ → RETURN { title, url, text: sections, tables }
+             │  │  │   ✗ → fall through ⬇
+             │  │  │
+             │  │
+             │  ├─ Step D: Extract global tables from document
+             │  │
+             │  ├─ Step E: READABILITY PATH (if preferReadability !== false)
+             │  │   param: hint.preferReadability (default: undefined → true)
+             │  │  │
+             │  │  ├─ skipReadability = (hint.preferReadability === false)
+             │  │  ├─ If NOT skipReadability:
+             │  │  │   └─ new Readability(dom.window.document).parse() → article
+             │  │  │
+             │  │  ├─ article?.textContent?.trim() is truthy?
+             │  │  │  │
+             │  │  │  ├─ Sub-check: browserText > article × 1.5 + 200?
+             │  │  │  │   ✓ → RETURN htmlToMarkdown(doc.body.innerHTML)
+             │  │  │  │   ✗ → continue
+             │  │  │  │
+             │  │  │  ├─ article.content exists?
+             │  │  │  │   ✓ → RETURN htmlToMarkdown(article.content)
+             │  │  │  │   ✗ → RETURN buildCleanText(articleLines)
+             │  │  │  │
+             │  │  │  → RETURN { title, url, text, textOriginalLength, tables? }
+             │  │  │
+             │  │  └─ article was null/empty → fall through ⬇
+             │  │
+             │  │
+             │  └─ Step F: FALLBACK PATH
+             │      collectCandidateBlocks(doc) → candidates[]
+             │      bestText = candidates[0]?.text || doc.body?.textContent
+             │      buildCleanText(lines, maxChars)
+             │      → RETURN { title, url, text, tables }
+             │
+             ├─ Post-extraction (back in browserOpenAndExtract)
+             │  ├─ buildSeoAnalysis({ snapshot, extracted, maxChars })
+             │  │   ╰─ only if includeSeoAnalysis !== false
+             │  ├─ selectedText = extracted.text || seoAnalysis.mainContentText || ""
+             │  ├─ extractLinksFromHtml({ html, url }) → links[]
+             │  ├─ extracted.tables? → insertTablesInline(finalText, tables)
+             │  ├─ Truncation check → append truncation note if needed
+             │  └─ RETURN { title, url, text, textOriginalLength, links?, seo?, tables? }
+             │
+             └─ Back in openTargetsParallel
+                ├─ rememberLink(targetUrl) → ref_id
+                ├─ Replace markdown links [text](url) → [text][ref_id]
+                └─ RETURN { index, ok, ref_id, title, url, text, ... }
 ```
 
 ---

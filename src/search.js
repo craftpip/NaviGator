@@ -939,7 +939,20 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
                 hadAnyTable = true;
               }
               if (el.matches?.("table")) continue;
-              markdown += htmlToMarkdown(el.innerHTML || "", { baseUrl: url }) + "\n";
+              const elementHtml = el.innerHTML || "";
+              const skipReadability = hint?.preferReadability === false;
+              if (skipReadability) {
+                markdown += htmlToMarkdown(elementHtml, { baseUrl: url }) + "\n";
+              } else {
+                const miniDoc = new JSDOM(`<body>${elementHtml}</body>`, { url }).window.document;
+                const reader = new Readability(miniDoc);
+                const article = reader.parse();
+                if (article?.content) {
+                  markdown += htmlToMarkdown(article.content, { baseUrl: url }) + "\n";
+                } else {
+                  markdown += htmlToMarkdown(elementHtml, { baseUrl: url }) + "\n";
+                }
+              }
             }
           }
         markdown = markdown.trim();
