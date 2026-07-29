@@ -441,6 +441,15 @@
     "preferReadability": false
   },
   {
+    "domain": "www.nseindia.com",
+    "pathPattern": "/option-chain",
+    "pageType": "option-chain",
+    "comment": "Option chain page — CALLS/PUTS data in an HTML table with colspan group headers. Skip nav, filters, sidebar, footer.",
+    "waitForSelector": "table#optionChainTable-indices",
+    "navigationWait": 2000,
+    "preferReadability": false
+  }, 
+  {
     "domain": "www.youtube.com",
     "pathPattern": "/watch**",
     "pageType": "video",
