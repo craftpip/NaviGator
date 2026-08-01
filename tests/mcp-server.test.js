@@ -421,7 +421,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(body.result.content).toBeDefined();
       const text = body.result.content[0].text;
       expect(text).toContain("Vitest Guide");
-      expect(text).toMatch(/- \*\*Vitest Guide\*\* \[\d+\]/);
+      expect(text).toMatch(/- \*\*Vitest Guide\*\* \[\d+\] \(vitest.dev\)/);
       expect(text).not.toContain("https://vitest.dev/guide");
       expect(text).toContain("*Square brackets contain reference IDs.*");
     });

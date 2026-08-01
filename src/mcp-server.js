@@ -440,10 +440,12 @@ function decorateResultLinks(results) {
 
     const ref = rememberLink(rawUrl);
     const display = `[${ref}] ${truncateLink(rawUrl, 50)}`;
+    const domain = getDomain(rawUrl);
 
     return {
       ...item,
       ref_id: ref,
+      domain,
       link: display,
       url: display
     };
@@ -489,8 +491,9 @@ function formatSearchMarkdown(payload) {
       const queryVariants = Array.isArray(result?.queryVariants) && result.queryVariants.length
         ? ` _(queries: ${result.queryVariants.join(", ")})_`
         : "";
+      const domain = result?.domain ? ` (${result.domain})` : "";
 
-      const bullet = `- ${title} ${refLabel}${queryVariants}`;
+      const bullet = `- ${title} ${refLabel}${domain}${queryVariants}`;
       lines.push(bullet.trim());
       if (snippet) {
         lines.push(`  - ${snippet}`);
