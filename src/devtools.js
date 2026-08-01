@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { getBrowserManager } from "./browser.js";
+import { resolveRefIdToUrl } from "./ref-memory.js";
 
 const MAX_TARGETS = 20;
 const MAX_CONSOLE_MESSAGES = 200;
@@ -188,6 +189,16 @@ async function createTarget(args = {}) {
     await page.close();
     throw new Error(`Target ${customTargetId} already exists. Use a different targetId or close the existing one.`);
   }
+
+  let url = typeof args.url === "string" && args.url.trim() ? args.url.trim() : "about:blank";
+  if (url === "about:blank" && args.ref_id !== undefined && args.ref_id !== null && Number(args.ref_id) > 0) {
+    const ref = Number(args.ref_id);
+    if (!Number.isInteger(ref)) {
+      throw new Error(`Invalid input: ref_id must be a positive integer, got ${args.ref_id}`);
+    }
+    url = resolveRefIdToUrl(ref);
+  }
+
   const state = {
     targetId: customTargetId || randomBytes(6).toString("hex"),
     backend,
@@ -195,13 +206,13 @@ async function createTarget(args = {}) {
     consoleMessages: [],
     createdAt: new Date().toISOString(),
     lastActiveAt: new Date().toISOString(),
-    lastTitle: ""
+    lastTitle: "",
+    sourceUrl: url
   };
 
   installPageObservers(state);
   targetsById.set(state.targetId, state);
 
-  const url = typeof args.url === "string" && args.url.trim() ? args.url.trim() : "about:blank";
   if (url !== "about:blank") {
     await page.goto(url, {
       waitUntil: manager.config.navWaitUntil,
@@ -822,6 +833,172 @@ async function getOuterHtml(args = {}) {
   };
 }
 
+async function getCompactHtml(args = {}) {
+  assertString(args.targetId, "targetId");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const maxChars = parseMaxChars(args.maxChars, DEFAULT_HTML_LIMIT);
+  const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
+  const result = await Promise.race([
+    state.page.evaluate(({ selector, xpath, maxChars: limit }) => {
+      const KEEP_ATTRS = new Set([
+        "href", "src", "alt", "title", "name", "type", "value", "role", "placeholder",
+        "for", "target", "rel", "checked", "selected", "disabled", "readonly",
+        "contenteditable", "width", "height", "colspan", "rowspan", "headers", "scope"
+      ]);
+      const VOID_TAGS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+      const NOISE_TAGS = new Set(["script", "style", "noscript", "template", "link", "meta", "iframe", "object", "embed", "canvas", "svg", "video", "audio"]);
+      const PRESERVE_WS = new Set(["pre", "code", "textarea"]);
+
+      function cssPath(element) {
+        if (!(element instanceof Element)) return null;
+        const parts = [];
+        let node = element;
+        while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 8) {
+          let segment = node.tagName.toLowerCase();
+          if (node.id) {
+            segment += `#${node.id}`;
+            parts.unshift(segment);
+            break;
+          }
+          const siblings = node.parentElement
+            ? Array.from(node.parentElement.children).filter((child) => child.tagName === node.tagName)
+            : [];
+          if (siblings.length > 1) {
+            const index = siblings.indexOf(node);
+            segment += `:nth-of-type(${index + 1})`;
+          }
+          parts.unshift(segment);
+          node = node.parentElement;
+        }
+        return parts.join(" > ");
+      }
+
+      function xpathFor(element) {
+        if (!(element instanceof Element)) return null;
+        const parts = [];
+        let node = element;
+        while (node && node.nodeType === Node.ELEMENT_NODE) {
+          let index = 1;
+          let sibling = node.previousElementSibling;
+          while (sibling) {
+            if (sibling.tagName === node.tagName) index += 1;
+            sibling = sibling.previousElementSibling;
+          }
+          parts.unshift(`${node.tagName.toLowerCase()}[${index}]`);
+          node = node.parentElement;
+        }
+        return `/${parts.join("/")}`;
+      }
+
+      function firstXpath(expression) {
+        const node = document.evaluate(expression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+        return node instanceof Element ? node : null;
+      }
+
+      function isNoiseAttr(name) {
+        const low = name.toLowerCase();
+        if (low === "id" || low === "class") return false;
+        if (low === "style" || low.startsWith("on")) return true;
+        if (low.startsWith("data-") || low.startsWith("aria-")) return false;
+        return !KEEP_ATTRS.has(low);
+      }
+
+      function compact(node) {
+        const root = node.cloneNode(true);
+        const doomed = Array.from(root.querySelectorAll(Array.from(NOISE_TAGS).join(",")));
+        const head = root.querySelector("head");
+        if (head) doomed.push(head);
+        doomed.forEach((el) => el.remove());
+
+        const comments = [];
+        const commentWalker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
+        while (commentWalker.nextNode()) comments.push(commentWalker.currentNode);
+        comments.forEach((c) => c.remove());
+
+        const textNodes = [];
+        const textWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        while (textWalker.nextNode()) textNodes.push(textWalker.currentNode);
+        for (const textNode of textNodes) {
+          const parentTag = textNode.parentElement ? textNode.parentElement.tagName.toLowerCase() : "";
+          if (PRESERVE_WS.has(parentTag)) continue;
+          if (!textNode.nodeValue.trim()) {
+            textNode.remove();
+            continue;
+          }
+          textNode.nodeValue = textNode.nodeValue.replace(/\s+/g, " ").trim();
+        }
+
+        let pass = 0;
+        while (pass++ < 10) {
+          let removed = false;
+          for (const el of Array.from(root.querySelectorAll("*"))) {
+            if (VOID_TAGS.has(el.tagName.toLowerCase())) continue;
+            if (el.id) continue;
+            if (el.children.length === 0 && !el.textContent.trim()) {
+              el.remove();
+              removed = true;
+            }
+          }
+          if (!removed) break;
+        }
+
+        const all = [root, ...root.querySelectorAll("*")];
+        for (const el of all) {
+          for (const attr of Array.from(el.attributes)) {
+            if (isNoiseAttr(attr.name)) el.removeAttribute(attr.name);
+          }
+          const cls = el.getAttribute("class");
+          if (cls && cls.length > 120) el.setAttribute("class", cls.slice(0, 120));
+        }
+
+        return root;
+      }
+
+      const smartRoot = document.querySelector("main, article, [role='main'], #content, .content") || document.documentElement;
+      const element = selector
+        ? document.querySelector(selector)
+        : xpath
+          ? firstXpath(xpath)
+          : smartRoot;
+
+      if (!(element instanceof Element)) {
+        return null;
+      }
+
+      const charsBefore = element.outerHTML.length;
+      const clean = compact(element);
+      const html = clean.outerHTML || "";
+      return {
+        title: document.title || "",
+        selector: cssPath(element),
+        xpath: xpathFor(element),
+        tagName: element.tagName.toLowerCase(),
+        charsBefore,
+        charsAfter: html.length,
+        html: html.length > limit ? `${html.slice(0, Math.max(0, limit - 3))}...` : html
+      };
+    }, {
+      selector: args.selector || "",
+      xpath: args.xpath || "",
+      maxChars
+    }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`getCompactHTML timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
+
+  if (!result) {
+    throw new Error("Could not resolve element for DOM.getCompactHTML");
+  }
+
+  return {
+    targetId: state.targetId,
+    ...result
+  };
+}
+
 async function scrollIntoViewIfNeeded(args = {}) {
   assertString(args.targetId, "targetId");
   if (!args.selector && !args.xpath) {
@@ -1005,12 +1182,13 @@ async function insertText(args = {}) {
 export const devtoolsToolDefinitions = [
   {
     name: "Target.createTarget",
-    description: "Create a persistent browser tab for interactive testing.",
+    description: "Create a persistent browser tab for interactive testing. Provide a url, or a ref_id from a prior web_search / web_fetch to open that page.",
     inputSchema: {
       type: "object",
       properties: {
         targetId: { type: "string", description: "Optional custom target id. If omitted, a random id is generated." },
-        url: { type: "string", description: "Optional starting URL. Defaults to about:blank." }
+        url: { type: "string", description: "Optional starting URL. Defaults to about:blank." },
+        ref_id: { type: "number", description: "Optional numeric reference from a prior web_search or web_fetch to open. Overridden by url when both are given." }
       },
       additionalProperties: false
     }
@@ -1133,6 +1311,21 @@ export const devtoolsToolDefinitions = [
     }
   },
   {
+    name: "DOM.getCompactHTML",
+    description: "Get minimized HTML for a selector/xpath, or smart main content HTML when no locator is provided. Strips scripts, styles, comments, svg, iframes, head, and non-essential attributes; collapses whitespace; drops empty elements. Returns a single-line minified string — use for fast DOM debugging without raw-page noise.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string" },
+        selector: { type: "string" },
+        xpath: { type: "string" },
+        maxChars: { type: "number", default: DEFAULT_HTML_LIMIT }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
     name: "DOM.scrollIntoViewIfNeeded",
     description: "Scroll an element into view using selector or xpath.",
     inputSchema: {
@@ -1194,6 +1387,7 @@ export async function handleDevtoolsToolCall(name, args = {}) {
   if (name === "DOM.querySelector") return querySelector(args, false);
   if (name === "DOM.querySelectorAll") return querySelector(args, true);
   if (name === "DOM.getOuterHTML") return getOuterHtml(args);
+  if (name === "DOM.getCompactHTML") return getCompactHtml(args);
   if (name === "DOM.scrollIntoViewIfNeeded") return scrollIntoViewIfNeeded(args);
   if (name === "Input.dispatchMouseEvent") return dispatchMouseEvent(args);
   if (name === "Input.insertText") return insertText(args);

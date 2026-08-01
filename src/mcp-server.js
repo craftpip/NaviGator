@@ -17,16 +17,13 @@ import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSear
 import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot } from "./devtools.js";
 import { transform as asciiTransform } from "./ascii.js";
 import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
+import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
 
-const linkMemoryByRef = new Map();
-const linkMemoryByUrl = new Map();
-let nextLinkRef = 1;
 const screenshotDownloadById = new Map();
 const screenshotStorageDir = path.join(process.cwd(), "screenshots");
 const TOOL_CACHE_TTL_MS = 5 * 60 * 1000;
 const SCREENSHOT_DOWNLOAD_TTL_MS = 60 * 60 * 1000;
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
-const MAX_LINK_MEMORY_ENTRIES = 2000;
 const MAX_SCREENSHOT_DOWNLOADS = 200;
 const MAX_TOOL_CACHE_ENTRIES = 200;
 const toolResultCache = {
@@ -220,17 +217,6 @@ function getDomain(u) {
   try { return new URL(u).hostname; } catch { return ""; }
 }
 
-function getRememberedLinkRecord(ref) {
-  const remembered = linkMemoryByRef.get(ref);
-  if (!remembered) return null;
-  if (typeof remembered === "string") {
-    return { url: remembered };
-  }
-  const url = String(remembered?.url || "").trim();
-  if (!url) return null;
-  return { url };
-}
-
 function mcpRequestSummary(body) {
   if (!body) return "?";
   const m = body?.method || "";
@@ -395,35 +381,6 @@ async function storeScreenshotDownload(entry, config, { enableDownload }) {
     bytes: buffer.length,
     filePath
   };
-}
-
-function rememberLink(url) {
-  const normalized = String(url || "").trim();
-  if (!normalized) return null;
-
-  pruneLinkMemory();
-
-  const existingRef = linkMemoryByUrl.get(normalized);
-  if (existingRef) return existingRef;
-
-  const ref = nextLinkRef;
-  nextLinkRef += 1;
-  linkMemoryByUrl.set(normalized, ref);
-  linkMemoryByRef.set(ref, normalized);
-  pruneLinkMemory();
-  return ref;
-}
-
-function pruneLinkMemory() {
-  while (linkMemoryByRef.size > MAX_LINK_MEMORY_ENTRIES) {
-    const oldestRef = linkMemoryByRef.keys().next().value;
-    if (oldestRef === undefined) break;
-    const rememberedUrl = getRememberedLinkRecord(oldestRef)?.url;
-    linkMemoryByRef.delete(oldestRef);
-    if (rememberedUrl) {
-      linkMemoryByUrl.delete(rememberedUrl);
-    }
-  }
 }
 
 async function deleteScreenshotRecord(downloadId, record) {
@@ -844,7 +801,7 @@ async function openTargetsParallel(targetUrls, maxParallel, includeSeoAnalysis =
             enrichedTextByUrl.set(link.href, link.text);
           }
           result.text = result.text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
-            const ref = linkMemoryByUrl.get(url);
+            const ref = getLinkRefByUrl(url);
             if (!ref) return match;
             const enriched = enrichedTextByUrl.get(url);
             const isNumeric = /^\d+$/.test(text);
@@ -1617,7 +1574,7 @@ async function handleToolCall(name, args = {}) {
     const ids = singleRef !== null ? [singleRef] : multipleRefs;
     const out = [];
     for (const id of ids) {
-      const url = linkMemoryByRef.get(id);
+      const url = getUrlForRefId(id);
       if (url) {
         out.push(`- [${id}]: ${url}`);
       } else {

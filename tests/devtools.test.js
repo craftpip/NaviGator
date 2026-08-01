@@ -26,6 +26,7 @@ describe("devtoolsToolDefinitions", () => {
     expect(names).toContain("DOM.querySelector");
     expect(names).toContain("DOM.querySelectorAll");
     expect(names).toContain("DOM.getOuterHTML");
+    expect(names).toContain("DOM.getCompactHTML");
     expect(names).toContain("DOM.scrollIntoViewIfNeeded");
     expect(names).toContain("Input.dispatchMouseEvent");
     expect(names).toContain("Input.insertText");
@@ -94,6 +95,15 @@ describe("devtoolsToolDefinitions", () => {
     const { devtoolsToolDefinitions } = await import("../src/devtools.js");
     const tool = devtoolsToolDefinitions.find((t) => t.name === "DOM.querySelectorAll");
     expect(tool.inputSchema.properties).toHaveProperty("limit");
+    expect(tool.inputSchema.properties).toHaveProperty("selector");
+    expect(tool.inputSchema.properties).toHaveProperty("xpath");
+  });
+
+  it("DOM.getCompactHTML requires targetId and has maxChars", async () => {
+    const { devtoolsToolDefinitions } = await import("../src/devtools.js");
+    const tool = devtoolsToolDefinitions.find((t) => t.name === "DOM.getCompactHTML");
+    expect(tool.inputSchema.required).toContain("targetId");
+    expect(tool.inputSchema.properties).toHaveProperty("maxChars");
     expect(tool.inputSchema.properties).toHaveProperty("selector");
     expect(tool.inputSchema.properties).toHaveProperty("xpath");
   });
@@ -172,6 +182,93 @@ describe("handleDevtoolsToolCall", () => {
     const result = await handleDevtoolsToolCall("Target.getTargets", {});
     expect(result).toHaveProperty("count");
     expect(result).toHaveProperty("targets");
+  });
+
+  it("Target.createTarget accepts ref_id and navigates to the resolved URL", async () => {
+    const { rememberLink } = await import("../src/ref-memory.js");
+    const ref = rememberLink("https://ref-example.com/article");
+
+    const goto = vi.fn().mockResolvedValue(undefined);
+    getBrowserManager.mockResolvedValue({
+      config: {
+        enableDevtoolsMcp: true,
+        devtoolsBackend: "chromium",
+        defaultBackend: "cloakbrowser",
+        navWaitUntil: "domcontentloaded",
+        browserOpTimeoutMs: 60000,
+      },
+      newPage: vi.fn().mockResolvedValue({
+        goto,
+        url: vi.fn().mockReturnValue("https://ref-example.com/article"),
+        title: vi.fn().mockResolvedValue("Ref Example"),
+        isClosed: vi.fn().mockReturnValue(false),
+        on: vi.fn(),
+      }),
+    });
+
+    const { handleDevtoolsToolCall } = await import("../src/devtools.js");
+    const result = await handleDevtoolsToolCall("Target.createTarget", { ref_id: ref });
+    expect(goto).toHaveBeenCalledWith("https://ref-example.com/article", expect.any(Object));
+    expect(result.url).toBe("https://ref-example.com/article");
+  });
+
+  it("Target.createTarget rejects unknown ref_id", async () => {
+    getBrowserManager.mockResolvedValue({
+      config: {
+        enableDevtoolsMcp: true,
+        devtoolsBackend: "chromium",
+        defaultBackend: "cloakbrowser",
+        navWaitUntil: "domcontentloaded",
+        browserOpTimeoutMs: 60000,
+      },
+      newPage: vi.fn().mockResolvedValue({
+        goto: vi.fn().mockResolvedValue(undefined),
+        url: vi.fn().mockReturnValue("about:blank"),
+        title: vi.fn().mockResolvedValue(""),
+        isClosed: vi.fn().mockReturnValue(false),
+        on: vi.fn(),
+      }),
+    });
+
+    const { handleDevtoolsToolCall } = await import("../src/devtools.js");
+    await expect(handleDevtoolsToolCall("Target.createTarget", { ref_id: 999999 })).rejects.toThrow(
+      "No link found in memory for ref 999999"
+    );
+  });
+
+  it("routes DOM.getCompactHTML to the correct handler", async () => {
+    getBrowserManager.mockResolvedValue({
+      config: {
+        enableDevtoolsMcp: true,
+        devtoolsBackend: "chromium",
+        defaultBackend: "cloakbrowser",
+        navWaitUntil: "domcontentloaded",
+        browserOpTimeoutMs: 60000,
+      },
+      newPage: vi.fn().mockResolvedValue({
+        goto: vi.fn().mockResolvedValue(undefined),
+        url: vi.fn().mockReturnValue("https://example.com"),
+        title: vi.fn().mockResolvedValue("Example"),
+        isClosed: vi.fn().mockReturnValue(false),
+        on: vi.fn(),
+        evaluate: vi.fn().mockResolvedValue({
+          title: "Example",
+          selector: "main",
+          xpath: "/html[1]/body[1]/main[1]",
+          tagName: "main",
+          charsBefore: 5000,
+          charsAfter: 800,
+          html: "<main><h1>Hello</h1><p>World</p></main>",
+        }),
+      }),
+    });
+
+    const { handleDevtoolsToolCall } = await import("../src/devtools.js");
+    const created = await handleDevtoolsToolCall("Target.createTarget", {});
+    const result = await handleDevtoolsToolCall("DOM.getCompactHTML", { targetId: created.targetId });
+    expect(result).toHaveProperty("html");
+    expect(result.html).toContain("<main>");
+    expect(result.charsAfter).toBeLessThan(result.charsBefore);
   });
 });
 

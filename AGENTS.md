@@ -124,7 +124,7 @@ All tool schemas are defined in `getToolsListResponse()`:
 | `web_page_screenshot` | `src/mcp-server.js` | 980–1027 |
 | `web_page_links` | `src/mcp-server.js` | 1096–1113 |
 | `web_page_ascii` | `src/mcp-server.js` | 1114–1141 |
-| Devtools tools (13) | `src/devtools.js` | 884–1062 |
+| Devtools tools (14) | `src/devtools.js` | 884–1062 |
 
 ### Tool Call Dispatch
 
@@ -154,6 +154,7 @@ All tool schemas are defined in `getToolsListResponse()`:
 | `src/search.js` | `browserSearch()`, `browserOpenAndExtract()`, `browserCaptureScreenshot()` |
 | `src/browser.js` | `BrowserManager`, page lifecycle, `newPage()` |
 | `src/config.js` | `loadConfig()`, env var parsing |
+| `src/ref-memory.js` | Shared link ref memory (`rememberLink()`, `getRememberedLinkRecord()`, `resolveRefIdToUrl()`) — used by mcp-server and devtools |
 
 ---
 
