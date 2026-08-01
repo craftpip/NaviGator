@@ -1,5 +1,9 @@
 # 🐊 NaviGator
 
+[![CI](https://github.com/craftpip/navigator/actions/workflows/test.yml/badge.svg)](https://github.com/craftpip/navigator/actions/workflows/test.yml)
+[![Docker](https://ghcr-badge.egpl.dev/craftpip/navigator/latest_tag?label=ghcr.io/craftpip/navigator)](https://github.com/craftpip/navigator/pkgs/container/navigator)
+[![License](https://img.shields.io/github/license/craftpip/navigator)](LICENSE)
+
 NaviGator gives your MCP client a real browser for:
 
 - web search
@@ -229,7 +233,7 @@ Example client config:
 }
 ```
 
-## ## Domain Hints
+## Domain Hints
 
 Some websites need special handling to extract content well. An SPA that loads content 8 seconds after page open, a site that uses web components instead of semantic HTML, or a login wall that has zero useful content — the default extraction pipeline may not handle these well.
 
@@ -302,7 +306,7 @@ DOMAIN_HINTS_PATH=/dev/null
 
 ---
 
-MCP Tools
+## MCP Tools
 
 This server always exposes the three main web tools below.
 
@@ -343,7 +347,6 @@ Also supports:
 - `urls`
 - `ref_id`
 - `ref_ids`
-- `maxTableRows` (optional row cap; omitted means no table row limit)
 
 ### `web_page_screenshot`
 
@@ -409,7 +412,7 @@ The most important environment variables are:
 - `SEARCH_ROUTE_WARMUP_ENGINES`: comma-separated search-route warmup engine list
 - `ENABLE_VNC`: enable VNC and noVNC in Docker
 
-See `.env.example` for the full list.
+See `.env.example` for the full list (the pre-cleanup reference copy is kept at `.env.example.full`).
 
 ## Docker Notes
 
@@ -530,13 +533,43 @@ When the `v*.*.*` tag is pushed, GitHub Actions automatically publishes a GitHub
 - Be careful before exposing the HTTP endpoint outside a trusted environment
 - Do not commit real credentials or personal browser profiles into the repository
 
-See `SECURITY.md` for reporting guidance.
+To report a security issue, open a private report on the GitHub security advisories page.
 
 ## Contributing
 
 Contributions are welcome.
 
-See `CONTRIBUTING.md` for setup and pull request guidance.
+- See the `websites/` directory for the site research that drives domain hints
+- Run `npm run lint` and the test suite before opening a PR
+- Follow the tool contract documented in `AGENTS.md`
+
+## Examples
+
+Ready-to-run MCP client examples live in `examples/`. They talk to `http://localhost:3000/mcp` by default and can be pointed at any server with `NAVIGATOR_URL`.
+
+```bash
+node examples/web-search.mjs "model context protocol"
+node examples/web-fetch.mjs https://example.com
+node examples/web-screenshot.mjs https://example.com screenshot.png
+```
+
+## Versioning
+
+The repo uses semver tags and GitHub Releases. See `CHANGELOG.md` for the changelog.
+
+## Roadmap
+
+- Multi-arch GHCR images (blocked: the bundled `stealthpanda` binary is x86_64-only)
+- npm publishing for `navigator-mcp`
+- More domain hints as the site research in `websites/` grows
+
+## FAQ
+
+**Does it need Docker?** No. stdio mode works with a local Node.js + Chromium install. Docker is the recommended, easiest path.
+
+**Which MCP clients work with HTTP mode?** Any client that supports Streamable HTTP MCP, like OpenCode, Claude Desktop, and others. The endpoint is `http://127.0.0.1:3000/mcp`.
+
+**Why does the GitHub Actions test workflow run, but tests run in a container locally?** The CI workflow uses native Node.js + `npx vitest run` for speed. Local dev runs the same tests inside the `navigator` container; both use vitest.
 
 ## License
 

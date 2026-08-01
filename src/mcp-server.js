@@ -278,11 +278,11 @@ function extractDomains(text) {
   const domains = [];
   const lines = text.split("\n");
   for (const line of lines) {
-    const m = line.match(/URL:\s*(https?:\/\/([^\/\s]+))/);
+    const m = line.match(/URL:\s*(https?:\/\/([^/\s]+))/);
     if (m && !domains.includes(m[2])) domains.push(m[2]);
   }
   if (!domains.length) {
-    const m = text.match(/\[\d+\].*?\]\s+(https?:\/\/([^\/\s]+))/);
+    const m = text.match(/\[\d+\].*?\]\s+(https?:\/\/([^/\s]+))/);
     if (m && !domains.includes(m[2])) domains.push(m[2]);
   }
   return domains.join(", ");
@@ -311,48 +311,6 @@ function mcpResponseSummary(resp) {
     return `${okCount + failCount} pages (${okCount} ok, ${failCount} err)${domainsPart}`;
   }
   return `${Math.round(text.length / 1000)}k chars`;
-}
-
-function summarizeToolArgs(tool, args = {}) {
-  const base = { tool, argKeys: Object.keys(args || {}) };
-
-  if (tool === "web_search") {
-    const single = typeof args.query === "string" ? args.query.trim() : "";
-    const multi = Array.isArray(args.queries)
-      ? args.queries.map((item) => String(item || "").trim()).filter(Boolean)
-      : [];
-    const terms = [...new Set([single, ...multi].filter(Boolean))];
-    return {
-      ...base,
-      terms,
-      termCount: terms.length,
-      limit: parseSearchLimit(args.limit, 5),
-      engines: normalizeSearchEngineSelection(args.engines, args.engine)
-    };
-  }
-
-  if (tool === "web_fetch" || tool === "web_page_screenshot") {
-    const urlCount = Array.isArray(args.urls)
-      ? args.urls.map((item) => String(item || "").trim()).filter(Boolean).length
-      : typeof args.url === "string" && args.url.trim()
-        ? 1
-        : 0;
-    const refCount = Array.isArray(args.ref_ids)
-      ? args.ref_ids.filter((item) => item !== undefined && item !== null && String(item).trim()).length
-      : args.ref_id !== undefined && args.ref_id !== null && String(args.ref_id).trim()
-        ? 1
-        : 0;
-    return {
-      ...base,
-      urlCount,
-      refCount,
-      maxChars: tool === "web_fetch" ? parseMaxChars(args.maxChars, DEFAULT_MAX_CHARS) : undefined,
-      format: tool === "web_page_screenshot" ? (args.format || "png") : undefined,
-      fullPage: tool === "web_page_screenshot" ? (args.fullPage === undefined ? true : Boolean(args.fullPage)) : undefined
-    };
-  }
-
-  return base;
 }
 
 function createExecutionTimer() {
@@ -1629,7 +1587,7 @@ async function handleStatelessMcpPost(body) {
   const method = String(body?.method || "");
 
   // JSON-RPC notifications (no id) must not receive a response
-  if (id === null && !body.hasOwnProperty("id")) {
+  if (id === null && !Object.hasOwn(body, "id")) {
     return null;
   }
 
@@ -2075,7 +2033,7 @@ async function maybeStartHttpServer(managerOverride) {
           const data = await fs.readFile(record.path);
           res.writeHead(200, {
             "content-type": record.contentType || "application/octet-stream",
-            "content-disposition": `attachment; filename=\"${record.filename}\"`
+            "content-disposition": `attachment; filename="${record.filename}"`
           });
           res.end(data);
           return;
@@ -2105,7 +2063,7 @@ async function maybeStartHttpServer(managerOverride) {
 
   const keepaliveInterval = setInterval(() => {
     const entries = [...mcpTransports.entries()];
-    for (const [sid, transport] of entries) {
+    for (const [, transport] of entries) {
       try {
         const ws = transport._webStandardTransport;
         if (!ws?._streamMapping) continue;

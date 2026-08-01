@@ -69,17 +69,20 @@ describe("resolveChromePath", () => {
     await expect(resolveChromePath()).resolves.toBe("/usr/bin/env");
   });
 
-  it("rejects when env var points to non-executable", async () => {
+  it("ignores env var that points to non-executable", async () => {
     vi.stubEnv("CHROME_PATH", "/etc/passwd");
     const { resolveChromePath } = await import("../src/config.js");
-    // /etc/passwd exists but is not executable
-    await expect(resolveChromePath()).rejects.toThrow("Could not resolve Chromium executable");
+    // /etc/passwd exists but is not executable — the resolver falls back to
+    // known binaries instead of using it (or rejects when nothing is found).
+    const result = await resolveChromePath().catch(() => null);
+    expect(result).not.toBe("/etc/passwd");
   });
 
-  it("rejects when env var is set to nonexistent path", async () => {
+  it("ignores env var that points to nonexistent path", async () => {
     vi.stubEnv("CHROME_PATH", "/nonexistent/chrome");
     const { resolveChromePath } = await import("../src/config.js");
-    await expect(resolveChromePath()).rejects.toThrow("Could not resolve Chromium executable");
+    const result = await resolveChromePath().catch(() => null);
+    expect(result).not.toBe("/nonexistent/chrome");
   });
 });
 
@@ -213,6 +216,29 @@ describe("loadConfig (parse engine behavior)", () => {
 
   it("sets default values when no env vars provided", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    // Guard against host/container env leaking into the test.
+    for (const v of [
+      "BROWSER_BACKEND",
+      "BROWSER_OP_TIMEOUT_MS",
+      "MCP_API_PORT",
+      "HEALTH_PORT",
+      "ENABLE_HTTP_MCP",
+      "ENABLE_STDIO_MCP",
+      "ENABLE_DEVTOOLS_MCP",
+      "SEARCH_KEEP_MIN_WORKING_WINDOWS",
+      "SEARCH_MAX_WORKING_WINDOWS",
+      "SEARCH_ROUTE_CIRCUIT_OPEN_MS",
+      "OPEN_PAGE_MAX_PARALLEL",
+      "MAX_CONCURRENT_PAGE_OPS",
+      "HUMAN_TYPING_DELAY",
+      "PRELAUNCH_BROWSER",
+      "ENABLE_HANG_RESTART",
+      "STARTUP_URL",
+      "ENABLE_SCREENSHOT_PATH",
+      "ENABLE_SCREENSHOT_DOWNLOAD_LINK"
+    ]) {
+      vi.stubEnv(v, undefined);
+    }
     const { loadConfig } = await import("../src/config.js");
     const config = await loadConfig();
     expect(config.defaultBackend).toBe("cloakbrowser");

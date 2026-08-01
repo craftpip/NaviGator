@@ -682,7 +682,7 @@ export class BrowserManager {
       }
 
       // Remove webdriver from navigator
-      if (navigator.hasOwnProperty('webdriver')) {
+      if (Object.hasOwn(navigator, "webdriver")) {
         delete navigator.webdriver;
       }
 

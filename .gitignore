@@ -6,3 +6,6 @@ screenshots/*.png
 .idea/
 .ai/
 .cache/
+*.log
+dist/
+doc/

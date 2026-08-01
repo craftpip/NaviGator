@@ -166,7 +166,7 @@ export async function findCloakbrowserPath() {
   }
 
   try {
-    const { launch } = await import("cloakbrowser/puppeteer");
+    await import("cloakbrowser/puppeteer");
     const { ensureBinary } = await import("cloakbrowser/dist/download.js");
     const binaryPath = await ensureBinary();
     return binaryPath;

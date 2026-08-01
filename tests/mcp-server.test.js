@@ -282,7 +282,7 @@ describe("mcp-server HTTP endpoints", () => {
       const webFetch = body.result.tools.find((tool) => tool.name === "web_fetch");
       expect(webFetch.inputSchema.additionalProperties).toBe(false);
       expect(Object.keys(webFetch.inputSchema.properties).sort()).toEqual([
-        "bypassCache", "maxChars", "maxTableRows", "ref_id", "ref_ids", "url", "urls"
+        "bypassCache", "maxChars", "ref_id", "ref_ids", "url", "urls"
       ]);
     });
 
@@ -465,8 +465,7 @@ describe("mcp-server HTTP endpoints", () => {
           name: "web_fetch",
           arguments: {
             url: "https://limits.example.com",
-            maxChars: 999999,
-            maxTableRows: 3.8
+            maxChars: 999999
           }
         }
       });
@@ -474,27 +473,8 @@ describe("mcp-server HTTP endpoints", () => {
       expect(status).toBe(200);
       expect(searchMod.browserOpenAndExtract).toHaveBeenCalledWith({
         url: "https://limits.example.com",
-        maxChars: 200000,
-        includeSeoAnalysis: true,
-        maxTableRows: 3
+        includeSeoAnalysis: true
       });
-    });
-
-    it("rejects invalid table row limits before opening a page", async () => {
-      const searchMod = await import("../src/search.js");
-      searchMod.browserOpenAndExtract.mockReset();
-
-      const { status, body } = await mcpPost({
-        jsonrpc: "2.0", id: 52, method: "tools/call",
-        params: {
-          name: "web_fetch",
-          arguments: { url: "https://limits.example.com", maxTableRows: 0 }
-        }
-      });
-
-      expect(status).toBe(500);
-      expect(body.error).toMatch(/maxTableRows must be a positive number/);
-      expect(searchMod.browserOpenAndExtract).not.toHaveBeenCalled();
     });
 
     it("preserves requested order and returns partial extraction failures", async () => {
@@ -978,7 +958,6 @@ describe("mcp-server HTTP endpoints", () => {
         params: { name: "web_search", arguments: { query: "find page" } },
       });
       expect(searchResp.status).toBe(200);
-      const text = searchResp.body.result.content[0].text;
 
       // Now try web_fetch with url directly
       searchMod.browserOpenAndExtract.mockResolvedValueOnce({

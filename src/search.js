@@ -98,7 +98,7 @@ const routeCircuitState = new Map();
 const ENGINE_PAGE_CONFIG = {
   duckduckgo_ch: {
     homeUrl: "https://duckduckgo.com/",
-    searchUrl: (q) => `https://duckduckgo.com/`,
+    searchUrl: () => `https://duckduckgo.com/`,
     inputSelectors: ["input[name='q']", "input#searchbox_input", "input[data-testid='searchbox-input']"],
     resultSelectors: [
       "article[data-testid='result']",
@@ -138,7 +138,7 @@ const ENGINE_PAGE_CONFIG = {
   },
   duckduckgo_cb: {
     homeUrl: "https://duckduckgo.com/",
-    searchUrl: (q) => `https://duckduckgo.com/`,
+    searchUrl: () => `https://duckduckgo.com/`,
     inputSelectors: ["input[name='q']", "input#searchbox_input", "input[data-testid='searchbox-input']"],
     resultSelectors: [
       "article[data-testid='result']",
@@ -435,7 +435,7 @@ function scoreTextBlock(text) {
 
   const words = cleaned.split(/\s+/).length;
   const links = (cleaned.match(/https?:\/\//g) || []).length;
-  const punctuation = (cleaned.match(/[\.!?]/g) || []).length;
+  const punctuation = (cleaned.match(/[.!?]/g) || []).length;
 
   return words + punctuation * 2 - links * 5;
 }
@@ -570,7 +570,6 @@ function extractTablesFromDocument(doc, {
   };
 
   // Build heading position map for context
-  const scopeRoot = container || doc;
   const allHeadings = Array.from((container || doc).querySelectorAll("h1, h2, h3, h4, h5, h6"));
   const headingMap = new Map();
   for (const h of allHeadings) {
@@ -674,131 +673,6 @@ function extractTablesFromDocument(doc, {
 
   return tables;
 }
-
-function renderExtractedTables(tables, maxChars = 12000) {
-  if (!Array.isArray(tables) || !tables.length) return "";
-
-  const lines = ["", "## Extracted Tables"];
-  let remaining = Math.max(0, maxChars);
-
-  for (let index = 0; index < tables.length; index += 1) {
-    if (remaining <= 0) break;
-    const table = tables[index];
-    const heading = `### Table ${index + 1}${table.caption ? `: ${table.caption}` : ""}`;
-    lines.push("", heading);
-    remaining -= heading.length;
-
-    if (table.headers?.length) {
-      const headerLine = table.headers.join(" | ");
-      if (remaining <= headerLine.length) break;
-      lines.push(headerLine);
-      remaining -= headerLine.length;
-    }
-
-    for (const row of table.rows || []) {
-      const rowLine = row.join(" | ");
-      if (remaining <= rowLine.length) {
-        lines.push("...");
-        remaining = 0;
-        break;
-      }
-      lines.push(rowLine);
-      remaining -= rowLine.length;
-    }
-  }
-
-  return lines.join("\n").trimEnd();
-}
-
-function insertLinksInline(text, links) {
-  if (!text || !links.length) return text;
-
-  const lines = text.split("\n");
-
-  // Group links by their context heading
-  const linksByContext = new Map();
-  const orphanLinks = [];
-  for (const link of links) {
-    const ctx = link.context || "";
-    if (ctx) {
-      if (!linksByContext.has(ctx)) linksByContext.set(ctx, []);
-      linksByContext.get(ctx).push(link);
-    } else {
-      orphanLinks.push(link);
-    }
-  }
-
-  // Find heading or section-label lines in text and insert links after them
-  const headingRegex = /^#{1,6}\s+(.+)/;
-  const result = [];
-  const insertedTexts = new Set();
-  const insertedLinkTexts = [];
-  let i = 0;
-  while (i < lines.length) {
-    const trimmedLine = lines[i].trim();
-
-    // Skip lines that are standalone duplicates of already-inserted link text
-    if (trimmedLine.length > 2 && trimmedLine.length < 100) {
-      const lower = trimmedLine.toLowerCase();
-      if (insertedTexts.has(lower)) {
-        i++;
-        continue;
-      }
-      // Also skip multi-line project entries: if the line is a substring of an inserted link text
-      if (insertedLinkTexts.some(lt => lt.length >= trimmedLine.length && lt.includes(lower))) {
-        i++;
-        continue;
-      }
-    }
-
-    result.push(lines[i]);
-    const mdMatch = lines[i].match(headingRegex);
-    const lineText = mdMatch ? mdMatch[1].trim() : trimmedLine;
-    // Match markdown headings directly, and short standalone lines that contain the context
-    // (Readability strips heading markers, so "Open-Source Projects" appears as plain text)
-    if (lineText && lineText.length < 150) {
-      for (const [ctx, ctxLinks] of linksByContext) {
-        if (lineText.toLowerCase().includes(ctx.toLowerCase()) || ctx.toLowerCase().includes(lineText.toLowerCase())) {
-          for (const link of ctxLinks) {
-            const label = link.text || link.href;
-            result.push(`- ${label} — ${link.href}`);
-            insertedTexts.add((link.text || "").toLowerCase().trim());
-            if (link.text) insertedLinkTexts.push(link.text.toLowerCase().trim());
-          }
-          linksByContext.delete(ctx);
-        }
-      }
-    }
-    i++;
-  }
-
-  // Append any remaining grouped links at the end
-  const remaining = [...linksByContext.values()].flat();
-  const allRemaining = [...remaining, ...orphanLinks];
-  if (allRemaining.length) {
-    result.push("", "## Links");
-    for (const link of allRemaining) {
-      const label = link.text || link.href;
-      result.push(`- ${label} — ${link.href}`);
-    }
-  }
-
-  // Collapse consecutive blank lines left by removed duplicate text
-  const cleaned = [];
-  let prevBlank = false;
-  for (const line of result) {
-    if (line === "") {
-      if (prevBlank) continue;
-      prevBlank = true;
-    } else {
-      prevBlank = false;
-    }
-    cleaned.push(line);
-  }
-
-  return cleaned.join("\n").trim();
-}
-
 
 function insertTablesInline(text, tables) {
   if (!tables.length) return text || "";
@@ -910,7 +784,6 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       if (debug) console.log(">>> entering sections path, selector:", hint.content.sections[0].selector);
       const sectionOutput = [];
       const allSectionTables = [];
-      let hadAnyTable = false;
       const order = { high: 0, medium: 1, low: 2 };
       const sorted = [...hint.content.sections].sort(
         (a, b) => (order[a.priority] || 1) - (order[b.priority] || 1)
@@ -937,7 +810,6 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
                 const clean = elTables.map(({ node, ...rest }) => rest);
                 allSectionTables.push(...clean);
                 sectionHadTable = true;
-                hadAnyTable = true;
               }
               if (el.matches?.("table")) continue;
               const elementHtml = el.innerHTML || "";
@@ -992,7 +864,7 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       try {
         const reader = new Readability(dom.window.document);
         article = reader.parse();
-      } catch (e) {
+      } catch {
         article = null;
       }
     }
@@ -1828,7 +1700,7 @@ async function runSearchEngine({ manager, query, engine, config }) {
   }
 }
 
-function routeConcurrencyForEngines(engines, config) {
+function routeConcurrencyForEngines(engines, _config) {
   const hasLightpandaRoute = engines.some((engine) => ENGINE_BACKENDS[engine] === "lightpanda");
   if (hasLightpandaRoute) return 1;
   return Math.max(1, engines.length);

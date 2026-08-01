@@ -1,0 +1,29 @@
+core:
+  - src/**/*
+
+testing:
+  - tests/**/*
+  - vitest.config.js
+
+scripts:
+  - scripts/**/*
+  - benchmarking/**/*
+
+docs:
+  - README.md
+  - docs/**/*
+  - websites/**/*
+  - plans/**/*
+  - AGENTS.md
+  - CHANGELOG.md
+
+docker:
+  - Dockerfile
+  - docker/**/*
+  - docker-compose*.yml
+
+ci:
+  - .github/**/*
+
+domain-hints:
+  - domain-hints.json

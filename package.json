@@ -40,19 +40,26 @@
     "test:hints:live": "LIVE_DOMAIN_HINTS=1 vitest run tests/domain-hints-live.test.js",
     "test:mcporter": "bash scripts/test-mcporter.sh",
     "docs": "typedoc src/ --out doc",
+    "lint": "eslint src/ scripts/ tests/",
+    "lint:fix": "eslint --fix src/ scripts/ tests/",
     "release:patch": "npm version patch",
     "release:minor": "npm version minor",
     "release:major": "npm version major"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
     "typedoc": "^0.28.0",
     "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=20"
   },
+  "overrides": {
+    "@hono/node-server": "^2.0.5"
+  },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.4",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@mozilla/readability": "^0.6.0",
     "cloakbrowser": "^0.5.2",
     "jsdom": "^27.0.0",
