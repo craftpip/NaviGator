@@ -2189,7 +2189,7 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
           const html = (document.documentElement?.outerHTML || "").toLowerCase();
           if (html.includes("cf-browser-verification") || html.includes("__cf_challenge") || /just a moment|performing security verification|security service to protect/i.test(`${title}\n${bodyText}`)) return "Cloudflare challenge";
           if (html.includes("data-dome") || bodyText.includes("Please enable JS") || bodyText.includes("disable any ad blocker")) return "DataDome challenge";
-          if (!title || /^[a-z0-9-]+\.[a-z]{2,}$/i.test(title)) return `Bot block detected (title: "${title}")`;
+          if ((!title && !bodyText) || /^[a-z0-9-]+\.[a-z]{2,}$/i.test(title)) return `Bot block detected (title: "${title}")`;
           return null;
         }).catch(() => null)
       );
