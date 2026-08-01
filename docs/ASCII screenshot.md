@@ -1,55 +1,42 @@
-# Plan: Annotated Screenshot Tool — Visual Page Map with Element Selectors
+# Plan: Annotated Screenshot Tool — Chafa-style Half-Block Rendering with Element Selectors
 
 ## The Vision
 
-A tool that takes a webpage and returns a **visual screenshot** where every interactive element is **numbered directly on the image**, paired with a **legend** that maps those numbers to selectors (CSS, XPath), element type, text, and bounding rect.
+A tool that takes a webpage and returns a **truecolor half-block render** of the page — real screenshot, downscaled to a grid, drawn with `▀ ▄ █` characters and per-cell RGB ANSI escape codes (the chafa approach) — where every interactive element is **numbered directly on the render**, paired with a **legend** that maps those numbers to selectors (CSS, XPath), element type, text, and bounding rect.
 
-The result is both a screenshot (the LLM can SEE the page) and a document snapshot (the LLM can INTERACT with the page). It's a visual map with coordinates — the LLM looks at it, sees "oh, element [#3] is the search input", and immediately knows the selector to use.
+The result is both a screenshot (the LLM can SEE the page, including color and layout) and a document snapshot (the LLM can INTERACT with the page). It's a visual map with coordinates — the LLM looks at it, sees "oh, element [#3] is the search input", and immediately knows the selector to use.
+
+The **wireframe approach is dropped** — structural boxes made of `─│┌┐└┘` gave no visual fidelity. The **photographic luminance-ramp approach is also dropped** — `$@%` grayscale ramps lose all color and look like noise. Chafa-style half-blocks with truecolor are the middle ground: real colors, real layout, compact text output.
 
 ---
 
 ## What the LLM Gets Back
 
-```
-### Annotated Screenshot
+```ansi
+### Page Wireframe — example.com
 
-  ┌──────────────────────────────────────────────────────────────────┐
-  │  [1] Home     About     Contact              [2] 🔍            │
-  ├──────────────────────────────────────────────────────────────────┤
-  │                                                                  │
-  │         Welcome to Our Platform                                  │
-  │                                                                  │
-  │         ┌──────────────────────────────────────────────┐        │
-  │         │                                              │        │
-  │   [3]   │  Enter your email address...          [4]   │        │
-  │         │                                              │        │
-  │         └──────────────────────────────────────────────┘        │
-  │                                                                  │
-  │         ┌──────────────────────────────────┐                    │
-  │   [5]   │  Password...                     │                    │
-  │         └──────────────────────────────────┘                    │
-  │                                                                  │
-  │              [ 6 ]  Sign In                                      │
-  │                                                                  │
-  │         [7] Forgot password?    [8] Create account               │
-  │                                                                  │
-  └──────────────────────────────────────────────────────────────────┘
+\x1b[38;2;10;10;10m\x1b[48;2;255;255;255m▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\x1b[0m
+\x1b[38;2;10;10;10m\x1b[48;2;255;255;255m▀▀▀\x1b[48;2;220;50;50m[1] Home About Contact \x1b[48;2;255;255;255m▀▀▀\x1b[0m
+\x1b[38;2;20;20;20m\x1b[48;2;245;245;245m▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\x1b[0m
+...
+```
+
+Wrapped in a ` ```ansi ` code block so renderers with ANSI support show it as a real image. Every cell is one of:
+
+| Char | Meaning |
+|------|---------|
+| `▀` (U+2580) | Two different colors stacked — top pixel is fg, bottom pixel is bg |
+| `█` (U+2588) | Both stacked pixels are the same color — fg only |
+| `[N]` | Marker — drawn inverted (black text on bright bg) so it pops on any page |
+
+The LLM sees the page layout, reads the colors/layout, identifies the numbered markers, and knows exactly what CSS selector or XPath to use to click, type, or navigate.
 
 ### Element Legend
 
-| # | Tag       | Selector                    | XPath                      | Role      | Text / Placeholder        |
-|---|-----------|-----------------------------|----------------------------|-----------|---------------------------|
-| 1 | `<nav>`   | `nav`                       | `/html/body/header/nav[1]` | navigation| "Home About Contact"      |
-| 2 | `<input>` | `#search`                   | `.../input[1]`             | searchbox | placeholder: "Search..."  |
-| 3 | `<input>` | `input[name="email"]`       | `.../form/input[1]`        | textbox   | placeholder: "Enter your email..." |
-| 4 | `<label>` | `label[for="email"]`        | `.../label[1]`             | —         | "Email Address"           |
-| 5 | `<input>` | `input[name="password"]`    | `.../form/input[2]`        | textbox   | placeholder: "Password..."|
-| 6 | `<button>`| `button[type="submit"]`     | `.../button[1]`            | button    | "Sign In"                 |
-| 7 | `<a>`     | `a.forgot-password`         | `.../a[1]`                 | link      | "Forgot password?"        |
-| 8 | `<a>`     | `a.create-account`          | `.../a[2]`                 | link      | "Create account"          |
-```
-
-The LLM sees the page, identifies the numbers, and knows exactly what CSS selector or XPath to use to click, type, or navigate.
+| # | Kind | Tag | Selector | XPath | Text |
+|---|------|-----|----------|-------|------|
+| 1 | link | `a` | `nav > a:nth-of-type(1)` | `/html/body/header/nav[1]/a[1]` | Home |
+| 2 | interactive | `input` | `input[name="email"]` | `/html/body/form/input[1]` | placeholder: "Enter your email..." |
 
 ---
 
@@ -72,87 +59,75 @@ All Canvas API features we need are confirmed working inside `page.evaluate()`:
 
 **Key finding:** `OffscreenCanvas` has been available in Chromium since March 2023 (MDN). No polyfill needed.
 
-### 2. ASCII Conversion Pipeline — VERIFIED WORKING
+**Rendering strategy:** Draw the decoded screenshot scaled down onto a tiny `OffscreenCanvas(cols, rows*2)` — each terminal cell is 1 column wide and 2 pixel-rows tall (half-blocks), so the canvas is `cols` wide × `rows*2` high. Read it back with `getImageData()`. That single scaled `drawImage` does all the downsampling for us — Chromium handles the averaging.
 
-**Test:** Created a 200x100 canvas with gradient + red button + text, converted to base64, decoded via Canvas API, sampled to 80-char-wide ASCII.
+### 2. Half-Block Rendering — THE CHAFA TECHNIQUE
 
-**Result:** The ASCII output clearly shows:
-- The gradient from dark (left ` .'`) to bright (right `@$`)
-- The red button as a distinct character block in the middle rows
-- The "Submit" text visible as character variations within the button area
+Chafa (HP's terminal graphics library) renders images at 2× the horizontal density of plain ASCII by exploiting one fact: a terminal cell can display **two colors at once** — the foreground of the top half (`▀` U+2580) and the background of the bottom half. So:
 
-**Algorithm (proven working):**
-```
-1. Decode base64 PNG → Blob → ImageBitmap
-2. Scale to target width (e.g., 80-120 chars) with aspect correction
-3. Draw to OffscreenCanvas(cols, rows)
-4. getImageData() → Uint8ClampedArray (RGBA per pixel)
-5. For each pixel: brightness = (0.299*R + 0.587*G + 0.114*B) / 255
-6. Map brightness to character: ramp[Math.round(brightness * (ramp.length - 1))]
-```
+- Each character cell = **2 vertical pixel rows** of the page.
+- Top pixel row → cell **foreground** color.
+- Bottom pixel row → cell **background** color.
+- When both rows are the same color, use `█` (U+2588) with only a foreground.
 
-### 3. Performance — EXCELLENT
+**Why it wins over the options we rejected:**
 
-**Test:** 1920x1080 image (typical screenshot), 120-char-wide ASCII output.
+| Approach | Fidelity | Verdict |
+|----------|----------|---------|
+| Luminance ramp (`$@%`, grayscale) | No color, lossy | **Rejected** — looks like noise |
+| Structural wireframe (`─│┌┐`) | No actual pixels | **Rejected** — can't see the page |
+| Chafa half-blocks + truecolor | Real colors, 2× density | **Chosen** |
 
-| Metric | Value |
-|--------|-------|
-| Base64 size | 75 KB |
-| Decode + ImageBitmap | 26 ms |
-| ASCII conversion (120x30 grid) | <1 ms |
-| **Total pipeline** | **~26 ms** |
-| ASCII output dimensions | 120 cols × 30 rows |
-| ASCII output size | ~3.6 KB (text) |
+### 3. ANSI Truecolor — VERIFIED SUPPORTED
 
-**Conclusion:** The entire ASCII conversion takes ~26ms. Well within any reasonable timeout.
+`\x1b[38;2;R;G;Bm` (foreground) and `\x1b[48;2;R;G;Bm` (background) are 24-bit color codes. Supported by all modern terminals and by markdown renderers that implement ANSI code blocks (```ansi). The MCP output is plain text — escape codes included — so any consumer can render or strip them.
 
-### 4. Data Transfer Limits — SAFE
+**Size control — run-length encoding:** Adjacent cells usually share colors (flat backgrounds, text runs). Instead of emitting `\x1b[38;2;..m\x1b[48;2;..m` per cell, only emit escape codes **when the color pair changes**. A solid background collapses to one escape + a run of `▀`. Typical savings: 80-90% of the raw per-cell cost.
 
-**Research:** Puppeteer's `page.evaluate()` has a ~100 MB limit for arguments/return values (verified via GitHub issues #5598, #3955).
+**Greedy row state:** Each row resets with `\x1b[0m`. Within a row, track current fg/bg and emit only on change. Markers switch to inverted colors (`\x1b[30m\x1b[48;2;255;255;0m` = black on yellow) and flip back after.
+
+### 4. Performance — EXCELLENT
+
+| Step | Cost |
+|------|------|
+| Screenshot (1920×1080, base64) | ~75 KB |
+| Decode + ImageBitmap | ~26 ms |
+| Scaled drawImage → getImageData (grid-sized canvas) | <2 ms |
+| Half-block render (JS, RLE) | <1 ms |
+| **Total pipeline** | **~30 ms** |
+
+### 5. Data Transfer Limits — SAFE
+
+Puppeteer's `page.evaluate()` has a ~100 MB limit for args/return values (verified via GitHub issues #5598, #3955).
 
 **Our data sizes:**
-- Screenshot base64 (1920x1080): ~75 KB (input to `page.evaluate`)
-- ASCII grid (120x30): ~3.6 KB (return value)
-- Element metadata (25 elements): ~5 KB (return value)
-- **Total return:** ~8.6 KB — **0.008% of the 100 MB limit**
-
-**Strategy:** Take the screenshot in Node.js (via `page.screenshot()`), pass the base64 string into `page.evaluate()` for ASCII conversion, return the text grid. No issues.
-
-### 5. Luminance Ramps — RESEARCHED
-
-Multiple well-established ramps from the ASCII art community:
-
-| Ramp | Characters | Best For |
-|------|-----------|----------|
-| **Classic (recommended)** | ` .'`^",:;Il!i><~+_-?][}{1)(\|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$` | 69 chars, fine gradation |
-| Short | `@%#*+=-:.` | 10 chars, high contrast |
-| Dense | `$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\|()1{}[]?-_+~<>i!lI;:,"^\`. ` | 70 chars, photographic |
-| Block | `█▓▒░` | 4 chars, pixel art style |
-
-**Recommendation:** Use the 69-char "classic" ramp. It provides enough gradation for webpage screenshots (which are mostly flat colors with text) while being short enough for clear visual distinction.
+- Screenshot base64 (1920×1080): ~75 KB (input)
+- Sampled grid (120×60 cells = 120×120 samples × 3 bytes): ~43 KB (return value)
+- Element metadata (25 elements): ~5 KB
+- **Total:** well under 1% of the 100 MB limit
 
 ### 6. Aspect Ratio Correction — CRITICAL
 
-Monospace characters are approximately **2:1 (height:width)** — each character is twice as tall as it is wide. Without correction, ASCII art appears vertically stretched.
+Monospace characters are approximately **2:1 (height:width)** — each character is twice as tall as it is wide.
 
-**Formula (proven working):**
+**Formula:**
 ```
-cols = targetWidth  // e.g., 100
-rows = Math.round((pixelHeight / pixelWidth) * cols * 0.45)
+cols = targetWidth             // e.g., 100
+rows = Math.round(cols * (pixelHeight / pixelWidth) / 2)
 ```
 
-The `0.45` factor (instead of `0.5`) accounts for the actual character cell ratio in most monospace fonts. This was verified in testing — the output looked proportional.
+The `/ 2` is not a font guess — it's the half-block density: every cell holds 2 vertical pixel rows, so we need `rows = pixelRows / 2` for a proportional result. A 1920×1080 viewport at 100 cols → `100 * 0.5625 / 2 = 28` rows.
 
 ### 7. Element Extraction — PROVEN IN CODEBASE
 
-The `devtools.js:getDocument()` function (lines 460-578) already implements:
+The `devtools.js:getDocument()` function already implements:
 
 - **CSS selector generation** via `cssPath(element)` — walks up the DOM, uses IDs when available, falls back to `:nth-of-type()`
 - **XPath generation** via `xpathFor(element)` — full path from root
 - **Visibility check** via `visible(element)` — checks bounding rect + computed style
 - **Element description** — tag name, text, attributes, bounding rect
 
-**Selector list (from devtools.js line 546-558):**
+**Element selector list (from devtools.js line 546-558):**
 ```
 main, article, h1, h2, button, a[href], input, textarea, select,
 [role='button'], [role='link'], [data-testid]
@@ -167,150 +142,89 @@ nav, main, article, h1, h2, h3,
 [data-testid], [onclick], details, summary, label
 ```
 
-### 8. CSS Selector Quality — RESEARCHED
+### 8. Marker Placement on Half-Block Grid — PLAN
 
-**Research:** Multiple CSS selector generator libraries exist (`css-selector-generator`, `@uindow/css`, `Selektra`, `get-selector`).
+Each element's pixel rect maps to grid coords:
 
-**Key insight:** The approach in `devtools.js` (walk up DOM, use IDs, fall back to `:nth-of-type`) is the standard approach used by all major selector generators. It's simple, fast, and produces unique selectors.
-
-**Edge cases to handle:**
-- Non-unique IDs (some sites like YouTube use duplicate IDs) — fallback to full path
-- Dynamic class names (React/Tailwind) — don't rely on classes alone
-- Shadow DOM — not a concern for initial implementation
-
-### 9. Marker Placement on ASCII Grid — TESTED
-
-**Test:** Placed 4 markers on a 120x30 grid at different positions. Collision avoidance worked — when two elements mapped to the same grid cell, the second was shifted down.
-
-**Algorithm:**
 ```
-1. For each element: gridX = round((rect.x / pixelWidth) * cols), gridY = round((rect.y / pixelHeight) * rows)
-2. Clamp to grid bounds
-3. Check if cell is occupied → shift down until free
-4. Write marker characters into grid cells
+cellCol = round((rect.x / pixelWidth) * cols)
+cellRow = round((rect.y / pixelHeight) * rows)
 ```
 
-**Marker format:** `[N]` (no `#` prefix — saves 1 char of width per marker). The bracket format is unambiguous and easy for LLMs to parse.
+- Write `[N]` starting at the element's top-left grid cell, using inverted colors (`\x1b[30m` + bright bg) so the marker is readable on any page color.
+- Markers that collide (same cells) shift down until free.
+- Elements that don't fit (off-viewport, too small) get listed in the legend only.
+- Marker cells are **drawn last**, after the page render, so they always sit on top of the image.
 
-### 10. Return Size — OPTIMAL
+### 9. Return Size — OPTIMAL
 
 | Component | Size | Notes |
 |-----------|------|-------|
-| ASCII art (120×30) | ~3.6 KB | Text, very compact |
+| ANSI render (100×28, RLE) | ~2-6 KB | Runs of same-color cells collapse |
 | Element legend (25 elements) | ~4 KB | Markdown table |
-| Total response | ~7.6 KB | Tiny compared to screenshot (50-200KB) |
+| Total response | ~6-10 KB | Tiny vs. screenshot (50-200KB) |
 
-**Advantage:** The ASCII response is **10-25x smaller** than a screenshot image, making it faster to transfer and process.
-
----
-
-## Two Implementation Options
-
-### Option A: ASCII Art (Pure Text, No Dependencies) — RECOMMENDED
-
-Convert the screenshot to ASCII characters in the browser using Canvas API, then overlay `[N]` markers. Returns monospace text only.
-
-**Pros:**
-- Zero dependencies — Canvas API is built into Chromium
-- Tiny response size (~7.6 KB)
-- Works in any terminal, any context
-- No image handling needed on the client side
-- 26ms total conversion time
-- Verified working in our environment
-
-**Cons:**
-- Visual fidelity is limited (resolution ≈ 100-200 chars wide)
-- Small text and fine details get lost
-- No color information
-
-### Option B: Annotated PNG Screenshot (Visual Fidelity)
-
-Take a real screenshot, overlay numbered badges on elements using Node.js image processing, return the annotated image as base64 PNG + the legend as text.
-
-**Pros:**
-- Full visual fidelity — the LLM sees the actual page
-- Color, layout, fonts all preserved
-- More intuitive to interpret
-
-**Cons:**
-- Needs an image processing library (e.g., `sharp` or `jimp`) for overlaying text/badges on the PNG
-- Larger response size (screenshot is ~50-200KB base64)
-- Adds a native dependency to the Docker build
-
-### Option C: Both (Best of Both Worlds)
-
-Return both the ASCII art version AND the regular screenshot, plus the legend. The ASCII art is the "quick glance" view, the screenshot is the "detailed" view.
-
-**Pros:**
-- LLM gets two views — ASCII for quick scanning, screenshot for detail
-- Covers all use cases
-
-**Cons:**
-- Largest response
-- Most complex implementation
+**Advantage:** The ANSI response is **10-25x smaller** than a screenshot image, renders as a real colored picture in supporting terminals, and every marker is directly addressable.
 
 ---
 
-## Recommended: Option A (ASCII) for Now
-
-Option A is the fastest to build, has zero dependencies, and the ASCII art + legend combo is genuinely useful for LLMs. We can add Option B later as an enhancement.
-
----
-
-## How It Works (Option A — ASCII Art)
+## How It Works
 
 ### Flow
 
 1. LLM calls `web_page_ascii` with a URL (or `ref_id` from search)
 2. Server opens the page in Chromium
-3. **Collect elements**: Run `page.evaluate()` to scan the DOM for interactive elements, get their bounding rects, selectors, XPaths
+3. **Collect elements**: `page.evaluate()` scans the DOM for interactive elements, gets bounding rects, selectors, XPaths
 4. **Take screenshot**: `page.screenshot({ type: "png", encoding: "base64" })`
-5. **Convert to ASCII**: Pass base64 into `page.evaluate()`, decode via Canvas API, sample pixels, map brightness to ASCII characters
-6. **Annotate**: Place `[N]` markers at each element's position in the ASCII grid
-7. **Build legend**: Format the element list as a markdown table with #, tag, selector, xpath, role, text
-8. Return: annotated ASCII art + element legend
-
-### Element Detection
-
-Same selectors as `devtools.js:getDocument()` (line 546-578), expanded:
-
-```
-a[href], button, input, textarea, select,
-[role='button'], [role='link'], [role='tab'], [role='searchbox'],
-[role='textbox'], [role='menuitem'], [role='navigation'],
-nav, main, article, h1, h2, h3,
-[data-testid], [onclick], details, summary, label
-```
-
-Each element gets:
-- 1-based index number
-- Tag name
-- CSS selector (via `cssPath()`)
-- XPath (via `xpathFor()`)
-- Role attribute
-- Text content or placeholder
-- Bounding rect `{ x, y, width, height }`
+5. **Sample pixels**: pass base64 into `page.evaluate()`, decode via Canvas API, scale down to `cols × rows*2`, read back `getImageData()` — returns a compact RGB grid
+6. **Render half-blocks**: map each pair of pixel rows to `▀`/`█` with per-cell truecolor, run-length encoded
+7. **Annotate**: overlay `[N]` markers at each element's grid position (inverted colors, collision-avoided)
+8. **Build legend**: format the element list as a markdown table with #, tag, selector, xpath, text
+9. Return: annotated ANSI art (```ansi code block) + element legend
 
 ### ASCII Conversion (Browser Canvas API)
 
 Runs inside `page.evaluate()`:
 
-1. Decode base64 PNG → `Blob` → `ImageBitmap` (26ms for 1920x1080)
-2. Scale to target width (default 100 chars), correct for terminal aspect ratio (chars are ~2:1 tall:wide, use factor 0.45)
-3. Draw to `OffscreenCanvas(cols, rows)`
-4. Read pixel data via `getImageData()` → `Uint8ClampedArray`
-5. Map each pixel's brightness (0-255) to a character in the luminance ramp
+```js
+// base64 → Blob → ImageBitmap
+const blob = await (await fetch(`data:image/png;base64,${base64}`)).blob();
+const img = await createImageBitmap(blob);
 
+// Scale to grid: cols × (rows*2) — each cell holds 2 vertical pixel rows
+const canvas = new OffscreenCanvas(cols, rows * 2);
+const ctx = canvas.getContext("2d");
+ctx.drawImage(img, 0, 0, cols, rows * 2);
+
+// Read back RGB grid
+const data = ctx.getImageData(0, 0, cols, rows * 2).data;
 ```
-Luminance formula: brightness = (0.299 * R + 0.587 * G + 0.114 * B) / 255
-Luminance ramp (dark → bright, 69 chars):
- .'`^",:;Il!i><~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$
+
+### Half-Block Render (Pure JS Transformer — src/ascii.js)
+
+```js
+// For each cell (c, r):
+const topR   = data[((r*2)     * cols + c) * 4 + 0];  // top pixel row
+const topG   = data[((r*2)     * cols + c) * 4 + 1];
+const topB   = data[((r*2)     * cols + c) * 4 + 2];
+const botR   = data[((r*2 + 1) * cols + c) * 4 + 0];  // bottom pixel row
+const botG   = data[((r*2 + 1) * cols + c) * 4 + 1];
+const botB   = data[((r*2 + 1) * cols + c) * 4 + 2];
+
+const same = topR === botR && topG === botG && topB === botB;
+const ch   = same ? "█" : "▀";
+const fg   = same ? [topR, topG, topB] : [topR, topG, topB];  // fg = top
+const bg   = same ? null            : [botR, botG, botB];     // bg = bottom
 ```
+
+- Run-length: emit `\x1b[38;2;R;G;Bm` (+ `\x1b[48;2;R;G;Bm`) only when the fg/bg pair changes.
+- Row end: `\x1b[0m\n`.
+- Markers applied after rendering, overwriting cell content with inverted colors.
 
 ### Marker Placement
 
-- Map each element's pixel rect to grid coords: `gridX = round((rect.x / pixelWidth) * cols)`
-- Place `[N]` at the element's top-left corner
+- Map each element's pixel rect to grid coords: `cellCol = round(rect.x / pixelWidth * cols)`, `cellRow = round(rect.y / pixelHeight * rows)`
+- Place `[N]` at the element's top-left corner (inverted colors)
 - If markers overlap, offset vertically to avoid collision
 - Elements that don't fit (off-screen, too small) get listed in the legend only
 
@@ -325,6 +239,7 @@ The system is split into two layers with clear boundaries:
 │  CALLER (browser integration)                   │
 │  - Launches Puppeteer                           │
 │  - Gets screenshot (base64)                     │
+│  - Samples pixels to grid via page.evaluate()   │
 │  - Gets element metadata (positions, selectors) │
 │  - Feeds data into the transformer              │
 │                                                 │
@@ -332,13 +247,13 @@ The system is split into two layers with clear boundaries:
 │  • Test harness (scripts/ascii-screenshot.js)   │
 │  • MCP server (src/mcp-server.js)              │
 └──────────────────────┬──────────────────────────┘
-                       │ base64 + elements JSON
+                       │ RGB grid + elements JSON
                        ▼
 ┌─────────────────────────────────────────────────┐
 │  TRANSFORMER (src/ascii.js)                     │
 │  - Pure data transformation                     │
 │  - Zero browser dependency                      │
-│  - Screenshot → ASCII art                       │
+│  - RGB grid → half-block ANSI render            │
 │  - Elements → annotated markers + legend        │
 │  - Testable with any input data                 │
 └─────────────────────────────────────────────────┘
@@ -355,18 +270,16 @@ The system is split into two layers with clear boundaries:
 
 ### Phase 1: Build + Test the Pure Transformer
 
-### Step 1: Create `src/ascii.js` — Pure Transformer
+### Step 1: Rewrite `src/ascii.js` — Pure Transformer
 
-Zero browser dependency. Accepts pre-computed data, returns formatted output.
+Zero browser dependency. Accepts a pre-computed RGB grid + element metadata, returns the ANSI render + legend.
 
 | Function | Input | Output | Purpose |
 |----------|-------|--------|---------|
-| `screenshotToAscii(base64Png, options)` | base64 string + `{ width }` | `{ ascii: string, cols, rows, pixelWidth, pixelHeight }` | Decode image, sample pixels, map to ASCII characters |
-| `annotateGrid(ascii, elements, dims)` | ASCII string + element array + `{ pixelWidth, pixelHeight, cols, rows }` | `{ annotated: string, placed: [] }` | Place `[N]` markers at element positions with collision avoidance |
+| `renderHalfBlocks(grid, cols, rows)` | RGB grid + grid dims | `{ ansi, stats }` | Map pixel-row pairs to `▀`/`█` with RLE truecolor escape codes |
+| `annotateGrid(ansi, grid, elements, dims)` | render + element array + dims | `{ annotated, placed }` | Overlay `[N]` markers with collision avoidance |
 | `formatLegend(elements, options)` | element array + `{ includeSelector, includeXpath }` | markdown string | Build the markdown table legend |
-| `transform(screenshotBase64, elements, options)` | base64 + elements + `{ width, includeSelector, includeXpath }` | `{ ascii, legend, stats }` | **Main entry point** — calls the above three in sequence |
-
-**Note on image decoding:** The ASCII conversion uses the browser's Canvas API via `page.evaluate()` (tested, works, 26ms). So `screenshotToAscii()` is designed to be called inside `page.evaluate()` by the caller, OR we find a pure Node.js PNG decoder. For the standalone CLI, the caller wraps this call. For the MCP server, same pattern.
+| `transform(samples, cols, rows, elements, options)` | RGB grid + dims + elements + `{ width, includeSelector, includeXpath }` | `{ ansi, legend, stats }` | **Main entry point** — calls the above in sequence |
 
 **Element data shape (provided by the caller):**
 ```js
@@ -384,9 +297,9 @@ Zero browser dependency. Accepts pre-computed data, returns formatted output.
 ]
 ```
 
-### Step 2: Create `scripts/ascii-screenshot.js` — Test Harness (temporary)
+### Step 2: Update `scripts/ascii-screenshot.js` — Test Harness (temporary)
 
-Thin Puppeteer wrapper (~40-60 lines). **This is a test tool only** — used to verify the transformer works before integrating into the MCP server. Gets deleted or kept as a dev utility after.
+Thin Puppeteer wrapper. **This is a test tool only** — used to verify the transformer works before integrating into the MCP server. Gets deleted or kept as a dev utility after.
 
 ```
 Usage:
@@ -404,8 +317,8 @@ Options:
 3. Navigate to URL, wait for content
 4. Collect elements via `page.evaluate()` (reuses `devtools.js` patterns)
 5. Take screenshot via `page.screenshot()`
-6. Convert to ASCII via `page.evaluate()` (Canvas API)
-7. Call `src/ascii.js` transformer functions for annotation + legend
+6. Sample pixels to grid via `page.evaluate()` (Canvas API)
+7. Call `src/ascii.js` transformer functions for render + annotation + legend
 8. Print result to stdout
 9. Close browser
 
@@ -417,23 +330,23 @@ node scripts/ascii-screenshot.js https://github.com --width 120 --elements 30
 ```
 
 Verify:
-- ASCII art renders the page visually
+- ANSI render shows the page layout in real colors
 - Element markers appear at correct positions
 - Legend has selectors, XPaths, text
-- Output is clean markdown
+- Output is clean markdown (```ansi block + table)
 
 **If tests pass → proceed to Phase 2. If not → fix `src/ascii.js` until they do.**
 
 ### Phase 2: MCP Server Integration
 
-### Step 4: Add tool schema in `src/mcp-server.js` `getToolsListResponse()`
+### Step 4: Re-enable tool schema in `src/mcp-server.js` `getToolsListResponse()`
 
-New tool `web_page_ascii` after `web_page_screenshot` (~line 1067):
+Currently disabled at ~line 1114 (`/* web_page_ascii — disabled (WIP...) */`). Re-enable with the same input schema (no changes needed):
 
 ```js
 {
   name: "web_page_ascii",
-  description: "Capture a webpage as annotated ASCII art with element selectors...",
+  description: "Capture a webpage as chafa-style half-block render with element selectors...",
   inputSchema: {
     type: "object",
     properties: {
@@ -449,9 +362,9 @@ New tool `web_page_ascii` after `web_page_screenshot` (~line 1067):
 }
 ```
 
-### Step 5: Add handler in `src/mcp-server.js` `handleToolCall()`
+### Step 5: Update handler in `src/mcp-server.js` `handleToolCall()`
 
-New `if (name === "web_page_ascii")` block after `web_page_screenshot` handler (~line 1215):
+Replace the wireframe path (currently at ~line 1296-1549) with:
 
 ```
 1.  Resolve URL (from url or ref_id)
@@ -460,16 +373,16 @@ New `if (name === "web_page_ascii")` block after `web_page_screenshot` handler (
 4.  Navigate, wait for content
 5.  Collect elements via page.evaluate() (same as CLI wrapper)
 6.  Take screenshot via page.screenshot({ type: "png", encoding: "base64" })
-7.  Convert to ASCII via page.evaluate() (Canvas API)
-8.  Call annotateGrid() from src/ascii.js
-9.  Call formatLegend() from src/ascii.js
-10. Format response with asMarkdownContent(ascii + legend)
+7.  Sample pixels to grid via page.evaluate() (Canvas API)
+8.  Call renderHalfBlocks() from src/ascii.js
+9.  Call annotateGrid() + formatLegend() from src/ascii.js
+10. Format response with asMarkdownContent("```ansi\n" + ansi + "\n```" + legend)
 11. Close page in finally block
 ```
 
 ### Step 6: Update `AGENTS.md`
 
-Add `web_page_ascii` to the Tool Contract and Code References.
+Replace the "ASCII Screenshot — Wireframe Approach" learning with the chafa approach.
 
 ---
 
@@ -477,10 +390,10 @@ Add `web_page_ascii` to the Tool Contract and Code References.
 
 | File | Action | What | Lines |
 |------|--------|------|-------|
-| `src/ascii.js` | **Create** | Pure transformer — the permanent reusable module | ~150 |
-| `scripts/ascii-screenshot.js` | **Create (temporary)** | Test harness to verify the transformer works | ~60 |
-| `src/mcp-server.js` | **Edit** | Add tool schema + handler, imports `src/ascii.js` | ~120 |
-| `AGENTS.md` | **Edit** | Document the new tool | ~20 |
+| `src/ascii.js` | **Rewrite** | Pure transformer — half-block ANSI renderer | ~180 |
+| `scripts/ascii-screenshot.js` | **Update** | Test harness — screenshot + sample + render | ~70 |
+| `src/mcp-server.js` | **Edit** | Re-enable tool schema + rewrite handler | ~120 |
+| `AGENTS.md` | **Edit** | Update the tool documentation + learning | ~20 |
 
 The CLI wrapper is a test tool. The permanent code is `src/ascii.js` + the MCP server integration.
 
@@ -488,25 +401,25 @@ The CLI wrapper is a test tool. The permanent code is `src/ascii.js` + the MCP s
 
 ## Key Design Decisions
 
-1. **Pure transformer pattern** — `src/ascii.js` has zero browser dependency. It accepts data, returns data. Testable with fixtures.
-2. **CLI wrapper is a temporary test harness** — `scripts/ascii-screenshot.js` exists only to verify the transformer works. Not part of the final product.
-3. **MCP server is the real consumer** — Once the transformer is verified, the MCP server calls `src/ascii.js` directly. No wrapper needed.
-4. **Viewport-based** (`fullPage: false`) — Full-page ASCII would be thousands of lines. Above-the-fold is what matters.
-5. **Reuses `devtools.js` patterns** — Same `cssPath()`, `xpathFor()`, element selectors for consistency.
-6. **Marker format `[N]`** — Unambiguous, easy for LLMs to parse and reference in follow-up tool calls.
+1. **Chafa-style half-blocks, not wireframe, not luminance ramp** — `▀`/`█` with truecolor gives real visual fidelity in ~6KB of text. Both previous approaches are rejected (no pixels / no color).
+2. **Pure transformer pattern** — `src/ascii.js` has zero browser dependency. It accepts a pre-sampled RGB grid, returns the ANSI render + legend. Testable with fixtures.
+3. **Sampling in the browser, rendering in Node** — `page.evaluate()` decodes the PNG and downscales (Chromium does the averaging), returning a compact RGB grid. The transformer does pure text work.
+4. **Run-length encoded escape codes** — emit `\x1b[38;2;..m\x1b[48;2;..m` only on color change. Solid backgrounds collapse to a single escape + a char run. 80-90% savings.
+5. **Aspect ratio `/ 2`** — each cell holds 2 vertical pixel rows (half-block density), so `rows = cols * (h/w) / 2`. Not a font guess, exact math.
+6. **Markers inverted** — black text on bright bg, drawn after the page so they always sit on top. Collision shifts down.
 7. **Legend as markdown table** — Clean, scannable, easy to search by column.
-8. **Aspect ratio factor 0.45** — Verified in testing to produce proportional output for monospace fonts.
-9. **69-char luminance ramp** — Enough gradation for webpages (mostly flat colors + text), short enough for visual clarity.
-10. **Canvas API runs inside `page.evaluate()`** — The ASCII pixel conversion uses the browser's Canvas API (tested, 26ms). Both the test harness and MCP server handle this in their caller code.
+8. **Reuses `devtools.js` patterns** — Same `cssPath()`, `xpathFor()`, element selectors for consistency.
+9. **Viewport-based** (`fullPage: false`) — Full-page render would be thousands of lines. Above-the-fold is what matters.
 
 ---
 
 ## Future Enhancements
 
-- **Option B**: Annotated PNG screenshot with numbered badges (needs `sharp` dependency)
-- **Option C**: Return both ASCII + annotated PNG
+- **Annotated PNG screenshot with numbered badges** (needs `sharp` dependency) — for consumers that can't render ANSI
+- **Both**: ANSI render + annotated PNG, caller picks
+- **Dithering**: chafa-style error diffusion for gradient-heavy pages
+- **Quadrant blocks** (`▖▗▘▝▜` U+2596-259F): 4 colors per cell at half resolution — higher color fidelity, higher escape cost
 - **Highlight mode**: Return only elements matching a filter (e.g., "show me all buttons")
-- **Color ASCII**: Use ANSI color codes for terminal rendering
 - **Interactive mode**: Re-annotate after page changes (e.g., after clicking a tab)
 
 ---

@@ -1128,7 +1128,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(names).not.toContain("DOM.querySelector");
     });
 
-    it("returns the four public search and page tools", async () => {
+    it("returns the five public search and page tools", async () => {
       const { status, body } = await mcpPost({
         jsonrpc: "2.0", id: 51, method: "tools/list",
       });
@@ -1140,6 +1140,7 @@ describe("mcp-server HTTP endpoints", () => {
         "web_fetch",
         "web_page_screenshot",
         "web_page_links",
+        "web_page_ascii",
       ]);
     });
   });

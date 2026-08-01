@@ -1,23 +1,33 @@
 #!/usr/bin/env node
 
 import { getBrowserManager } from "../src/browser.js";
-import { transform, formatLegend } from "../src/ascii.js";
+import { transform } from "../src/ascii.js";
+import { SAMPLE_PIXELS_CODE, asciiGridDims } from "../src/pixel-sampler.js";
 
 function parseArgs(argv) {
   const args = argv.slice(2);
   const opts = {
     url: null,
-    width: 120,
-    elementLimit: 50,
+    width: 100,
+    elementLimit: 25,
+    fullPage: false,
+    mode: "color_ansi",
   };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--width" && args[i + 1]) {
-      opts.width = Math.max(40, Math.min(200, parseInt(args[i + 1], 10) || 120));
+      opts.width = Math.max(40, Math.min(200, parseInt(args[i + 1], 10) || 100));
       i++;
     } else if (arg === "--elements" && args[i + 1]) {
-      opts.elementLimit = Math.max(1, parseInt(args[i + 1], 10) || 50);
+      opts.elementLimit = Math.max(1, parseInt(args[i + 1], 10) || 25);
+      i++;
+    } else if (arg === "--full-page") {
+      opts.fullPage = true;
+    } else if (arg === "--mode" && args[i + 1]) {
+      opts.mode = ["color_ansi", "grayscale_ansi", "ascii"].includes(args[i + 1])
+        ? args[i + 1]
+        : "color_ansi";
       i++;
     } else if (!arg.startsWith("--")) {
       opts.url = arg;
@@ -175,7 +185,7 @@ async function main() {
 
   if (!opts.url) {
     process.stderr.write("Usage: node scripts/ascii-screenshot.js <url> [options]\n");
-    process.stderr.write("Options: --width <n> --elements <n>\n");
+    process.stderr.write("Options: --width <n> --elements <n> --full-page --mode <color_ansi|grayscale_ansi|ascii>\n");
     process.exit(1);
   }
 
@@ -210,10 +220,12 @@ async function main() {
     const margin = 50;
     const vw = elementData.viewportWidth;
     const vh = elementData.viewportHeight;
+    const clipW = opts.fullPage ? elementData.pageWidth : vw;
+    const clipH = opts.fullPage ? elementData.pageHeight : vh;
     const visible = elementData.elements.filter((el) => {
       const r = el.rect;
-      return r.x + r.width > -margin && r.x < vw + margin
-        && r.y + r.height > -margin && r.y < vh + margin;
+      return r.x + r.width > -margin && r.x < clipW + margin
+        && r.y + r.height > -margin && r.y < clipH + margin;
     });
 
     process.stderr.write(
@@ -223,28 +235,46 @@ async function main() {
       `Viewport: ${vw}x${vh}, Page: ${elementData.pageWidth}x${elementData.pageHeight}\n`
     );
 
-    const result = transform(vw, vh, visible, opts.width);
+    const { cols, rows } = asciiGridDims(clipW, clipH, opts.width);
 
-    process.stderr.write(
-      `Wireframe: ${result.stats.asciiCols}x${result.stats.asciiRows}\n\n`
-    );
+    process.stderr.write("Taking screenshot...\n");
+    const shot = await page.screenshot({
+      type: "png",
+      encoding: "base64",
+      ...(opts.fullPage ? { fullPage: true } : {}),
+    });
 
-    process.stdout.write(`### Page Wireframe\n\n`);
-    process.stdout.write("```\n");
-    process.stdout.write(result.wireframe);
+    process.stderr.write("Sampling pixels in browser...\n");
+    const sampleFn = eval(SAMPLE_PIXELS_CODE);
+    const samples = await page.evaluate(sampleFn, shot, cols, rows);
+
+    process.stderr.write(`Wireframe: ${cols}x${rows} cells\n\n`);
+
+    const result = transform(samples, cols, rows, visible, clipW, clipH, {
+      mode: opts.mode,
+      includeSelector: true,
+      includeXpath: true,
+    });
+
+    const isAscii = result.stats.mode === "ascii";
+    process.stdout.write(`### Page Wireframe — ${elementData.title}\n\n`);
+    process.stdout.write(`\`\`\`${isAscii ? "text" : "ansi"}\n`);
+    process.stdout.write(result.ansi);
     process.stdout.write("\n```\n\n");
     process.stdout.write(`### Element Legend\n\n`);
-    process.stdout.write(formatLegend(result.elements));
+    process.stdout.write(result.legend);
     process.stdout.write("\n\n");
     process.stdout.write(
       `- Page: ${elementData.title} (${elementData.url})\n`
     );
     process.stdout.write(
-      `- Elements: ${result.stats.elementCount} found, ${result.stats.placedCount} placed\n`
+      `- Elements: ${result.stats.elementCount} found, ${result.stats.placedCount} annotated\n`
     );
   } finally {
     await page.close().catch(() => {});
   }
+
+  await manager.shutdown().catch(() => {});
 }
 
 main().catch((err) => {

@@ -83,18 +83,31 @@ Captures rendered page appearance as images.
 
 ### `web_page_ascii`
 
-Captures a webpage as annotated ASCII wireframe art with numbered element markers and a selector legend.
+Captures a webpage as a chafa-style half-block render — the real screenshot downscaled to a grid, drawn with `▀`/`█` block characters and per-cell truecolor ANSI escape codes — plus an element legend mapping markers to selectors. Use it to understand layout, colors, and where interactive elements sit. Pair with `web_fetch` for full text (the render shows shapes/blobs, not readable small text).
 
 **Input:**
 
 - `url: string` — Single URL
 - `ref_id: number` — Numeric reference from a prior `web_search`
-- `width: number` (default `100`) — ASCII art width in characters (40–200)
+- `width: number` (default `100`) — Render width in characters (40–200)
+- `fullPage: boolean` (default `false`) — Capture full scrollable page (default: viewport only)
+- `mode: string` (default `color_ansi`) — `color_ansi` (truecolor half-blocks), `grayscale_ansi` (gray half-blocks, barely smaller), `ascii` (plain char ramp, no escape codes, ~6× smaller)
 - `elementLimit: number` (default `25`) — Maximum number of elements to annotate
 - `includeSelector: boolean` (default `true`) — Include CSS selectors in the legend
 - `includeXpath: boolean` (default `true`) — Include XPaths in the legend
 
-**Output:** Annotated ASCII wireframe + element legend (markdown).
+**Output:** ANSI render in a ` ```ansi ` code block + element legend markdown table.
+
+**How it works:**
+1. `page.evaluate()` scans the DOM for interactive elements (selectors from `devtools.js`, expanded).
+2. `page.screenshot()` captures the viewport (or full page with `fullPage: true`) as base64 PNG.
+3. `page.evaluate()` decodes via Canvas API (`createImageBitmap` → `OffscreenCanvas(cols, rows*2)` → `getImageData`), downscaling with browser averaging.
+4. `src/ascii.js` maps each pair of vertical pixel rows to a half-block cell: `▀` = two different colors (fg=top, bg=bottom), `█` = same color. Escape codes are run-length encoded (emit only on color change).
+5. `[N]` markers (black on yellow) are drawn last at element positions, shifted down on collision.
+
+**Modes:** `color_ansi` (default) renders truecolor half-blocks. `grayscale_ansi` converts each pixel pair to luminance first — barely smaller than color since escape codes dominate. `ascii` drops escape codes entirely and renders one ramp char per cell (auto-selects light/dark ramp from mean luminance) — ~6× smaller, plain-text safe.
+
+**Grid math:** `cols = width`, `rows = round(cols * (viewportHeight / viewportWidth) / 2)`. The `/2` is half-block density (each cell holds 2 vertical pixel rows), not a font guess. With `fullPage: true`, dimensions come from `pageWidth`/`pageHeight` and `asciiGridDims` caps `rows` at 200 to keep tall pages bounded.
 
 ---
 
@@ -109,8 +122,8 @@ All tool schemas are defined in `getToolsListResponse()`:
 | `web_search` | `src/mcp-server.js` | 916–948 |
 | `web_fetch` | `src/mcp-server.js` | 949–979 |
 | `web_page_screenshot` | `src/mcp-server.js` | 980–1027 |
-| `web_page_links` | `src/mcp-server.js` | after web_page_screenshot |
-| `web_page_ascii` | `src/mcp-server.js` | 1028–1065 |
+| `web_page_links` | `src/mcp-server.js` | 1096–1113 |
+| `web_page_ascii` | `src/mcp-server.js` | 1114–1141 |
 | Devtools tools (13) | `src/devtools.js` | 884–1062 |
 
 ### Tool Call Dispatch
@@ -560,31 +573,46 @@ counts) produces unparseable output for LLMs.
 
 ---
 
-### ASCII Screenshot — Wireframe Approach
+### ASCII Screenshot — Chafa Half-Block Approach
 
 **Created:** 2026-07-25
+**Last updated:** 2026-08-01
 
-**What:** The ASCII screenshot tool (`src/ascii.js`) renders a **structural wireframe** — boxes made of `─│┌┐└┘` characters with text labels inside. NOT photographic ASCII art (`$$$`, `@@@` character ramps). The user explicitly rejected pixel-to-character conversion.
+**What:** The ASCII screenshot tool (`web_page_ascii` / `src/ascii.js`) renders a **chafa-style truecolor half-block render** — the real screenshot downscaled to a grid, drawn with `▀`/`█` block characters and per-cell RGB ANSI escape codes. The structural wireframe (`─│┌┐└┘` boxes) was **replaced entirely** by this approach on 2026-08-01.
+
+**Approach evolution (rejected in order):**
+1. Photographic luminance-ramp ASCII (`$$$`, `@@@` character ramps) — **rejected**, no color, looks like noise.
+2. Structural wireframe (`─│┌┐└┘` boxes + `<tag> text` labels) — **rejected**, no actual pixels, can't see the page.
+3. **Chafa half-blocks + truecolor — chosen.** Real colors, 2× vertical density, compact RLE output.
 
 **Architecture:**
-- `src/ascii.js` — Pure transformer: takes element positions + viewport dims, returns wireframe + legend. Zero browser dependency.
-- `scripts/ascii-screenshot.js` — Temporary CLI harness: opens page in browser, extracts elements with scroll offset, filters to viewport, calls transformer.
-- `src/mcp-server.js` — Future consumer (Phase 2 integration).
+- `src/pixel-sampler.js` — Browser-side sampling. `SAMPLE_PIXELS_CODE` runs in `page.evaluate()`: base64 PNG → `createImageBitmap` → `OffscreenCanvas(cols, rows*2)` → `getImageData`. Returns a packed RGB grid. `asciiGridDims(vw, vh, width)` computes `rows = round(cols * (vh/vw) / 2)`.
+- `src/ascii.js` — Pure transformer: takes RGB grid + elements + dims, returns `{ ansi, legend, placed, stats }`. Zero browser dependency. Exports `buildCellGrid()`, `placeMarkers()`, `renderGrid()`, `formatLegend()`, `transform()`.
+- `scripts/ascii-screenshot.js` — CLI harness (screenshot + sample + render).
+- `scripts/ansi-to-png.mjs` — Dev utility: renders the ANSI output to a PNG so it can be viewed as an image.
+- `scripts/compare-ascii-sizes.mjs` — Dev utility: compares PNG vs ASCII render sizes at multiple widths.
 
 **Key decisions:**
-- Use `window.scrollX`/`scrollY` offset in element extraction so positions are document-relative, not viewport-relative.
-- Filter elements to viewport only (with 50px margin) — off-screen elements clutter the wireframe.
-- Box overlap handling: track cell ownership (`owner` array). First box's borders take priority; adjacent boxes share borders naturally.
-- Wireframe height capped at 200 rows max. Use viewport height for scaling (compact output).
-- Text inside boxes: `[N]` marker on first interior line, `<tag> text` on second line. Truncate with available width.
+- Each terminal cell holds **2 vertical pixel rows** — top row → fg color, bottom row → bg color. `▀` = different colors, `█` = same color. The `/2` in the grid math is half-block density, not a font guess.
+- **Run-length encoding**: emit `\x1b[38;2;R;G;Bm` / `\x1b[48;2;R;G;Bm` only when the color pair changes. Solid backgrounds collapse to one escape + a char run.
+- **Three render modes** (`mode` option): `color_ansi` (truecolor), `grayscale_ansi` (luminance → gray), `ascii` (plain char ramp, no escapes). Grayscale is barely smaller than color because escape codes dominate size; `ascii` is ~6× smaller and plain-text safe. `ascii` auto-picks the ramp direction from mean luminance (`@%#*+=-:. ` for light pages, ` .:-=+*#%@` for dark).
+- Markers `[N]` are **black on yellow** (`\x1b[0m`-aware), drawn last at element top-left grid coords, shifted down on collision. Out-of-grid elements appear in legend only.
 - `eval()` required for code strings in `page.evaluate()` — `new Function()` doesn't serialize through puppeteer.
+- Use `window.scrollX`/`scrollY` offset in element extraction so positions are document-relative, not viewport-relative.
+- Filter elements to viewport (or page, with `--full-page`) only (with 50px margin) — off-screen elements clutter the render.
+- **Full page:** `page.screenshot({ fullPage: true })` + `asciiGridDims(pageWidth, pageHeight, width, maxRows=200)` — dims come from page size, rows capped at 200 so long pages stay bounded.
+
+**Size reality (boniface.pe, 1920×947):** PNG 45.9KB, ASCII @100cols 10.6KB (0.23×), @180cols 30.8KB (0.67×). Text-heavy pages churn more colors, so the RLE savings shrink; still always smaller than the PNG.
+
+**Readability reality:** The render shows layout, colors, shapes, and images — NOT readable small text (resolution limit, same as chafa in a real terminal). The LLM reads text from the element legend; the render supplies spatial context.
 
 **Files:**
-- `src/ascii.js` — exports `generateWireframe()`, `formatLegend()`, `transform()`
+- `src/ascii.js` — exports `buildCellGrid()`, `placeMarkers()`, `renderGrid()`, `formatLegend()`, `transform()`
+- `src/pixel-sampler.js` — exports `SAMPLE_PIXELS_CODE`, `asciiGridDims()`
 - `scripts/ascii-screenshot.js` — CLI harness with `ELEMENT_EXTRACT_CODE` (content-priority extraction)
 - `ASCII screenshot.md` — Full plan with research findings
 
-**Verified on:** example.com, Hacker News, Wikipedia, GitHub Trending
+**Verified on:** example.com, Hacker News, boniface.pe
 
 ---
 

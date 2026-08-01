@@ -1,120 +1,185 @@
-function generateWireframe(viewportWidth, viewportHeight, elements, cols) {
-  const aspect = viewportHeight / viewportWidth;
-  const rows = Math.min(Math.max(20, Math.round(cols * aspect)), 200);
+const UPPER_HALF = "▀";
+const FULL_BLOCK = "█";
+const ESC = "\x1b[";
+const MARKER_FG = [0, 0, 0];
+const MARKER_BG = [255, 220, 0];
+const RAMP_DARK_BG = " .:-=+*#%@";
+const RAMP_LIGHT_BG = "@%#*+=-:. ";
+
+function colorCode(prefix, [r, g, b]) {
+  return `${ESC}${prefix};2;${r};${g};${b}m`;
+}
+
+function luminance([r, g, b]) {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function meanLuminance(samples) {
+  let sum = 0;
+  for (let i = 0; i < samples.length; i += 3) {
+    sum += luminance([samples[i], samples[i + 1], samples[i + 2]]);
+  }
+  return sum / (samples.length / 3);
+}
+
+function buildCellGrid(samples, cols, rows, mode = "color_ansi") {
+  const grid = Array.from({ length: rows }, () => Array(cols).fill(null));
+
+  if (mode === "ascii") {
+    const ramp = meanLuminance(samples) >= 128 ? RAMP_LIGHT_BG : RAMP_DARK_BG;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const topI = ((r * 2) * cols + c) * 3;
+        const botI = ((r * 2 + 1) * cols + c) * 3;
+        const lum = (luminance([samples[topI], samples[topI + 1], samples[topI + 2]])
+          + luminance([samples[botI], samples[botI + 1], samples[botI + 2]])) / 2;
+        const idx = Math.max(0, Math.min(ramp.length - 1, Math.round((lum / 255) * (ramp.length - 1))));
+        grid[r][c] = { ch: ramp[idx], fg: null, bg: null };
+      }
+    }
+    return grid;
+  }
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const topI = ((r * 2) * cols + c) * 3;
+      const botI = ((r * 2 + 1) * cols + c) * 3;
+      let top = [samples[topI], samples[topI + 1], samples[topI + 2]];
+      let bot = [samples[botI], samples[botI + 1], samples[botI + 2]];
+
+      if (mode === "grayscale_ansi") {
+        const tl = Math.round(luminance(top));
+        const bl = Math.round(luminance(bot));
+        top = [tl, tl, tl];
+        bot = [bl, bl, bl];
+      }
+
+      const same = top[0] === bot[0] && top[1] === bot[1] && top[2] === bot[2];
+      grid[r][c] = same
+        ? { ch: FULL_BLOCK, fg: top, bg: null }
+        : { ch: UPPER_HALF, fg: top, bg: bot };
+    }
+  }
+
+  return grid;
+}
+
+function placeMarkers(grid, elements, cols, rows, viewportWidth, viewportHeight) {
+  const placed = [];
+  const occupied = new Set();
   const scaleX = cols / viewportWidth;
   const scaleY = rows / viewportHeight;
-
-  const grid = Array.from({ length: rows }, () => Array(cols).fill(" "));
-  const owner = Array.from({ length: rows }, () => Array(cols).fill(-1));
-
-  function clamp(v, lo, hi) {
-    return Math.max(lo, Math.min(hi, v));
-  }
-
-  function setCell(r, c, ch, boxIdx) {
-    if (r < 0 || r >= rows || c < 0 || c >= cols) return;
-    if (owner[r][c] !== -1) return;
-    grid[r][c] = ch;
-    owner[r][c] = boxIdx;
-  }
-
-  function drawBox(x1, y1, x2, y2, boxIdx) {
-    const c1 = clamp(x1, 0, cols - 1);
-    const c2 = clamp(x2, 0, cols - 1);
-    const r1 = clamp(y1, 0, rows - 1);
-    const r2 = clamp(y2, 0, rows - 1);
-    if (c1 > c2 || r1 > r2) return;
-
-    for (let c = c1; c <= c2; c++) {
-      const isLeft = c === c1;
-      const isRight = c === c2;
-      if (r1 === r2 && isLeft && isRight) setCell(r1, c, "─", boxIdx);
-      else if (r1 === r2) setCell(r1, c, "─", boxIdx);
-      else if (isLeft) setCell(r1, c, "┌", boxIdx);
-      else if (isRight) setCell(r1, c, "┐", boxIdx);
-      else setCell(r1, c, "─", boxIdx);
-
-      if (r1 !== r2) {
-        if (isLeft) setCell(r2, c, "└", boxIdx);
-        else if (isRight) setCell(r2, c, "┘", boxIdx);
-        else setCell(r2, c, "─", boxIdx);
-      }
-    }
-
-    for (let r = r1 + 1; r < r2; r++) {
-      setCell(r, c1, "│", boxIdx);
-      if (c1 !== c2) setCell(r, c2, "│", boxIdx);
-    }
-  }
-
-  function placeText(col, row, text) {
-    if (!text || row < 0 || row >= rows) return;
-    let c = clamp(col, 0, cols - 1);
-    for (let i = 0; i < text.length && c < cols; i++) {
-      if (owner[row][c] === -1) {
-        grid[row][c] = text[i];
-      }
-      c++;
-    }
-  }
 
   const sorted = [...elements].sort(
     (a, b) => (a.priority || 99) - (b.priority || 99)
   );
 
-  const placed = [];
+  for (const el of sorted) {
+    const rect = el.rect;
+    if (!rect || rect.width <= 0 || rect.height <= 0) continue;
 
-  for (let idx = 0; idx < sorted.length; idx++) {
-    const el = sorted[idx];
-    if (!el.rect) continue;
-
-    const bx1 = Math.round(el.rect.x * scaleX);
-    const by1 = Math.round(el.rect.y * scaleY);
-    const bx2 = Math.round((el.rect.x + el.rect.width) * scaleX);
-    const by2 = Math.round((el.rect.y + el.rect.height) * scaleY);
-
-    if (bx2 - bx1 < 2 || by2 - by1 < 1) continue;
-
-    drawBox(bx1, by1, bx2, by2, idx);
+    let col = Math.max(0, Math.round(rect.x * scaleX));
+    let row = Math.round(rect.y * scaleY);
 
     const marker = `[${el.index}]`;
-    const interiorWidth = bx2 - bx1 - 2;
-    const interiorTop = by1 + 1;
-    const interiorHeight = by2 - by1 - 2;
+    const width = marker.length;
+    if (col + width > cols) col = Math.max(0, cols - width);
 
-    if (interiorWidth >= 1 && interiorHeight >= 1) {
-      placeText(bx1 + 1, interiorTop, marker);
-      placed.push({ index: el.index, row: interiorTop, col: bx1 + 1 });
-    } else if (bx2 - bx1 >= marker.length + 2) {
-      placeText(bx1 + 1, by1, marker);
-      placed.push({ index: el.index, row: by1, col: bx1 + 1 });
+    let tryRow = row;
+    while (tryRow < rows) {
+      let clear = true;
+      for (let i = 0; i < width; i++) {
+        if (occupied.has(tryRow * cols + col + i)) {
+          clear = false;
+          break;
+        }
+      }
+      if (clear) break;
+      tryRow++;
     }
+    if (tryRow >= rows) continue;
 
-    if (interiorHeight >= 2 && interiorWidth > marker.length + 2) {
-      const tagLabel = `<${el.tagName || "?"}>`;
-      const available = interiorWidth - marker.length - 2;
-      const textSlice = (el.text || "").replace(/\s+/g, " ").trim();
-      const content = textSlice
-        ? `${tagLabel} ${textSlice}`.slice(0, available)
-        : tagLabel.slice(0, available);
-      placeText(bx1 + 1, interiorTop + 1, content);
+    for (let i = 0; i < width; i++) {
+      grid[tryRow][col + i] = {
+        ch: marker[i],
+        fg: MARKER_FG,
+        bg: MARKER_BG,
+      };
+      occupied.add(tryRow * cols + col + i);
     }
+    placed.push({ index: el.index, row: tryRow, col });
   }
 
-  return {
-    wireframe: grid.map((row) => row.join("")).join("\n"),
-    placed,
-    cols,
-    rows,
-    viewportWidth,
-    viewportHeight,
-  };
+  return placed;
 }
 
-function formatLegend(elements) {
-  const header = "| # | Kind | Tag | Selector | Text |";
-  const sep = "|---|------|-----|----------|------|";
-  const rows = [header, sep];
+function renderGrid(grid, cols, rows) {
+  const out = [];
+
+  for (let r = 0; r < rows; r++) {
+    let line = "";
+    let curFg = null;
+    let curBg = null;
+
+    for (let c = 0; c < cols; c++) {
+      const cell = grid[r][c];
+      const fgKey = cell.fg ? cell.fg.join(",") : null;
+      const bgKey = cell.bg ? cell.bg.join(",") : null;
+
+      if (fgKey !== curFg) {
+        if (cell.fg) line += colorCode("38", cell.fg);
+        else line += `${ESC}39m`;
+        curFg = fgKey;
+      }
+      if (bgKey !== curBg) {
+        if (cell.bg) line += colorCode("48", cell.bg);
+        else line += `${ESC}49m`;
+        curBg = bgKey;
+      }
+
+      line += cell.ch;
+    }
+
+    line += `${ESC}0m`;
+    out.push(line);
+  }
+
+  return out.join("\n");
+}
+
+function renderPlain(grid, cols, rows) {
+  const out = [];
+  for (let r = 0; r < rows; r++) {
+    let line = "";
+    for (let c = 0; c < cols; c++) {
+      line += grid[r][c].ch;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
+function formatLegend(elements, options = {}) {
+  const includeSelector = options.includeSelector !== false;
+  const includeXpath = options.includeXpath !== false;
+
+  const headerParts = ["#", "Kind", "Tag"];
+  const sepParts = ["---", "------", "-----"];
+  if (includeSelector) {
+    headerParts.push("Selector");
+    sepParts.push("----------");
+  }
+  if (includeXpath) {
+    headerParts.push("XPath");
+    sepParts.push("-------");
+  }
+  headerParts.push("Text");
+  sepParts.push("------");
+
+  const rows = [
+    `| ${headerParts.join(" | ")} |`,
+    `| ${sepParts.join(" | ")} |`,
+  ];
 
   for (const el of elements) {
     const text = (el.text || "")
@@ -122,29 +187,39 @@ function formatLegend(elements) {
       .replace(/\n/g, " ")
       .trim()
       .slice(0, 80);
-    const selector = (el.selector || "").replace(/\|/g, "\\|").slice(0, 60);
-    rows.push(
-      `| ${el.index} | ${el.kind || "—"} | \`${el.tagName || "?"}\` | ${selector} | ${text || "—"} |`
-    );
+    const cells = [
+      String(el.index),
+      el.kind || "—",
+      `\`${el.tagName || "?"}\``,
+    ];
+    if (includeSelector) {
+      cells.push((el.selector || "—").replace(/\|/g, "\\|").slice(0, 60));
+    }
+    if (includeXpath) {
+      cells.push((el.xpath || "—").replace(/\|/g, "\\|").slice(0, 60));
+    }
+    cells.push(text || "—");
+    rows.push(`| ${cells.join(" | ")} |`);
   }
 
   return rows.join("\n");
 }
 
-function transform(viewportWidth, viewportHeight, elements, cols) {
-  const { wireframe, placed, rows } = generateWireframe(
-    viewportWidth,
-    viewportHeight,
-    elements,
-    cols
-  );
+function transform(samples, cols, rows, elements, viewportWidth, viewportHeight, options = {}) {
+  const mode = options.mode || "color_ansi";
+  const grid = buildCellGrid(samples, cols, rows, mode);
+  const placed = placeMarkers(grid, elements, cols, rows, viewportWidth, viewportHeight);
+  const ansi = mode === "ascii" ? renderPlain(grid, cols, rows) : renderGrid(grid, cols, rows);
+  const legend = formatLegend(elements, options);
 
   return {
-    wireframe,
-    elements,
+    ansi,
+    legend,
+    placed,
     stats: {
       asciiCols: cols,
       asciiRows: rows,
+      mode,
       viewportWidth,
       viewportHeight,
       elementCount: elements.length,
@@ -153,4 +228,4 @@ function transform(viewportWidth, viewportHeight, elements, cols) {
   };
 }
 
-export { generateWireframe, formatLegend, transform };
+export { buildCellGrid, placeMarkers, renderGrid, renderPlain, formatLegend, transform };

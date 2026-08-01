@@ -15,7 +15,8 @@ import { formatBrowserBackendShort, parseBrowserBackend, DEFAULT_MAX_CHARS } fro
 import { getBrowserManager } from "./browser.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth } from "./search.js";
 import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot } from "./devtools.js";
-import { transform as asciiTransform, formatLegend as asciiFormatLegend } from "./ascii.js";
+import { transform as asciiTransform } from "./ascii.js";
+import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 
 const linkMemoryByRef = new Map();
 const linkMemoryByUrl = new Map();
@@ -1111,7 +1112,42 @@ function getToolsListResponse() {
           additionalProperties: false
         }
       },
-      /* web_page_ascii — disabled (WIP, reworking to structured text layout) */
+      {
+        name: "web_page_ascii",
+        description:
+          "Capture a webpage as a chafa-style half-block render (real screenshot downscaled to block characters with truecolor ANSI codes) plus an element legend. Use this to understand page layout, colors, and where interactive elements sit. Pair with web_fetch for full text.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: { type: "string" },
+            ref_id: { type: "number" },
+            width: {
+              type: "number",
+              default: 100,
+              description: "Render width in characters (40-200)"
+            },
+            fullPage: {
+              type: "boolean",
+              default: false,
+              description: "Capture full scrollable page (default: viewport only)"
+            },
+            mode: {
+              type: "string",
+              enum: ["color_ansi", "grayscale_ansi", "ascii"],
+              default: "color_ansi",
+              description: "Render mode: color_ansi (truecolor half-blocks), grayscale_ansi (gray half-blocks), ascii (plain char ramp, no escape codes)"
+            },
+            elementLimit: {
+              type: "number",
+              default: 25,
+              description: "Max elements to annotate (1-100)"
+            },
+            includeSelector: { type: "boolean", default: true },
+            includeXpath: { type: "boolean", default: true }
+          },
+          additionalProperties: false
+        }
+      },
       ...(devtoolsEnabled ? devtoolsToolDefinitions : [])
     ]
   };
@@ -1308,6 +1344,10 @@ async function handleToolCall(name, args = {}) {
 
     const width = Math.max(40, Math.min(200, parsePositiveInt(args.width, "width") || 100));
     const elementLimit = Math.max(1, Math.min(100, parsePositiveInt(args.elementLimit, "elementLimit") || 25));
+    const fullPage = args.fullPage === true;
+    const mode = ["color_ansi", "grayscale_ansi", "ascii"].includes(args.mode)
+      ? args.mode
+      : "color_ansi";
     const includeSelector = args.includeSelector !== false;
     const includeXpath = args.includeXpath !== false;
 
@@ -1481,38 +1521,54 @@ async function handleToolCall(name, args = {}) {
 
           const vw = elementData.viewportWidth;
           const vh = elementData.viewportHeight;
+          const clipW = fullPage ? elementData.pageWidth : vw;
+          const clipH = fullPage ? elementData.pageHeight : vh;
           const margin = 50;
           const visible = elementData.elements.filter((el) => {
             const r = el.rect;
-            return r.x + r.width > -margin && r.x < vw + margin
-              && r.y + r.height > -margin && r.y < vh + margin;
+            return r.x + r.width > -margin && r.x < clipW + margin
+              && r.y + r.height > -margin && r.y < clipH + margin;
           });
 
-          const asciiWidth = width;
-          const aspect = vh / vw;
-          const asciiRows = Math.min(Math.max(20, Math.round(asciiWidth * aspect * 0.45)), 200);
+          const { cols, rows } = asciiGridDims(clipW, clipH, width);
 
-          const { wireframe } = asciiTransform(vw, vh, visible, asciiWidth);
+          const shot = await page.screenshot({
+            type: "png",
+            encoding: "base64",
+            ...(fullPage ? { fullPage: true } : {}),
+          });
+
+          const sampleFn = eval(SAMPLE_PIXELS_CODE);
+          const samples = await page.evaluate(sampleFn, shot, cols, rows);
 
           const filteredElements = visible.map((el) => ({
             ...el,
             ...(includeSelector ? {} : { selector: undefined }),
             ...(includeXpath ? {} : { xpath: undefined }),
           }));
-          const legend = asciiFormatLegend(filteredElements);
+
+          const result = asciiTransform(samples, cols, rows, filteredElements, clipW, clipH, {
+            mode,
+            includeSelector,
+            includeXpath,
+          });
 
           return {
             title: elementData.title,
             url: elementData.url,
-            wireframe,
-            legend,
+            ansi: result.ansi,
+            legend: result.legend,
             stats: {
-              asciiCols: asciiWidth,
-              asciiRows,
+              asciiCols: cols,
+              asciiRows: rows,
+              mode: result.stats.mode,
+              fullPage,
               viewportWidth: vw,
               viewportHeight: vh,
+              pageWidth: elementData.pageWidth,
+              pageHeight: elementData.pageHeight,
               elementCount: elementData.elements.length,
-              placedCount: visible.length,
+              placedCount: result.stats.placedCount,
             },
           };
         } finally {
@@ -1528,11 +1584,12 @@ async function handleToolCall(name, args = {}) {
     }
     mark = timer.step("capture_ascii", mark);
 
+    const isAscii = asciiResult.stats.mode === "ascii";
     const lines = [
-      `### ${asciiResult.title || "Page"} — ASCII Wireframe`,
+      `### ${asciiResult.title || "Page"} — ${asciiResult.stats.mode === "color_ansi" ? "Chafa Render" : asciiResult.stats.mode === "grayscale_ansi" ? "Grayscale Render" : "ASCII Render"}`,
       "",
-      "```",
-      asciiResult.wireframe,
+      `\`\`\`${isAscii ? "text" : "ansi"}`,
+      asciiResult.ansi,
       "```",
       "",
       "### Element Legend",
@@ -1540,7 +1597,9 @@ async function handleToolCall(name, args = {}) {
       asciiResult.legend,
       "",
       `- Page: ${asciiResult.title} (${asciiResult.url})`,
-      `- Viewport: ${asciiResult.stats.viewportWidth}×${asciiResult.stats.viewportHeight}`,
+      `- Grid: ${asciiResult.stats.asciiCols}×${asciiResult.stats.asciiRows} cells${
+        asciiResult.stats.fullPage ? " (full page)" : " (viewport)"
+      } · mode: ${asciiResult.stats.mode}`,
       `- Elements: ${asciiResult.stats.elementCount} found, ${asciiResult.stats.placedCount} annotated`,
     ];
 
