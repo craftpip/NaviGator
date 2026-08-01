@@ -879,8 +879,9 @@ function renderHintFields(element, fields, baseUrl) {
   return output.join("\n\n");
 }
 
-function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText }) {
-  console.log(">>> extractTextFromHtml called for:", url);
+function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, debug = false }) {
+  const tFunc = performance.now();
+  if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml called`);
   const rawHtml = typeof html === "string" ? html : "";
   const safeHtml = rawHtml.replace(/<style[\s\S]*?<\/style>/gi, "");
   let dom;
@@ -904,9 +905,9 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       }
     }
 
-    console.log(">>> sections check:", { hasHint: !!hint, hasContent: !!hint?.content, sectionsLen: hint?.content?.sections?.length });
+    if (debug) console.log(">>> sections check:", { hasHint: !!hint, hasContent: !!hint?.content, sectionsLen: hint?.content?.sections?.length });
     if (hint?.content?.sections?.length) {
-      console.log(">>> entering sections path, selector:", hint.content.sections[0].selector);
+      if (debug) console.log(">>> entering sections path, selector:", hint.content.sections[0].selector);
       const sectionOutput = [];
       const allSectionTables = [];
       let hadAnyTable = false;
@@ -916,7 +917,7 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       );
         for (const section of sorted) {
           const elements = doc.querySelectorAll(section.selector);
-          console.log(">>> section selector:", section.selector, "matched:", elements.length);
+          if (debug) console.log(">>> section selector:", section.selector, "matched:", elements.length);
           if (!elements.length) continue;
           let markdown = "";
           let sectionHadTable = false;
@@ -964,7 +965,8 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
         sectionOutput.push("");
       }
       if (sectionOutput.length) {
-        console.log(">>> sections produced output, length:", sectionOutput.length, "tables:", allSectionTables.length);
+        if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: sections_path: ${Math.round(performance.now() - tFunc)}ms`);
+        if (debug) console.log(">>> sections produced output, length:", sectionOutput.length, "tables:", allSectionTables.length);
         let text = sectionOutput.join("\n");
         return {
           title: cleanWhitespace(doc.title || fallbackTitle || ""),
@@ -974,7 +976,8 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
           ...(allSectionTables.length ? { tables: allSectionTables } : {})
         };
       }
-      console.log(">>> sections produced no output");
+      if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: sections_no_output: ${Math.round(performance.now() - tFunc)}ms`);
+      if (debug) console.log(">>> sections produced no output");
     }
 
     const globalTables = extractTablesFromDocument(doc);
@@ -995,18 +998,19 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
     }
 
     if (article?.textContent?.trim()) {
-      console.log(">>> Readability SUCCEEDED, textContent length:", article.textContent.trim().length);
+      if (debug) console.log(">>> Readability SUCCEEDED, textContent length:", article.textContent.trim().length);
       const articleLines = toLines(article.textContent);
-      console.log(">>> articleLines count:", articleLines.length, "first 5 lines:", JSON.stringify(articleLines.slice(0,5)));
-      console.log(">>> browserText exists:", !!browserText, "type:", typeof browserText, "length:", browserText?.length);
+      if (debug) console.log(">>> articleLines count:", articleLines.length, "first 5 lines:", JSON.stringify(articleLines.slice(0,5)));
+      if (debug) console.log(">>> browserText exists:", !!browserText, "type:", typeof browserText, "length:", browserText?.length);
 
       if (browserText) {
         const articleLen = article.textContent.trim().length;
         const browserLen = browserText.trim().length;
-        console.log(">>> browserText check:", {articleLen, browserLen, condition: browserLen > articleLen * 1.5 && browserLen - articleLen > 200});
+        if (debug) console.log(">>> browserText check:", {articleLen, browserLen, condition: browserLen > articleLen * 1.5 && browserLen - articleLen > 200});
         if (browserLen > articleLen * 1.5 && browserLen - articleLen > 200) {
           const fullMarkdown = htmlToMarkdown(doc.body.innerHTML, { baseUrl: url });
-          console.log(">>> Using htmlToMarkdown(doc.body.innerHTML), length:", fullMarkdown.length, "preview:", fullMarkdown.substring(0,200));
+          if (debug) console.log(">>> Using htmlToMarkdown(doc.body.innerHTML), length:", fullMarkdown.length, "preview:", fullMarkdown.substring(0,200));
+          if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_htmlToMarkdown: ${Math.round(performance.now() - tFunc)}ms`);
           return {
             title: cleanWhitespace(article.title || fallbackTitle || ""),
             url,
@@ -1021,9 +1025,10 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       let textOriginalLength;
       if (article.content) {
         const raw = htmlToMarkdown(article.content, { baseUrl: url });
-        console.log(">>> article.content path, article.content length:", article.content.length, "raw length:", raw.length, "raw preview:", raw.substring(0,300));
+        if (debug) console.log(">>> article.content path, article.content length:", article.content.length, "raw length:", raw.length, "raw preview:", raw.substring(0,300));
         text = safeTruncateText(raw, maxChars);
         textOriginalLength = raw.length;
+        if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_content: ${Math.round(performance.now() - tFunc)}ms`);
         return {
           title: cleanWhitespace(article.title || fallbackTitle || ""),
           url,
@@ -1034,8 +1039,9 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       } else {
         text = buildCleanText(articleLines, maxChars);
         textOriginalLength = articleLines.join("\n").length;
-        console.log(">>> Readability path: using buildCleanText, length:", text?.length, "preview:", text?.substring(0,200));
+        if (debug) console.log(">>> Readability path: using buildCleanText, length:", text?.length, "preview:", text?.substring(0,200));
       }
+      if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_textContent: ${Math.round(performance.now() - tFunc)}ms`);
       return {
         title: cleanWhitespace(article.title || fallbackTitle || ""),
         url,
@@ -1049,12 +1055,13 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
     try {
       candidates = collectCandidateBlocks(doc);
       bestText = candidates[0]?.text || doc.body?.textContent || "";
-      console.log(">>> FALLBACK: collectCandidateBlocks, candidates:", candidates?.length, "bestText length:", bestText?.length, "bestText preview:", bestText?.substring(0,200));
+      if (debug) console.log(">>> FALLBACK: collectCandidateBlocks, candidates:", candidates?.length, "bestText length:", bestText?.length, "bestText preview:", bestText?.substring(0,200));
     } catch {
       bestText = doc.body?.textContent || "";
     }
     const lines = toLines(bestText);
     const fullText = buildCleanText(lines, maxChars);
+    if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: fallback: ${Math.round(performance.now() - tFunc)}ms`);
     return {
       title: cleanWhitespace(doc.title || fallbackTitle || ""),
       url,
@@ -1063,6 +1070,7 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       ...(tables.length ? { tables } : {})
     };
   } catch {
+    if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: catch_all: ${Math.round(performance.now() - tFunc)}ms`);
     const fallback = dom?.window?.document?.body?.textContent || "";
     return {
       title: cleanWhitespace(dom?.window?.document?.title || fallbackTitle || ""),
@@ -2193,13 +2201,21 @@ function extractLinksFromHtml({ html, url }) {
 }
 
 export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS, includeSeoAnalysis = true }) {
+  const tOverall = performance.now();
   const manager = await getBrowserManager();
-
+  const debug = manager.config.debug === true;
+  const debugLog = (label, t) => {
+    if (debug) console.log(`[web_fetch] [${url}] ${label}: ${Math.round(performance.now() - t)}ms`);
+  };
+  let t = performance.now();
   const hints = await getDomainHints(manager.config);
   const hint = findDomainHint(url, hints);
+  debugLog("load_domain_hints", t);
 
   return manager.withPageSlot(async () => {
+    t = performance.now();
     const page = await manager.newPage({ backend: manager.config.defaultBackend });
+    debugLog("new_page", t);
     const operationTimeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
 
     const withPageTimeout = async (label, task) => {
@@ -2227,12 +2243,14 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
     };
 
     try {
+      t = performance.now();
       await withPageTimeout("goto", () =>
         page.goto(url, {
           waitUntil: "domcontentloaded",
           timeout: manager.config.browserOpTimeoutMs
         })
       );
+      debugLog("goto_page", t);
 
       if (hint?.flags?.authWall || hint?.flags?.visualOnly) {
         const pageTitle = await page.title().catch(() => "");
@@ -2243,11 +2261,14 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
       }
 
       if (hint?.waitForSelector) {
+        t = performance.now();
         await page.waitForSelector(hint.waitForSelector, {
           timeout: Math.min(operationTimeoutMs, 20000)
         }).catch(() => {});
+        debugLog("wait_for_selector", t);
       }
 
+      t = performance.now();
       const stabilizeStrategy = hint?.stabilizeStrategy || manager.config.stabilizeStrategy || "network_idle";
       if (stabilizeStrategy === "network_idle") {
         try {
@@ -2261,7 +2282,9 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
       } else if (stabilizeStrategy === "mutation") {
         await waitForMutations(page, { maxWait: 5000 }).catch(() => {});
       }
+      debugLog("stabilize_page", t);
 
+      t = performance.now();
       const seoSnapshot =
         includeSeoAnalysis === false
           ? null
@@ -2273,7 +2296,9 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
                 extraSelectors: hint?.contentSelectors
               })
             );
+      if (includeSeoAnalysis !== false) debugLog("capture_seo_snapshot", t);
 
+      t = performance.now();
       const [html, resolvedUrl, pageTitle, browserText] = await withPageTimeout("serialize_html", () =>
         Promise.all([
           page.content(),
@@ -2282,7 +2307,9 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
           page.evaluate(() => document.body?.innerText || "").catch(() => "")
         ])
       );
+      debugLog("serialize_page", t);
 
+      t = performance.now();
       const botChallenge = await withPageTimeout("check_bot", () =>
         page.evaluate(() => {
           const title = document.title || "";
@@ -2294,6 +2321,7 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
           return null;
         }).catch(() => null)
       );
+      debugLog("check_bot", t);
 
       if (botChallenge) {
         return {
@@ -2304,29 +2332,38 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
         };
       }
 
+      t = performance.now();
       const extracted = extractTextFromHtml({
         html,
         url: resolvedUrl,
         maxChars,
         fallbackTitle: pageTitle,
         hint,
-        browserText
+        browserText,
+        debug
       });
+      debugLog("extract_text_from_html", t);
 
+      t = performance.now();
       const seoAnalysis =
         includeSeoAnalysis === false
           ? null
           : buildSeoAnalysis({ snapshot: seoSnapshot, extracted, maxChars });
+      if (includeSeoAnalysis !== false) debugLog("build_seo_analysis", t);
 
       const selectedText = extracted.text || seoAnalysis?.mainContentText || "";
 
       let finalText = selectedText || extracted.text || "";
 
+      t = performance.now();
       const links = extractLinksFromHtml({ html, url: resolvedUrl });
+      debugLog("extract_links", t);
 
+      t = performance.now();
       if (extracted.tables?.length) {
         finalText = insertTablesInline(finalText, extracted.tables);
       }
+      debugLog("insert_tables", t);
 
       const textWasTruncated = extracted.text?.endsWith("...");
       if (textWasTruncated || finalText.length > maxChars) {
@@ -2344,11 +2381,22 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
         ...(seoAnalysis ? { seo: seoAnalysis } : {})
       };
 
+      if (debug) {
+        const elapsed = Math.round(performance.now() - tOverall);
+        const sectionsUsed = hint?.content?.sections ? hint.content.sections.length : 0;
+        const textLen = finalText.length;
+        const linkCount = links?.length || 0;
+        const tableCount = extracted?.tables?.length || 0;
+        console.log(`[web_fetch] [${url}] TOTAL: ${elapsed}ms | text: ${textLen} chars | links: ${linkCount} | tables: ${tableCount} | sections: ${sectionsUsed}`);
+      }
+
       return result;
     } finally {
+      t = performance.now();
       if (!page.isClosed()) {
         await page.close();
       }
+      debugLog("close_page", t);
     }
   });
 }

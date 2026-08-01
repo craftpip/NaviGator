@@ -169,6 +169,7 @@ For visual verification, call `web_page_screenshot` with the same `ref_id`.
 | `SEARCH_ROUTE_CIRCUIT_OPEN_MS` | `300000` | Per-route cooldown after failure |
 | `PRELAUNCH_BROWSER` | `1` | Prelaunch browser on server start |
 | `ENABLE_HTTP_MCP` | `0` | Enable Streamable HTTP transport |
+| `DEBUG` | `0` | Enable per-step benchmark timing logs in `web_fetch` — logs each step (`goto_page`, `stabilize_page`, `extract_text_from_html`, etc.) with ms timing and a TOTAL summary |
 
 ### Key Notes
 

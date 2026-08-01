@@ -859,13 +859,15 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-async function openTargetsParallel(targetUrls, maxParallel, includeSeoAnalysis = false) {
+async function openTargetsParallel(targetUrls, maxParallel, includeSeoAnalysis = false, debug = false) {
   const opened = await mapWithConcurrency(
     targetUrls,
     maxParallel,
     async (targetUrl, index) => {
+      const tUrl = debug ? performance.now() : 0;
       try {
         const page = await browserOpenAndExtract({ url: targetUrl, includeSeoAnalysis });
+        if (debug) console.log(`[web_fetch] [${targetUrl}] openTargetsParallel process (post-extract): ${Math.round(performance.now() - tUrl)}ms`);
         const result = {
           index,
           ok: true,
@@ -1228,7 +1230,7 @@ async function handleToolCall(name, args = {}) {
     const manager = await getBrowserManager();
     mark = timer.step("prepare_execution", mark);
     const fullResult = await runWithHangGuard(`mcp:${name}`, () =>
-      openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, includeSeoAnalysis)
+      openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, includeSeoAnalysis, manager.config.debug)
     );
     mark = timer.step("open_targets", mark);
     await setCachedToolResult(name, cacheKeyArgs, fullResult);
@@ -1974,7 +1976,7 @@ async function maybeStartHttpServer(managerOverride) {
 
         const maxChars = parseMaxChars(url.searchParams.get("maxChars"), DEFAULT_MAX_CHARS);
         const payload = await runWithHangGuard("http:/extract", () =>
-          openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false)
+          openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug)
         );
         mark = timer.step("open_targets", mark);
         const truncated = truncateResultsText(payload, maxChars);
