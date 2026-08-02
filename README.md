@@ -214,25 +214,6 @@ Example client config:
 }
 ```
 
-### stdio Backed by Docker
-
-If your MCP client spawns lots of short-lived stdio sessions, use the landing script so the Docker container and browser profile can be reused.
-
-- Linux/macOS: `scripts/mcp-stdio-docker.sh`
-- Windows: `scripts\mcp-stdio-docker.bat`
-
-Example client config:
-
-```json
-{
-  "mcpServers": {
-    "browser-search": {
-      "command": "/absolute/path/to/navigator/scripts/mcp-stdio-docker.sh"
-    }
-  }
-}
-```
-
 ## Domain Hints
 
 Some websites need special handling to extract content well. An SPA that loads content 8 seconds after page open, a site that uses web components instead of semantic HTML, or a login wall that has zero useful content — the default extraction pipeline may not handle these well.
@@ -447,22 +428,7 @@ When `ENABLE_VNC=1`, open one of these in your browser:
 
 This lets you watch or interact with the same browser session used by the MCP tools.
 
-## Import a Local Chrome Profile into Docker
-
-To clone an existing local Chrome or Chromium user data directory into the container volume:
-
-```bash
-scripts/clone-chrome-userdir.sh --source "/path/to/your/chrome-user-data-dir" --wipe
-```
-
-Then restart the service:
-
-```bash
-docker compose restart
-```
-
 ## Troubleshooting
-
 ### `/health` does not respond
 
 - Check that the container is running: `docker compose ps`

@@ -33,12 +33,9 @@
   ],
   "scripts": {
     "start": "node src/mcp-server.js",
-    "bench": "node scripts/benchmark.mjs",
-    "bench:search": "node benchmarking/search-benchmark.mjs",
-    "bench:all": "node scripts/benchmark.mjs && node benchmarking/search-benchmark.mjs",
+    "bench": "node benchmark/web-search-benchmark.mjs",
     "test:hints": "vitest run tests/domain-hints.test.js",
     "test:hints:live": "LIVE_DOMAIN_HINTS=1 vitest run tests/domain-hints-live.test.js",
-    "test:mcporter": "bash scripts/test-mcporter.sh",
     "docs": "typedoc src/ --out doc",
     "lint": "eslint src/ scripts/ tests/",
     "lint:fix": "eslint --fix src/ scripts/ tests/",

@@ -590,8 +590,6 @@ counts) produces unparseable output for LLMs.
 - `src/pixel-sampler.js` — Browser-side sampling. `SAMPLE_PIXELS_CODE` runs in `page.evaluate()`: base64 PNG → `createImageBitmap` → `OffscreenCanvas(cols, rows*2)` → `getImageData`. Returns a packed RGB grid. `asciiGridDims(vw, vh, width)` computes `rows = round(cols * (vh/vw) / 2)`.
 - `src/ascii.js` — Pure transformer: takes RGB grid + elements + dims, returns `{ ansi, legend, placed, stats }`. Zero browser dependency. Exports `buildCellGrid()`, `placeMarkers()`, `renderGrid()`, `formatLegend()`, `transform()`.
 - `scripts/ascii-screenshot.js` — CLI harness (screenshot + sample + render).
-- `scripts/ansi-to-png.mjs` — Dev utility: renders the ANSI output to a PNG so it can be viewed as an image.
-- `scripts/compare-ascii-sizes.mjs` — Dev utility: compares PNG vs ASCII render sizes at multiple widths.
 
 **Key decisions:**
 - Each terminal cell holds **2 vertical pixel rows** — top row → fg color, bottom row → bg color. `▀` = different colors, `█` = same color. The `/2` in the grid math is half-block density, not a font guess.
