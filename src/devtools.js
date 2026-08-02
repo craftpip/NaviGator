@@ -13,6 +13,12 @@ const CLOSED_TARGET_RETENTION_MS = 600_000;
 const targetsById = new Map();
 const closedTargets = new Map();
 
+const devtoolsCounters = { targetsCreated: 0, targetsClosed: 0, targetsInactivityClosed: 0 };
+
+export function getDevtoolsCounters() {
+  return { ...devtoolsCounters };
+}
+
 function cleanWhitespace(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
@@ -101,6 +107,8 @@ function startInactivityCleanup() {
       const lastActive = new Date(state.lastActiveAt).getTime();
       if (now - lastActive >= INACTIVITY_TIMEOUT_MS) {
         closedTargets.set(targetId, { closedAt: new Date().toISOString() });
+        devtoolsCounters.targetsInactivityClosed += 1;
+        targetsById.delete(targetId);
         state.page.close().catch(() => {});
       }
     }
@@ -212,6 +220,7 @@ async function createTarget(args = {}) {
 
   installPageObservers(state);
   targetsById.set(state.targetId, state);
+  devtoolsCounters.targetsCreated += 1;
 
   if (url !== "about:blank") {
     await page.goto(url, {
@@ -246,6 +255,7 @@ async function closeTarget(args = {}) {
   const state = getTargetState(args.targetId);
   await state.page.close();
   targetsById.delete(state.targetId);
+  devtoolsCounters.targetsClosed += 1;
   return {
     targetId: state.targetId,
     closed: true

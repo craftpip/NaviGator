@@ -25,7 +25,8 @@ export default [
         NodeList: "readonly",
         HTMLCollection: "readonly",
         HTMLElement: "readonly",
-        XPathResult: "readonly"
+        XPathResult: "readonly",
+        NodeFilter: "readonly"
       }
     },
     rules: {

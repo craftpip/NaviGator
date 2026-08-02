@@ -288,3 +288,52 @@ describe("formatDevtoolsToolResponse edge cases", () => {
     expect(result.content[0].text).toContain("[");
   });
 });
+
+describe("devtools counters", () => {
+  let getBrowserManager;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    getBrowserManager = (await import("../src/browser.js")).getBrowserManager;
+  });
+
+  it("exports getDevtoolsCounters with all three keys", async () => {
+    const { getDevtoolsCounters } = await import("../src/devtools.js");
+    const c = getDevtoolsCounters();
+    expect(c).toHaveProperty("targetsCreated");
+    expect(c).toHaveProperty("targetsClosed");
+    expect(c).toHaveProperty("targetsInactivityClosed");
+  });
+
+  it("increments targetsCreated on createTarget and targetsClosed on closeTarget", async () => {
+    getBrowserManager.mockResolvedValue({
+      config: {
+        enableDevtoolsMcp: true,
+        devtoolsBackend: "chromium",
+        defaultBackend: "cloakbrowser",
+        navWaitUntil: "domcontentloaded",
+        browserOpTimeoutMs: 60000,
+      },
+      newPage: vi.fn().mockResolvedValue({
+        goto: vi.fn().mockResolvedValue(undefined),
+        url: vi.fn().mockReturnValue("about:blank"),
+        title: vi.fn().mockResolvedValue(""),
+        isClosed: vi.fn().mockReturnValue(false),
+        on: vi.fn(),
+        close: vi.fn().mockResolvedValue(undefined),
+      }),
+    });
+
+    const mod = await import("../src/devtools.js");
+    const before = mod.getDevtoolsCounters();
+    const created = await mod.handleDevtoolsToolCall("Target.createTarget", {});
+    const mid = mod.getDevtoolsCounters();
+    expect(mid.targetsCreated).toBe(before.targetsCreated + 1);
+    expect(mid.targetsClosed).toBe(before.targetsClosed);
+
+    await mod.handleDevtoolsToolCall("Target.closeTarget", { targetId: created.targetId });
+    const after = mod.getDevtoolsCounters();
+    expect(after.targetsCreated).toBe(mid.targetsCreated);
+    expect(after.targetsClosed).toBe(mid.targetsClosed + 1);
+  });
+});

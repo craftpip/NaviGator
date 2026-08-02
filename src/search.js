@@ -94,6 +94,17 @@ const DEFAULT_FALLBACK = [
 ];
 const routeCircuitState = new Map();
 
+const activityCounters = {
+  searches: 0,
+  fetches: 0,
+  screenshots: 0,
+  botBlocks: 0
+};
+
+export function getActivityCounters() {
+  return { ...activityCounters };
+}
+
 function routeKey(engine) {
   const meta = getEngineMetadata(engine);
   return `${engine}/${meta?.backend || "browser"}`;
@@ -125,6 +136,11 @@ function recordRouteFailure(engine, error, cooldownMs) {
     lastError: String(error?.message || error || "Unknown route failure"),
     lastFailureAt: new Date().toISOString()
   });
+
+  const message = String(error?.message || error || "");
+  if (/captcha|blocked by|bot|unusual traffic/i.test(message)) {
+    activityCounters.botBlocks += 1;
+  }
 }
 
 export function getSearchBackendHealth() {
@@ -140,6 +156,66 @@ export function getSearchBackendHealth() {
       lastFailureAt: state.lastFailureAt || ""
     };
   });
+}
+
+const ENGINE_ATTEMPT_LOG_MAX = 20000;
+const ENGINE_ATTEMPT_PERIODS = [
+  { key: "5m", ms: 5 * 60 * 1000 },
+  { key: "15m", ms: 15 * 60 * 1000 },
+  { key: "1h", ms: 60 * 60 * 1000 },
+  { key: "24h", ms: 24 * 60 * 60 * 1000 },
+  { key: "all", ms: Infinity }
+];
+const engineAttemptLog = [];
+
+export function recordEngineAttempt(engine, status, errorMsg) {
+  engineAttemptLog.push({ t: Date.now(), engine, status, err: status === "ok" ? "" : String(errorMsg || status).slice(0, 300) });
+  if (engineAttemptLog.length > ENGINE_ATTEMPT_LOG_MAX) {
+    engineAttemptLog.splice(0, engineAttemptLog.length - ENGINE_ATTEMPT_LOG_MAX);
+  }
+}
+
+export function getEngineAttemptStats() {
+  const now = Date.now();
+  let total = 0;
+  let ok = 0;
+  let fail = 0;
+  let skip = 0;
+  const byEngine = {};
+
+  for (const e of engineAttemptLog) {
+    total += 1;
+    if (e.status === "ok") ok += 1;
+    else if (e.status === "skip") skip += 1;
+    else fail += 1;
+
+    const bucket = (byEngine[e.engine] ||= { total: 0, ok: 0, fail: 0, skip: 0, byPeriod: {} });
+    bucket.total += 1;
+    if (e.status === "ok") bucket.ok += 1;
+    else if (e.status === "skip") bucket.skip += 1;
+    else bucket.fail += 1;
+
+    const age = now - e.t;
+    for (const p of ENGINE_ATTEMPT_PERIODS) {
+      if (age <= p.ms) {
+        const window = (bucket.byPeriod[p.key] ||= { total: 0, ok: 0, fail: 0, skip: 0 });
+        window.total += 1;
+        if (e.status === "ok") window.ok += 1;
+        else if (e.status === "skip") window.skip += 1;
+        else window.fail += 1;
+      }
+    }
+  }
+
+  const recentFailures = [];
+  for (let i = engineAttemptLog.length - 1; i >= 0 && recentFailures.length < 8; i -= 1) {
+    const e = engineAttemptLog[i];
+    if (e.status === "fail") {
+      recentFailures.push({ minutesAgo: Math.round((now - e.t) / 60000), engine: e.engine, error: e.err });
+    }
+  }
+
+  return { total, ok, fail, skip, byEngine, recentFailures };
 }
 
 function normalizeEngines(engines, fallback) {
@@ -1188,6 +1264,7 @@ function routeConcurrencyForEngines(engines, _config) {
 async function runSearchRoute({ manager, query, engine, config, explicit }) {
   const circuit = getRouteCircuit(engine);
   if (circuit.open) {
+    recordEngineAttempt(engine, "skip", circuit.lastError || "route open");
     throw new Error(`Search route ${circuit.key} is temporarily disabled for ${Math.ceil(circuit.remainingMs / 1000)}s: ${circuit.lastError || "previous failure"}`);
   }
 
@@ -1205,9 +1282,11 @@ async function runSearchRoute({ manager, query, engine, config, explicit }) {
       value = await execute();
     }
     recordRouteSuccess(engine);
+    recordEngineAttempt(engine, "ok");
     return value;
   } catch (error) {
     recordRouteFailure(engine, error, config.searchRouteCircuitOpenMs);
+    recordEngineAttempt(engine, "fail", error);
     if (explicit) throw error;
     throw error;
   }
@@ -1239,6 +1318,7 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
   for (const engine of engines) {
     const circuit = getRouteCircuit(engine);
     if (circuit.open) {
+      recordEngineAttempt(engine, "skip", circuit.lastError || "route open");
       skipped.push({ engine, route: circuit.key, remainingMs: circuit.remainingMs, error: circuit.lastError || "route open" });
       continue;
     }
@@ -1344,6 +1424,7 @@ function buildQueryResult({ query, settled, limit, fallbackAttempted }) {
 
 export async function browserSearch({ query, queries, limit = 5, engines }) {
   const manager = await getBrowserManager();
+  activityCounters.searches += 1;
   const explicitEngines = Array.isArray(engines)
     ? engines.length > 0
     : engines !== undefined && engines !== null && String(engines).trim() !== "";
@@ -1553,6 +1634,7 @@ function extractLinksFromHtml({ html, url }) {
 
 export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS, includeSeoAnalysis = true }) {
   const tOverall = performance.now();
+  activityCounters.fetches += 1;
   const manager = await getBrowserManager();
   const debug = manager.config.debug === true;
   const debugLog = (label, t) => {
@@ -1758,6 +1840,7 @@ export async function browserCaptureScreenshot({
   fullPage = true,
   quality
 }) {
+  activityCounters.screenshots += 1;
   const manager = await getBrowserManager();
   const normalizedFormat = format === "jpeg" ? "jpeg" : "png";
   const normalizedQuality =

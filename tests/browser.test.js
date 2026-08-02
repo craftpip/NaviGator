@@ -479,6 +479,42 @@ describe("BrowserManager", () => {
     });
   });
 
+  describe("getInstanceStats", () => {
+    it("returns one entry per backend", async () => {
+      const manager = new BrowserManager(makeConfig());
+      const stats = await manager.getInstanceStats();
+      expect(stats).toHaveLength(3);
+      expect(stats.map((s) => s.backend).sort()).toEqual(["chromium", "cloakbrowser", "lightpanda"]);
+    });
+
+    it("reports zeroed state when nothing is launched", async () => {
+      const manager = new BrowserManager(makeConfig());
+      const stats = await manager.getInstanceStats();
+      for (const entry of stats) {
+        expect(entry.connected).toBe(false);
+        expect(entry.tabs).toBe(0);
+        expect(entry.pid).toBeNull();
+        expect(entry.spawns).toBe(0);
+      }
+    });
+
+    it("counts tabs from non-closed pages", async () => {
+      const manager = new BrowserManager(makeConfig());
+      manager.cloakbrowserBrowser = {
+        connected: true,
+        pages: async () => [
+          { isClosed: () => false },
+          { isClosed: () => false },
+          { isClosed: () => true },
+        ],
+        process: () => ({ pid: 99 }),
+      };
+      const stats = await manager.getInstanceStats();
+      const cloak = stats.find((s) => s.backend === "cloakbrowser");
+      expect(cloak).toMatchObject({ connected: true, tabs: 2, pid: 99 });
+    });
+  });
+
   describe("getBrowserManager singleton", () => {
     it("returns a BrowserManager instance", async () => {
       const { loadConfig } = await import("../src/config.js");

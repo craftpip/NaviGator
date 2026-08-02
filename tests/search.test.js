@@ -103,6 +103,54 @@ describe("getSearchBackendHealth", () => {
   });
 });
 
+describe("getEngineAttemptStats", () => {
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  it("returns an empty shape when no engine attempts have been recorded", async () => {
+    const { getEngineAttemptStats } = await import("../src/search.js");
+    const stats = getEngineAttemptStats();
+    expect(stats).toEqual({ total: 0, ok: 0, fail: 0, skip: 0, byEngine: {}, recentFailures: [] });
+  });
+
+  it("aggregates ok/fail/skip per engine across periods", async () => {
+    const mod = await import("../src/search.js");
+    mod.recordEngineAttempt("duckduckgo_api", "ok");
+    mod.recordEngineAttempt("duckduckgo_api", "ok");
+    mod.recordEngineAttempt("bing_lp", "fail", "captcha detected");
+    mod.recordEngineAttempt("google_cb", "skip", "route open");
+
+    const stats = mod.getEngineAttemptStats();
+    expect(stats.total).toBe(4);
+    expect(stats.ok).toBe(2);
+    expect(stats.fail).toBe(1);
+    expect(stats.skip).toBe(1);
+
+    expect(stats.byEngine["duckduckgo_api"]).toMatchObject({ total: 2, ok: 2, fail: 0, skip: 0 });
+    expect(stats.byEngine["bing_lp"]).toMatchObject({ total: 1, ok: 0, fail: 1, skip: 0 });
+    expect(stats.byEngine["google_cb"]).toMatchObject({ total: 1, ok: 0, fail: 0, skip: 1 });
+
+    for (const p of ["5m", "15m", "1h", "24h", "all"]) {
+      const w = stats.byEngine["bing_lp"].byPeriod[p];
+      expect(w).toMatchObject({ total: 1, ok: 0, fail: 1, skip: 0 });
+    }
+  });
+
+  it("returns recent failures with engine and error", async () => {
+    const mod = await import("../src/search.js");
+    mod.recordEngineAttempt("mojeek_lp", "ok");
+    mod.recordEngineAttempt("bing_lp", "fail", "search route timed out");
+    mod.recordEngineAttempt("google_cb", "fail", "unusual traffic");
+
+    const stats = mod.getEngineAttemptStats();
+    expect(stats.recentFailures.length).toBe(2);
+    expect(stats.recentFailures[0]).toMatchObject({ engine: "google_cb", error: "unusual traffic" });
+    expect(stats.recentFailures[1]).toMatchObject({ engine: "bing_lp", error: "search route timed out" });
+    expect(stats.recentFailures[0]).toHaveProperty("minutesAgo");
+  });
+});
+
 describe("browserSearch", () => {
   it("throws when no query provided", async () => {
     mockGetBrowserManager.mockResolvedValue(makeMockManager());

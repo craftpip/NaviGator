@@ -212,9 +212,10 @@ docker compose down && up -d       # Restart containers
 
 ### Running tests
 
-All tests run inside the container only:
+All tests run inside the container only. The entrypoint runs `npm install --omit=dev` on every container start, which prunes dev deps from the bind-mounted host `node_modules` — so reinstall dev deps after **every** restart/build, not just the first time:
+
 ```bash
-docker compose exec navigator npm install --include=dev   # First time only
+docker compose exec navigator npm install --include=dev   # After every container restart
 docker compose exec navigator npx vitest run              # Run all tests
 docker compose exec navigator npx vitest run tests/mcp-server.test.js  # Single file
 ```
@@ -723,3 +724,19 @@ For each site:
 11. `video.md` — YouTube
 12. `reference.md` — Wikipedia
 13. `README.md` — Category index / legend
+
+### web_fetch Output Formats Are Read-Time Formatters
+
+**Created:** 2026-08-02
+
+**What:** Adding a new output format to `web_fetch` (e.g., `format: "json"`) means adding a new response formatter — never touching extraction. The extraction pipeline already returns structured data internally; markdown is the lossy flattening, not the source.
+
+**Why:** `browserOpenAndExtract()` / `openTargetsParallel()` entries are already structured: `{ ref_id, ok, title, url, text, tables: [{context, headers, rows}], links: [{ref_id, url, text}], seo }`. The cache stores this structured payload (`setCachedToolResult(name, cacheKeyArgs, fullResult)`), and formatting happens on read — both cache-hit (src/mcp-server.js:1246) and cache-miss (line 1273) paths run `formatOpenPageResponse(truncated)`. The `/extract` HTTP endpoint (src/mcp-server.js:2049) does the same.
+
+**Key facts:**
+- Cache key for web_fetch is `excludeMaxChars(getCacheArgs(args))` — `maxChars` is excluded; `format` must also be excluded (read-time concern, cache stays format-agnostic).
+- Truncation applies via `truncateResultsText(payload, maxChars)` BEFORE formatting, so any new formatter gets it for free.
+- MCP tools return text content; a JSON formatter returns the JSON string as the text content (`JSON.stringify(payload, null, 2)`), not `structuredContent`, so all MCP clients render it.
+- Plan for JSON output: `plans/web-fetch-json.md`.
+
+**Plans convention:** New feature plans go in `plans/<topic>.md` (e.g., `generalize-web-fetch.md`, `web-fetch-json.md`, `navigator-cli.md`, `monitoring.md`, `search-engine-drivers.md`, `opensource-prep.md`).

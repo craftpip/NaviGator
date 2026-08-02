@@ -132,6 +132,9 @@ export class BrowserManager {
     this.engineWorkingWindows = new Map();
     this.pageSlotsInUse = 0;
     this.pageSlotWaiters = [];
+
+    // Cumulative spawn counters (in-memory, reset on restart)
+    this.instanceSpawns = { chromium: 0, lightpanda: 0, cloakbrowser: 0 };
   }
 
   async ensureKeepAlivePage(browser) {
@@ -386,6 +389,7 @@ export class BrowserManager {
 
     try {
       this.browser = await this.launching;
+      this.instanceSpawns.chromium += 1;
       return this.browser;
     } finally {
       this.launching = null;
@@ -527,6 +531,7 @@ export class BrowserManager {
 
       try {
         processHandle = await this._spawnLightpanda();
+        if (processHandle) this.instanceSpawns.lightpanda += 1;
       } catch (error) {
         logBrowserEvent("lightpanda.spawn_failed", { error: String(error?.message || error) });
         return null;
@@ -710,6 +715,7 @@ export class BrowserManager {
           ]
         });
         this.cloakbrowserBrowser = browser;
+        this.instanceSpawns.cloakbrowser += 1;
         browser.on("disconnected", () => {
           this.cloakbrowserBrowser = null;
           this.cloakbrowserLaunching = null;
@@ -965,6 +971,47 @@ export class BrowserManager {
         inUse: this.pageSlotsInUse,
         queued: this.pageSlotWaiters.length
       }
+    };
+  }
+
+  async getInstanceStats() {
+    return Promise.all([
+      this._instanceStat("chromium", this.browser),
+      this._instanceStat("lightpanda", this.lightpandaBrowser),
+      this._instanceStat("cloakbrowser", this.cloakbrowserBrowser)
+    ]);
+  }
+
+  async _instanceStat(backend, instance) {
+    const connected = Boolean(instance?.connected);
+    let tabs = 0;
+    let pid = null;
+
+    if (connected) {
+      try {
+        const pages = await instance.pages();
+        tabs = pages.filter((page) => !page.isClosed()).length;
+      } catch {
+        tabs = 0;
+      }
+
+      if (backend === "lightpanda") {
+        pid = this.lightpandaProcess?.pid ?? null;
+      } else {
+        try {
+          pid = instance.process()?.pid ?? null;
+        } catch {
+          pid = null;
+        }
+      }
+    }
+
+    return {
+      backend,
+      connected,
+      tabs,
+      pid,
+      spawns: this.instanceSpawns[backend] || 0
     };
   }
 

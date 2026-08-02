@@ -6,12 +6,15 @@ vi.mock("../src/search.js", () => ({
   browserOpenAndExtract: vi.fn(),
   browserCaptureScreenshot: vi.fn(),
   getSearchBackendHealth: vi.fn().mockReturnValue([]),
+  getActivityCounters: vi.fn().mockReturnValue({ searches: 0, fetches: 0, screenshots: 0, botBlocks: 0 }),
+  getEngineAttemptStats: vi.fn().mockReturnValue({ total: 0, ok: 0, fail: 0, skip: 0, byEngine: {}, recentFailures: [] }),
 }));
 vi.mock("../src/devtools.js", () => ({
   devtoolsToolDefinitions: [],
   formatDevtoolsToolResponse: vi.fn(),
   handleDevtoolsToolCall: vi.fn(),
   captureTargetScreenshot: vi.fn(),
+  getDevtoolsCounters: vi.fn().mockReturnValue({ targetsCreated: 0, targetsClosed: 0, targetsInactivityClosed: 0 }),
 }));
 vi.mock("cloakbrowser", () => ({}));
 vi.mock("cloakbrowser/puppeteer", () => ({ launch: vi.fn() }));
@@ -62,6 +65,11 @@ function makeMockManager(overrides = {}) {
       openPageSlots: { used: 0, max: 10 },
       pageLimiter: { inUse: 0 },
     }),
+    getInstanceStats: vi.fn().mockResolvedValue([
+      { backend: "chromium", connected: false, tabs: 0, pid: null, spawns: 0 },
+      { backend: "lightpanda", connected: false, tabs: 0, pid: null, spawns: 0 },
+      { backend: "cloakbrowser", connected: true, tabs: 2, pid: 42, spawns: 1 },
+    ]),
     shutdown: vi.fn().mockResolvedValue(undefined),
     prelaunchIfConfigured: vi.fn().mockResolvedValue(undefined),
   };
@@ -148,6 +156,62 @@ describe("mcp-server HTTP endpoints", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.ok).toBe(true);
+    });
+  });
+
+  describe("GET /stats", () => {
+    it("returns 200 with instance stats", async () => {
+      const res = await fetch(`${MCP_BASE}/stats`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body).toHaveProperty("uptimeSeconds");
+      expect(body).toHaveProperty("memory.rss");
+      expect(body).toHaveProperty("memory.heapUsed");
+      expect(body).toHaveProperty("sessions");
+      expect(body).toHaveProperty("cache");
+      expect(body.instances).toHaveLength(3);
+      const cloak = body.instances.find((i) => i.backend === "cloakbrowser");
+      expect(cloak).toMatchObject({ connected: true, tabs: 2, pid: 42, spawns: 1 });
+    });
+
+    it("includes activity and devtools counters", async () => {
+      const searchMod = await import("../src/search.js");
+      searchMod.getActivityCounters.mockReturnValue({
+        searches: 5, fetches: 3, screenshots: 1, botBlocks: 2,
+      });
+      const devtoolsMod = await import("../src/devtools.js");
+      devtoolsMod.getDevtoolsCounters.mockReturnValue({
+        targetsCreated: 7, targetsClosed: 4, targetsInactivityClosed: 1,
+      });
+
+      const res = await fetch(`${MCP_BASE}/stats`);
+      const body = await res.json();
+      expect(body.counters).toMatchObject({
+        searches: 5, fetches: 3, screenshots: 1, botBlocks: 2,
+        targetsCreated: 7, targetsClosed: 4, targetsInactivityClosed: 1,
+      });
+      expect(body.counters).toHaveProperty("cacheHits");
+      expect(body.counters).toHaveProperty("cacheMisses");
+    });
+
+    it("includes requests and engineAttempts telemetry", async () => {
+      const searchMod = await import("../src/search.js");
+      searchMod.getEngineAttemptStats.mockReturnValue({
+        total: 4, ok: 3, fail: 1, skip: 0,
+        byEngine: { bing_lp: { total: 1, ok: 0, fail: 1, skip: 0 } },
+        recentFailures: [{ minutesAgo: 0, engine: "bing_lp", error: "captcha detected" }],
+      });
+
+      const res = await fetch(`${MCP_BASE}/stats`);
+      const body = await res.json();
+      expect(body).toHaveProperty("requests");
+      expect(body.requests).toHaveProperty("byPeriod");
+      expect(body.requests).toHaveProperty("byTool");
+      expect(body.engineAttempts).toMatchObject({
+        total: 4, ok: 3, fail: 1, skip: 0,
+        recentFailures: [{ minutesAgo: 0, engine: "bing_lp", error: "captcha detected" }],
+      });
     });
   });
 

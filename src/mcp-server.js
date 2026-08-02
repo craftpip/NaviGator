@@ -13,8 +13,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { formatBrowserBackendShort, parseBrowserBackend, DEFAULT_MAX_CHARS } from "./config.js";
 import { getBrowserManager } from "./browser.js";
-import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth } from "./search.js";
-import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot } from "./devtools.js";
+import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats } from "./search.js";
+import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters } from "./devtools.js";
 import { transform as asciiTransform } from "./ascii.js";
 import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
@@ -32,6 +32,68 @@ const toolResultCache = {
   web_search: new Map(),
   web_fetch: new Map()
 };
+const cacheCounters = { hits: 0, misses: 0 };
+
+const REQUEST_LOG_MAX = 20000;
+const REQUEST_PERIODS = [
+  { key: "5m", ms: 5 * 60 * 1000 },
+  { key: "15m", ms: 15 * 60 * 1000 },
+  { key: "1h", ms: 60 * 60 * 1000 },
+  { key: "24h", ms: 24 * 60 * 60 * 1000 },
+  { key: "all", ms: Infinity }
+];
+const requestLog = [];
+
+function recordRequest(tool, ok, errorMsg) {
+  requestLog.push({ t: Date.now(), tool, ok, err: ok ? "" : String(errorMsg || "error").slice(0, 300) });
+  if (requestLog.length > REQUEST_LOG_MAX) {
+    requestLog.splice(0, requestLog.length - REQUEST_LOG_MAX);
+  }
+}
+
+function getRequestStats() {
+  const now = Date.now();
+  const byPeriod = {};
+  const byTool = {};
+  let total = 0;
+  let ok = 0;
+  let err = 0;
+
+  for (const e of requestLog) {
+    total += 1;
+    if (e.ok) ok += 1;
+    else err += 1;
+
+    const tool = (byTool[e.tool] ||= { total: 0, ok: 0, err: 0 });
+    tool.total += 1;
+    if (e.ok) tool.ok += 1;
+    else tool.err += 1;
+
+    const age = now - e.t;
+    for (const p of REQUEST_PERIODS) {
+      if (age <= p.ms) {
+        const window = (byPeriod[p.key] ||= { total: 0, ok: 0, err: 0 });
+        window.total += 1;
+        if (e.ok) window.ok += 1;
+        else window.err += 1;
+      }
+    }
+  }
+
+  const recentErrors = [];
+  for (let i = requestLog.length - 1; i >= 0 && recentErrors.length < 8; i -= 1) {
+    const e = requestLog[i];
+    if (!e.ok) {
+      recentErrors.push({
+        minutesAgo: Math.round((now - e.t) / 60000),
+        tool: e.tool,
+        error: e.err
+      });
+    }
+  }
+
+  return { total, ok, err, byPeriod, byTool, recentErrors };
+}
 
 function stableStringify(value) {
   if (value === null || value === undefined) return "null";
@@ -65,11 +127,16 @@ function getCachedToolResult(toolName, args) {
   pruneToolCacheBucket(bucket);
   const key = getCacheKey(args);
   const entry = bucket.get(key);
-  if (!entry) return null;
-  if (entry.expiresAt <= Date.now()) {
-    bucket.delete(key);
+  if (!entry) {
+    cacheCounters.misses += 1;
     return null;
   }
+  if (entry.expiresAt <= Date.now()) {
+    bucket.delete(key);
+    cacheCounters.misses += 1;
+    return null;
+  }
+  cacheCounters.hits += 1;
   return entry.value;
 }
 
@@ -1116,6 +1183,17 @@ function getToolsListResponse() {
 }
 
 async function handleToolCall(name, args = {}) {
+  try {
+    const result = await handleToolCallInner(name, args);
+    recordRequest(name, true);
+    return result;
+  } catch (error) {
+    recordRequest(name, false, error?.message || String(error));
+    throw error;
+  }
+}
+
+async function handleToolCallInner(name, args = {}) {
   const timer = createExecutionTimer("mcp.tool.timing", {
     tool: name,
     mode: "mcp"
@@ -1304,8 +1382,8 @@ async function handleToolCall(name, args = {}) {
     })();
     mark = timer.step("resolve_targets", mark);
 
-    const width = Math.max(40, Math.min(200, parsePositiveInt(args.width, "width") || 100));
-    const elementLimit = Math.max(1, Math.min(100, parsePositiveInt(args.elementLimit, "elementLimit") || 25));
+    const width = Math.max(40, Math.min(200, args.width ? parsePositiveInt(args.width, "width") : 100));
+    const elementLimit = Math.max(1, Math.min(100, args.elementLimit ? parsePositiveInt(args.elementLimit, "elementLimit") : 25));
     const fullPage = args.fullPage === true;
     const mode = ["color_ansi", "grayscale_ansi", "ascii"].includes(args.mode)
       ? args.mode
@@ -1872,6 +1950,41 @@ async function maybeStartHttpServer(managerOverride) {
         return;
       }
 
+      if (url.pathname === "/stats") {
+        const instances = await manager.getInstanceStats();
+        const memory = process.memoryUsage();
+        const stats = {
+          ok: true,
+          uptimeSeconds: Math.floor(process.uptime()),
+          memory: {
+            rss: memory.rss,
+            heapUsed: memory.heapUsed,
+            heapTotal: memory.heapTotal
+          },
+          sessions: mcpTransports.size,
+          cache: {
+            total: toolResultCache.web_search.size + toolResultCache.web_fetch.size,
+            byTool: {
+              web_search: toolResultCache.web_search.size,
+              web_fetch: toolResultCache.web_fetch.size
+            }
+          },
+          instances,
+          counters: {
+            ...getActivityCounters(),
+            ...getDevtoolsCounters(),
+            cacheHits: cacheCounters.hits,
+            cacheMisses: cacheCounters.misses
+          },
+          requests: getRequestStats(),
+          engineAttempts: getEngineAttemptStats()
+        };
+        logEvent("http.request", { method, path: url.pathname });
+        logEvent("http.response", { method, path: url.pathname, result: stats });
+        sendJson(res, 200, stats);
+        return;
+      }
+
       if (url.pathname === "/search") {
         const timer = createExecutionTimer("http.timing", {
           mode: "http",
@@ -1896,6 +2009,7 @@ async function maybeStartHttpServer(managerOverride) {
         const queries = [...new Set([...multiQ, ...queriesParam])];
 
         if (!query.trim() && !queries.length) {
+          recordRequest("http:/search", false, "Missing q or queries parameter");
           sendJson(res, 400, { ok: false, error: "Missing q or queries parameter" });
           return;
         }
@@ -1913,14 +2027,21 @@ async function maybeStartHttpServer(managerOverride) {
         );
         mark = timer.step("parse_inputs", mark);
 
-        const payload = decorateSearchPayload(
-          await runWithHangGuard("http:/search", () => browserSearch({ query, queries, limit, ...(engines.length ? { engines } : {}) }))
-        );
+        let payload;
+        try {
+          payload = decorateSearchPayload(
+            await runWithHangGuard("http:/search", () => browserSearch({ query, queries, limit, ...(engines.length ? { engines } : {}) }))
+          );
+        } catch (error) {
+          recordRequest("http:/search", false, error?.message || String(error));
+          throw error;
+        }
         mark = timer.step("browser_search", mark);
         const markdown = formatSearchMarkdown(payload);
         timer.step("format_response", mark);
         timer.end({ status: "ok" });
         logEvent("http.response", { method, path: url.pathname, result: payload });
+        recordRequest("http:/search", true);
         sendMarkdown(res, 200, markdown);
         return;
       }
@@ -1941,6 +2062,7 @@ async function maybeStartHttpServer(managerOverride) {
         try {
           targetUrls = parseHttpExtractTargets(url.searchParams);
         } catch (error) {
+          recordRequest("http:/extract", false, error?.message || String(error));
           logEvent("http.error", {
             method,
             path: url.pathname,
@@ -1954,15 +2076,22 @@ async function maybeStartHttpServer(managerOverride) {
         mark = timer.step("resolve_targets", mark);
 
         const maxChars = parseMaxChars(url.searchParams.get("maxChars"), DEFAULT_MAX_CHARS);
-        const payload = await runWithHangGuard("http:/extract", () =>
-          openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug)
-        );
+        let payload;
+        try {
+          payload = await runWithHangGuard("http:/extract", () =>
+            openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug)
+          );
+        } catch (error) {
+          recordRequest("http:/extract", false, error?.message || String(error));
+          throw error;
+        }
         mark = timer.step("open_targets", mark);
         const truncated = truncateResultsText(payload, maxChars);
         const markdown = formatOpenPageResponse(truncated).content[0].text;
         timer.step("format_response", mark);
         timer.end({ status: "ok" });
         logEvent("http.response", { method, path: url.pathname, result: payload });
+        recordRequest("http:/extract", true);
         sendMarkdown(res, 200, markdown);
         return;
       }
@@ -1983,6 +2112,7 @@ async function maybeStartHttpServer(managerOverride) {
         try {
           targetUrls = parseHttpExtractTargets(url.searchParams);
         } catch (error) {
+          recordRequest("http:/screenshot", false, error?.message || String(error));
           logEvent("http.error", {
             method,
             path: url.pathname,
@@ -2018,13 +2148,19 @@ async function maybeStartHttpServer(managerOverride) {
         };
         mark = timer.step("parse_options", mark);
 
-        const payload = await runWithHangGuard("http:/screenshot", () =>
-          captureScreenshotsParallel(
-            targetUrls,
-            manager.config.openPageMaxParallel,
-            options
-          )
-        );
+        let payload;
+        try {
+          payload = await runWithHangGuard("http:/screenshot", () =>
+            captureScreenshotsParallel(
+              targetUrls,
+              manager.config.openPageMaxParallel,
+              options
+            )
+          );
+        } catch (error) {
+          recordRequest("http:/screenshot", false, error?.message || String(error));
+          throw error;
+        }
         mark = timer.step("capture_screenshots", mark);
         await applyScreenshotStorage(payload, manager.config);
         mark = timer.step("store_screenshots", mark);
@@ -2032,6 +2168,7 @@ async function maybeStartHttpServer(managerOverride) {
         timer.step("format_response", mark);
         timer.end({ status: "ok" });
         logEvent("http.response", { method, path: url.pathname, result: payload });
+        recordRequest("http:/screenshot", true);
         sendMarkdown(res, 200, markdown);
         return;
       }
