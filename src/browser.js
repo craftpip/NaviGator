@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import http from "node:http";
 import puppeteer from "puppeteer-core";
 import { loadConfig, findLightpandaPath } from "./config.js";
+import { getBrowserWarmupEngines, getEngineMetadata } from "./engines/index.js";
 
 const LOCK_FILES = ["SingletonLock", "SingletonCookie", "SingletonSocket"];
 const CLONE_EXCLUDE_NAMES = new Set([
@@ -24,17 +25,6 @@ const CLONE_EXCLUDE_DIRS = new Set([
 ]);
 const MONITOR_WIDTH = 1920;
 const MONITOR_HEIGHT = 1080;
-const ENGINE_STARTUP_URLS = {
-  bing_cb: "https://www.bing.com/",
-  bing_lp: "https://www.bing.com/",
-  duckduckgo_api: "https://duckduckgo.com/",
-  duckduckgo_cb: "https://duckduckgo.com/",
-  duckduckgo_ch: "https://duckduckgo.com/",
-  google_cb: "https://www.google.com/",
-  google_ch: "https://www.google.com/",
-  google_lp: "https://www.google.com/",
-  mojeek_lp: "https://www.mojeek.com/"
-};
 
 const BROWSER_LOG_EMOJI = {
   "lightpanda.spawn_failed": "❌",
@@ -765,19 +755,15 @@ export class BrowserManager {
     const engine = (options && options.engine) || "";
     const backend = (options && options.backend) || this.config.defaultBackend;
     const lower = engine.toLowerCase();
-    // CloakBrowser routes handle JS-heavy/CAPTCHA-prone engines undetected.
-    const needsCloakbrowser = ["duckduckgo_cb", "google_cb", "bing_cb"].includes(lower);
-    if (needsCloakbrowser) {
+    const routeBackend = getEngineMetadata(lower)?.backend;
+    // Engine routes always use their own backend; unknown engines use the default.
+    if (routeBackend === "cloakbrowser") {
       return this._newCloakbrowserPage();
     }
-    // Chromium-only routes handle JS-heavy/CAPTCHA-prone engines.
-    const needsChromium = ["duckduckgo_ch", "google_ch"].includes(lower);
-    if (needsChromium) {
+    if (routeBackend === "chromium") {
       return this._newChromiumPage();
     }
-    // LightPanda routes for engines that specifically need it.
-    const needsLightpanda = ["bing_lp", "google_lp", "mojeek_lp"].includes(lower);
-    if (needsLightpanda) {
+    if (routeBackend === "lightpanda") {
       return this._newLightpandaPage();
     }
     if (backend === "cloakbrowser") return this._newCloakbrowserPage();
@@ -785,10 +771,11 @@ export class BrowserManager {
   }
 
   _poolEngine(engine) {
-    // CloakBrowser and Chromium routes use per-engine pools; Lightpanda routes share one pool.
+    // Per-engine pools for CloakBrowser/Chromium routes; Lightpanda routes share one pool.
     const lower = (engine || "").toLowerCase();
-    if (["duckduckgo_cb", "google_cb", "bing_cb", "duckduckgo_ch", "google_ch"].includes(lower)) return lower;
-    if (["bing_lp", "google_lp", "mojeek_lp"].includes(lower)) return "_shared";
+    const pool = getEngineMetadata(lower)?.pool;
+    if (pool === "engine") return lower;
+    if (pool === "shared") return "_shared";
     if (this.config.defaultBackend === "cloakbrowser") return lower;
     return this.config.defaultBackend !== "chromium" ? "_shared" : lower;
   }
@@ -800,10 +787,9 @@ export class BrowserManager {
 
   async ensureMinWorkingWindows(engine, { startupUrl, waitUntil = "domcontentloaded", label, reason = "cold_start", browserEngine = engine } = {}) {
     const lower = (engine || "").toLowerCase();
-    const needsCloakbrowser = ["duckduckgo_cb", "google_cb", "bing_cb"].includes(lower);
-    const needsChromium = ["duckduckgo_ch", "google_ch"].includes(lower);
-    const needsLightpanda = ["bing_lp", "google_lp", "mojeek_lp"].includes(lower);
-    if (this.config.defaultBackend !== "cloakbrowser" && this.config.defaultBackend !== "chromium" && !needsCloakbrowser && !needsChromium && !needsLightpanda) return;
+    const routeBackend = getEngineMetadata(lower)?.backend;
+    const needsRouteBackend = routeBackend === "cloakbrowser" || routeBackend === "chromium" || routeBackend === "lightpanda";
+    if (this.config.defaultBackend !== "cloakbrowser" && this.config.defaultBackend !== "chromium" && !needsRouteBackend) return;
     const pool = this.getEnginePool(engine);
     this.pruneClosedWindows(pool);
 
@@ -1010,9 +996,9 @@ export class BrowserManager {
       }
 
       await Promise.allSettled(
-        this.config.searchRouteWarmupEngines.map((engine) =>
+        getBrowserWarmupEngines(this.config.searchRouteWarmupEngines).map((engine) =>
           this.ensureMinWorkingWindows(this._poolEngine(engine), {
-            startupUrl: ENGINE_STARTUP_URLS[engine] || "about:blank",
+            startupUrl: getEngineMetadata(engine)?.homeUrl || "about:blank",
             waitUntil: "domcontentloaded",
             reason: "warmup",
             browserEngine: engine

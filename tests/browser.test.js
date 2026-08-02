@@ -270,6 +270,7 @@ describe("BrowserManager", () => {
       expect(manager._poolEngine("duckduckgo_cb")).toBe("duckduckgo_cb");
       expect(manager._poolEngine("google_cb")).toBe("google_cb");
       expect(manager._poolEngine("bing_cb")).toBe("bing_cb");
+      expect(manager._poolEngine("brave_cb")).toBe("brave_cb");
     });
 
     it("returns exact engine for chromium routes", () => {
@@ -301,6 +302,7 @@ describe("BrowserManager", () => {
   describe("newPage engine dispatch", () => {
     const cases = [
       ["bing_cb", "cloakbrowser"],
+      ["brave_cb", "cloakbrowser"],
       ["duckduckgo_cb", "cloakbrowser"],
       ["google_cb", "cloakbrowser"],
       ["duckduckgo_ch", "chromium"],

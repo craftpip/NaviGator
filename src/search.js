@@ -5,6 +5,15 @@ import { Readability } from "@mozilla/readability";
 import { performance } from "node:perf_hooks";
 import { findDomainHint, getDomainHints } from "./domain-hints.js";
 import { htmlToMarkdown } from "./markdown.js";
+import { getEngineDriver, getEngineMetadata, SUPPORTED_ENGINES } from "./engines/index.js";
+import {
+  buildLlmText,
+  cleanAndTruncateText,
+  cleanWhitespace,
+  dedupeDirectAnswers,
+  normalizeQueryText,
+  normalizeUrl
+} from "./engines/util.js";
 
 const DEFAULT_CONTENT_SELECTORS = [
   "main", "article", "[role='main']", ".content", "#content",
@@ -77,157 +86,17 @@ async function waitForMutations(page, { maxWait = 5000, stableMs = 500 } = {}) {
   }
 }
 
-const SUPPORTED_ENGINES = new Set(["bing_cb", "bing_lp", "duckduckgo_api", "duckduckgo_cb", "duckduckgo_ch", "google_cb", "google_ch", "google_lp", "mojeek_lp"]);
-const ENGINE_BACKENDS = {
-  bing_cb: "cloakbrowser",
-  bing_lp: "lightpanda",
-  duckduckgo_api: "http",
-  duckduckgo_cb: "cloakbrowser",
-  duckduckgo_ch: "chromium",
-  google_cb: "cloakbrowser",
-  google_ch: "chromium",
-  google_lp: "lightpanda",
-  mojeek_lp: "lightpanda"
-};
 const DEFAULT_FALLBACK = [
   "duckduckgo_api",
+  "brave_cb",
   "google_lp", "google_cb", "duckduckgo_cb", "bing_cb",
   "bing_lp", "google_ch", "duckduckgo_ch", "mojeek_lp"
 ];
 const routeCircuitState = new Map();
-const ENGINE_PAGE_CONFIG = {
-  duckduckgo_ch: {
-    homeUrl: "https://duckduckgo.com/",
-    searchUrl: () => `https://duckduckgo.com/`,
-    inputSelectors: ["input[name='q']", "input#searchbox_input", "input[data-testid='searchbox-input']"],
-    resultSelectors: [
-      "article[data-testid='result']",
-      "#links .result",
-      ".results .result",
-      ".result",
-      "#search_results"
-    ]
-  },
-  google_ch: {
-    homeUrl: "https://www.google.com/",
-    searchUrl: (q) => `https://www.google.com/search?q=${encodeURIComponent(q)}&hl=en&udm=14`,
-    inputSelectors: ["textarea[name='q']", "input[name='q']"],
-    resultSelectors: [
-      "#search",
-      "#search .MjjYud",
-      "#search .g",
-      "#rso",
-      ".srg",
-      ".g",
-      "#rcnt"
-    ]
-  },
-  google_cb: {
-    homeUrl: "https://www.google.com/",
-    searchUrl: (q) => `https://www.google.com/search?q=${encodeURIComponent(q)}&hl=en&udm=14`,
-    inputSelectors: ["textarea[name='q']", "input[name='q']"],
-    resultSelectors: [
-      "#search",
-      "#search .MjjYud",
-      "#search .g",
-      "#rso",
-      ".srg",
-      ".g",
-      "#rcnt"
-    ]
-  },
-  duckduckgo_cb: {
-    homeUrl: "https://duckduckgo.com/",
-    searchUrl: () => `https://duckduckgo.com/`,
-    inputSelectors: ["input[name='q']", "input#searchbox_input", "input[data-testid='searchbox-input']"],
-    resultSelectors: [
-      "article[data-testid='result']",
-      "#links .result",
-      ".results .result",
-      ".result",
-      "#search_results"
-    ]
-  },
-  bing_cb: {
-    homeUrl: "https://www.bing.com/",
-    searchUrl: (q) => `https://www.bing.com/search?q=${encodeURIComponent(q)}`,
-    inputSelectors: ["textarea[name='q']", "input[name='q']", "input#sb_form_q"],
-    resultSelectors: ["#b_results", "#b_results li.b_algo"]
-  },
-  google_lp: {
-    homeUrl: "https://www.google.com/",
-    searchUrl: (q) => `https://www.google.com/search?q=${encodeURIComponent(q)}&hl=en&udm=14`,
-    inputSelectors: ["textarea[name='q']", "input[name='q']"],
-    resultSelectors: ["#search", "#rso", ".g", "#rcnt"]
-  },
-  bing_lp: {
-    homeUrl: "https://www.bing.com/",
-    searchUrl: (q) => `https://www.bing.com/search?q=${encodeURIComponent(q)}`,
-    inputSelectors: ["textarea[name='q']", "input[name='q']", "input#sb_form_q"],
-    resultSelectors: ["#b_results", "#b_results li.b_algo"]
-  },
-  mojeek_lp: {
-    homeUrl: "https://www.mojeek.com/",
-    searchUrl: (q) => `https://www.mojeek.com/search?q=${encodeURIComponent(q)}`,
-    inputSelectors: ["input[name='q']", "input.js-search-input"],
-    resultSelectors: [".results-standard", ".results-standard li", ".serp-results", ".results"]
-  }
-};
-
-function cleanWhitespace(input) {
-  return String(input || "").replace(/\s+/g, " ").trim();
-}
-
-function normalizeQueryText(input) {
-  let text = String(input || "").trim();
-  if (!text) return "";
-
-  const quotePairs = [
-    ['"', '"'],
-    ["'", "'"],
-    ["`", "`"],
-    ["“", "”"],
-    ["‘", "’"]
-  ];
-  const quoteChars = new Set(["\"", "'", "`", "“", "”", "‘", "’"]);
-
-  let changed = true;
-  while (changed && text.length > 1) {
-    changed = false;
-    for (const [open, close] of quotePairs) {
-      if (text.startsWith(open) && text.endsWith(close) && text.length > open.length + close.length) {
-        text = text.slice(open.length, text.length - close.length).trim();
-        changed = true;
-      }
-    }
-  }
-
-  if (text.length > 1 && quoteChars.has(text[0]) && !quoteChars.has(text[text.length - 1])) {
-    text = text.slice(1).trimStart();
-  }
-
-  return text;
-}
-
-function normalizeUrl(rawUrl) {
-  try {
-    const parsed = new URL(rawUrl);
-    if (parsed.hostname.includes("google.") && parsed.pathname === "/url") {
-      const redirect = parsed.searchParams.get("q");
-      if (redirect) return redirect;
-    }
-    if (parsed.hostname.includes("duckduckgo.") && parsed.pathname === "/l/") {
-      const redirect = parsed.searchParams.get("uddg");
-      if (redirect) return redirect;
-    }
-    return parsed.toString();
-  } catch {
-    return "";
-  }
-}
 
 function routeKey(engine) {
-  return `${engine}/${ENGINE_BACKENDS[engine] || "browser"}`;
+  const meta = getEngineMetadata(engine);
+  return `${engine}/${meta?.backend || "browser"}`;
 }
 
 function getRouteCircuit(engine, now = Date.now()) {
@@ -281,56 +150,13 @@ function normalizeEngines(engines, fallback) {
   }
   const normalized = input
     .map((item) => String(item).trim().toLowerCase())
-    .filter((item) => SUPPORTED_ENGINES.has(item));
+    .filter((item) => SUPPORTED_ENGINES.includes(item));
   if (requested.length && !normalized.length) {
     throw new Error(
-      `No valid engines requested. Supported engines: ${[...SUPPORTED_ENGINES].join(", ")}`
+      `No valid engines requested. Supported engines: ${SUPPORTED_ENGINES.join(", ")}`
     );
   }
   return normalized.length ? [...new Set(normalized)] : fallback;
-}
-
-function buildLlmText(result) {
-  return cleanWhitespace(`${result.title}\n${result.snippet}`);
-}
-
-function dedupeDirectAnswers(answers, maxItems = 10) {
-  const byKey = new Map();
-
-  for (const item of answers) {
-    const text = cleanWhitespace(item?.text);
-    if (!text) continue;
-
-    const source = cleanWhitespace(item?.source || "answer").toLowerCase();
-    const key = `${source}|${text.toLowerCase()}`;
-    const queryVariants = Array.isArray(item?.queryVariants)
-      ? item.queryVariants.map((q) => cleanWhitespace(q)).filter(Boolean)
-      : [cleanWhitespace(item?.queryVariant)].filter(Boolean);
-
-    if (!byKey.has(key)) {
-      byKey.set(key, {
-        source,
-        text,
-        url: cleanWhitespace(item?.url || ""),
-        ...(queryVariants.length ? { queryVariants } : {})
-      });
-      continue;
-    }
-
-    if (queryVariants.length) {
-      const existing = byKey.get(key);
-      const merged = [...new Set([...(existing.queryVariants || []), ...queryVariants])];
-      if (merged.length) {
-        existing.queryVariants = merged;
-      }
-    }
-  }
-
-  return [...byKey.values()].slice(0, maxItems);
-}
-
-function cleanAndTruncateText(text, maxChars) {
-  return String(text || "").replace(/[^\S\n]+/g, " ").trim().slice(0, maxChars);
 }
 
 const NON_CONTENT_SELECTORS = [
@@ -1313,188 +1139,16 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-async function assertSearchPageIsNotBlocked(page, engine) {
-  const text = await page.evaluate(() => document.body?.innerText || "");
-  const pageUrl = page.url();
-
-  if (engine.startsWith("google_") && (/\/sorry\//.test(pageUrl) || /unusual traffic|not a robot/i.test(text))) {
-    throw new Error("Google blocked this request with a CAPTCHA page");
-  }
-
-  if (engine === "mojeek_lp" && /403\s*-?\s*forbidden|automated queries/i.test(text)) {
-    throw new Error("Mojeek blocked this request as automated traffic");
-  }
-}
-
-async function waitForAnySelector(page, selectors, timeout, engine) {
-  await assertSearchPageIsNotBlocked(page, engine);
-  try {
-    await Promise.any(selectors.map((selector) => page.waitForSelector(selector, { timeout })));
-  } catch (error) {
-    await assertSearchPageIsNotBlocked(page, engine);
-    throw error;
-  }
-
-  for (const selector of selectors) {
-    const handle = await page.$(selector);
-    if (handle) return handle;
-  }
-
-  throw new Error(`Could not resolve any selector: ${selectors.join(", ")}`);
-}
-
-async function fetchTextWithTimeout(url, options, timeoutMs) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-    const text = await response.text();
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} from ${url}: ${text.slice(0, 160)}`);
-    }
-    return text;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function collectDuckDuckGoInstantAnswers(payload) {
-  const answers = [];
-  const sourceUrl = cleanWhitespace(payload?.AbstractURL || payload?.AbstractSource || "https://duckduckgo.com/");
-  if (payload?.Answer) {
-    answers.push({ source: "instant_answer", text: payload.Answer, url: sourceUrl });
-  }
-  if (payload?.AbstractText) {
-    answers.push({ source: "abstract", text: payload.AbstractText, url: sourceUrl });
-  }
-  if (payload?.Definition) {
-    answers.push({ source: "definition", text: payload.Definition, url: sourceUrl });
-  }
-
-  const related = Array.isArray(payload?.RelatedTopics) ? payload.RelatedTopics : [];
-  for (const item of related.slice(0, 5)) {
-    if (item?.Text) {
-      answers.push({ source: "related_topic", text: item.Text, url: cleanWhitespace(item.FirstURL || sourceUrl) });
-      continue;
-    }
-    if (Array.isArray(item?.Topics)) {
-      for (const topic of item.Topics.slice(0, 2)) {
-        if (topic?.Text) {
-          answers.push({ source: "related_topic", text: topic.Text, url: cleanWhitespace(topic.FirstURL || sourceUrl) });
-        }
-      }
-    }
-  }
-  return dedupeDirectAnswers(answers);
-}
-
-function parseDuckDuckGoHtmlResults(html) {
-  const safeHtml = String(html || "");
-  const dom = new JSDOM(safeHtml, { url: "https://html.duckduckgo.com/html/" });
-  try {
-    const rows = Array.from(dom.window.document.querySelectorAll(".result.results_links, .result"));
-    const results = rows
-      .map((row) => {
-        const anchor = row.querySelector("a.result__a") || row.querySelector(".result__title a") || row.querySelector("h2 a");
-        const snippetEl = row.querySelector(".result__snippet");
-        return {
-          title: cleanWhitespace(anchor?.textContent || ""),
-          url: normalizeUrl(anchor?.href || ""),
-          snippet: cleanWhitespace(snippetEl?.textContent || "")
-        };
-      })
-      .filter((item) => item.title && item.url);
-
-    if (results.length) return results;
-
-    if (/anomaly-modal|anomaly|captcha|unusual traffic|bot/i.test(safeHtml)) {
-      throw new Error("DuckDuckGo HTTP returned a bot/anomaly page without usable results");
-    }
-
-    return results;
-  } finally {
-    dom.window.close();
-  }
-}
-
-async function runDuckDuckGoHttpSearch({ query, engine, config }) {
-  const t0 = performance.now();
-  const timeoutMs = Math.min(config.browserOpTimeoutMs, 15000);
-  const headers = {
-    "user-agent": config.userAgent,
-    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "content-type": "application/x-www-form-urlencoded"
-  };
-
-  const htmlPromise = fetchTextWithTimeout(
-    "https://html.duckduckgo.com/html/",
-    {
-      method: "POST",
-      headers,
-      body: new URLSearchParams({ q: query }).toString()
-    },
-    timeoutMs
-  );
-  const answerPromise = fetchTextWithTimeout(
-    `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`,
-    { headers: { "user-agent": config.userAgent, "accept": "application/json" } },
-    timeoutMs
-  ).catch(() => "");
-
-  const [html, answerText] = await Promise.all([htmlPromise, answerPromise]);
-  const results = parseDuckDuckGoHtmlResults(html).map((item) => ({ ...item, engine }));
-  let directAnswers = [];
-  if (answerText) {
-    try {
-      directAnswers = collectDuckDuckGoInstantAnswers(JSON.parse(answerText)).map((item) => ({ ...item, engine }));
-    } catch {
-      directAnswers = [];
-    }
-  }
-
-  const t1 = performance.now();
-  console.error(`⏱️  ${engine}: http_total=${Math.round(t1 - t0)}ms`);
-  return { results, directAnswers };
-}
-
-async function submitSearchFromHomepage({ page, query, engine, config }) {
-  const engineConfig = ENGINE_PAGE_CONFIG[engine];
-
-  await page.goto(engineConfig.searchUrl(query), {
-    waitUntil: "domcontentloaded",
-    timeout: config.browserOpTimeoutMs
-  });
-
-  // DuckDuckGo shows homepage skeleton with ?q=, not results — need to submit the form
-  if (engine === "duckduckgo_ch" || engine === "duckduckgo_cb") {
-    await page.waitForSelector(engineConfig.inputSelectors.join(","), {
-      timeout: config.browserOpTimeoutMs
-    });
-    await page.evaluate((q) => {
-      const input = document.querySelector("input[name='q'], input#searchbox_input, input[data-testid='searchbox-input']");
-      if (input) {
-        input.value = q;
-        const form = input.closest("form");
-        if (form) form.submit();
-      }
-    }, query);
-    // Wait for navigation to complete after form submit
-    await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: config.browserOpTimeoutMs }).catch(() => {});
-    await waitForAnySelector(page, engineConfig.resultSelectors, config.browserOpTimeoutMs, engine);
-    return;
-  }
-
-  await page.waitForSelector("body", { timeout: config.browserOpTimeoutMs }).catch(() => {});
-  await new Promise((r) => setTimeout(r, 500));
-  await waitForAnySelector(page, engineConfig.resultSelectors, config.browserOpTimeoutMs, engine);
-}
-
 async function runSearchEngine({ manager, query, engine, config }) {
-  if (ENGINE_BACKENDS[engine] === "http") {
-    return runDuckDuckGoHttpSearch({ query, engine, config });
+  const driver = getEngineDriver(engine, config);
+  const { backend } = getEngineMetadata(engine) || {};
+
+  if (backend === "api") {
+    const t0 = performance.now();
+    const result = await driver.search({ query });
+    const t1 = performance.now();
+    console.error(`⏱️  ${engine}: http_total=${Math.round(t1 - t0)}ms`);
+    return result;
   }
 
   const t0 = performance.now();
@@ -1502,185 +1156,10 @@ async function runSearchEngine({ manager, query, engine, config }) {
   const t1 = performance.now();
 
   try {
-    await submitSearchFromHomepage({ page, query, engine, config });
+    await driver.submit(page, query);
     const t2 = performance.now();
 
-    async function extractResults() {
-      if (engine === "duckduckgo_ch" || engine === "duckduckgo_cb") {
-        const payload = await page.evaluate(() => {
-          const rows = Array.from(document.querySelectorAll("article[data-testid='result'], .result"));
-          const results = rows.map((row) => {
-            const anchor = row.querySelector("a[data-testid='result-title-a'], h2 a, a.result__a");
-            const snippetEl = row.querySelector(
-              "[data-result='snippet'], .result__snippet, .result-snippet"
-            );
-            return {
-              title: anchor?.textContent || "",
-              url: anchor?.href || "",
-              snippet: snippetEl?.textContent || ""
-            };
-          });
-
-          const answerNodes = [
-            ...document.querySelectorAll("[data-testid='instant-answer']"),
-            ...document.querySelectorAll(".zci__answer, .zci__result, .module__body")
-          ];
-          const directAnswers = answerNodes.map((node) => ({
-            source: "instant_answer",
-            text: node?.textContent || ""
-          }));
-
-          return { results, directAnswers };
-        });
-
-        return {
-          results: payload.results.map((item) => ({ ...item, engine })),
-          directAnswers: dedupeDirectAnswers(
-            (payload.directAnswers || []).map((item) => ({ ...item, engine, url: page.url() }))
-          )
-        };
-      }
-
-      if (engine === "google_chromium" || engine === "google_cb" || engine === "google_ch") {
-        const payload = await page.evaluate(() => {
-          const rows = Array.from(document.querySelectorAll("#search .MjjYud, #search .g"));
-          const results = rows.map((row) => {
-            const anchor = row.querySelector("a:has(h3)") || row.querySelector("h3")?.closest("a");
-            const heading = row.querySelector("h3");
-            const snippetEl = row.querySelector(".VwiC3b, [data-sncf], div[data-content-feature='1']");
-
-            return {
-              title: heading?.textContent || "",
-              url: anchor?.href || "",
-              snippet: snippetEl?.textContent || ""
-            };
-          });
-
-          const answerNodes = [
-            ...document.querySelectorAll("#search .kno-rdesc span, #search [data-attrid='wa:/description']"),
-            ...document.querySelectorAll("#search .hgKElc, #search .IZ6rdc, #search .V3FYCf")
-          ];
-          const directAnswers = answerNodes.map((node) => ({
-            source: "direct_answer",
-            text: node?.textContent || ""
-          }));
-
-          return { results, directAnswers };
-        });
-
-        return {
-          results: payload.results.map((item) => ({ ...item, engine })),
-          directAnswers: dedupeDirectAnswers(
-            (payload.directAnswers || []).map((item) => ({ ...item, engine, url: page.url() }))
-          )
-        };
-      }
-
-      if (engine === "google_lp") {
-        const payload = await page.evaluate(() => {
-          const rows = Array.from(
-            document.querySelectorAll("#search .g, #rso .g, .MjjYud")
-          );
-          const results = rows.map((row) => {
-            const anchor = row.querySelector("a[jsname] h3")?.closest("a") ||
-                           row.querySelector("h3 a, a h3") ||
-                           row.querySelector("a");
-            const heading = row.querySelector("h3");
-            const snippetEl = row.querySelector(
-              ".VwiC3b, .st, span.aCOpRe, [data-sncf]"
-            );
-            return {
-              title: heading?.textContent || "",
-              url: anchor?.href || "",
-              snippet: snippetEl?.textContent || ""
-            };
-          });
-
-          const answerNodes = document.querySelectorAll(
-            ".kno-rdesc span, [data-attrid='wa:/description'], .hgKElc"
-          );
-          const directAnswers = Array.from(answerNodes).map((node) => ({
-            source: "direct_answer",
-            text: node?.textContent || ""
-          }));
-
-          return { results, directAnswers };
-        });
-
-        return {
-          results: payload.results.map((item) => ({ ...item, engine })),
-          directAnswers: dedupeDirectAnswers(
-            (payload.directAnswers || []).map((item) => ({ ...item, engine, url: page.url() }))
-          )
-        };
-      }
-
-      if (engine === "mojeek_lp") {
-        const payload = await page.evaluate(() => {
-          const rows = Array.from(document.querySelectorAll(".results-standard li"));
-          const results = rows.map((row) => {
-            const anchor = row.querySelector("h2 a.title") || row.querySelector("h2 a") || row.querySelector("a.title");
-            const snippetEl = row.querySelector("p.s");
-
-            return {
-              title: anchor?.textContent || "",
-              url: anchor?.href || "",
-              snippet: snippetEl?.textContent || ""
-            };
-          });
-
-          const directAnswers = Array.from(document.querySelectorAll(".infobox p"))
-            .map((node) => ({
-              source: "infobox",
-              text: node?.textContent || ""
-            }));
-
-          return { results, directAnswers };
-        });
-
-        return {
-          results: payload.results.map((item) => ({ ...item, engine })),
-          directAnswers: dedupeDirectAnswers(
-            (payload.directAnswers || []).map((item) => ({ ...item, engine, url: page.url() }))
-          )
-        };
-      }
-
-      const payload = await page.evaluate(() => {
-        const rows = Array.from(document.querySelectorAll("#b_results li.b_algo"));
-        const results = rows.map((row) => {
-          const anchor = row.querySelector("h2 a") || row.querySelector("a");
-          const snippetEl =
-            row.querySelector(".b_caption p") || row.querySelector(".b_snippet") || row.querySelector("p");
-
-          return {
-            title: anchor?.textContent || "",
-            url: anchor?.href || "",
-            snippet: snippetEl?.textContent || ""
-          };
-        });
-
-        const answerNodes = [
-          ...document.querySelectorAll(".b_ans .b_focusTextLarge, .b_ans .b_paractl, .b_ans .b_snippet"),
-          ...document.querySelectorAll("#b_results .b_entityTP .b_snippet")
-        ];
-        const directAnswers = answerNodes.map((node) => ({
-          source: "direct_answer",
-          text: node?.textContent || ""
-        }));
-
-        return { results, directAnswers };
-      });
-
-      return {
-        results: payload.results.map((item) => ({ ...item, engine })),
-        directAnswers: dedupeDirectAnswers(
-          (payload.directAnswers || []).map((item) => ({ ...item, engine, url: page.url() }))
-        )
-      };
-    }
-
-    const result = await extractResults();
+    const result = await driver.extract(page);
     const t3 = performance.now();
 
     console.error(`⏱️  ${engine}: acquire_window=${Math.round(t1 - t0)}ms → search_submit=${Math.round(t2 - t1)}ms → extract_results=${Math.round(t3 - t2)}ms | total=${Math.round(t3 - t0)}ms`);
@@ -1701,7 +1180,7 @@ async function runSearchEngine({ manager, query, engine, config }) {
 }
 
 function routeConcurrencyForEngines(engines, _config) {
-  const hasLightpandaRoute = engines.some((engine) => ENGINE_BACKENDS[engine] === "lightpanda");
+  const hasLightpandaRoute = engines.some((engine) => getEngineMetadata(engine)?.backend === "lightpanda");
   if (hasLightpandaRoute) return 1;
   return Math.max(1, engines.length);
 }
@@ -1720,7 +1199,7 @@ async function runSearchRoute({ manager, query, engine, config, explicit }) {
     try {
       value = await execute();
     } catch (error) {
-      if (ENGINE_BACKENDS[engine] !== "lightpanda" || !/detached frame|targetalreadyloaded/i.test(String(error?.message || error))) {
+      if (getEngineMetadata(engine)?.backend !== "lightpanda" || !/detached frame|targetalreadyloaded/i.test(String(error?.message || error))) {
         throw error;
       }
       value = await execute();

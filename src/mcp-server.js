@@ -18,6 +18,7 @@ import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsTool
 import { transform as asciiTransform } from "./ascii.js";
 import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
+import { MCP_SEARCH_ENGINES } from "./engines/index.js";
 
 const screenshotDownloadById = new Map();
 const screenshotStorageDir = path.join(process.cwd(), "screenshots");
@@ -26,6 +27,7 @@ const SCREENSHOT_DOWNLOAD_TTL_MS = 60 * 60 * 1000;
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 const MAX_SCREENSHOT_DOWNLOADS = 200;
 const MAX_TOOL_CACHE_ENTRIES = 200;
+const WEB_SEARCH_ENGINE_ENUM = ["select_best", ...MCP_SEARCH_ENGINES];
 const toolResultCache = {
   web_search: new Map(),
   web_fetch: new Map()
@@ -944,14 +946,14 @@ function getToolsListResponse() {
               type: "array",
               items: {
                 type: "string",
-                enum: ["select_best", "duckduckgo_api", "bing_lp", "mojeek_lp", "google_cb", "bing_cb", "duckduckgo_cb"]
+                enum: WEB_SEARCH_ENGINE_ENUM
               },
               description: "Specific search engines to run. Prefer `select_best` by default. Only send concrete engines if the user explicitly requests certain engines or asks about engine behavior. If `select_best` appears anywhere in this list, it takes priority and automatic fallback/circuit-breaker selection is used."
             },
             engine: {
               type: "string",
               default: "select_best",
-              enum: ["select_best", "duckduckgo_api", "bing_lp", "mojeek_lp", "google_cb", "bing_cb", "duckduckgo_cb"],
+              enum: WEB_SEARCH_ENGINE_ENUM,
               description: "Preferred default: `select_best`. Only send a concrete engine if the user explicitly requests one engine or asks about engine behavior. `select_best` uses automatic fallback and circuit-breaker logic."
             }
           },

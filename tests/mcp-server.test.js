@@ -286,6 +286,21 @@ describe("mcp-server HTTP endpoints", () => {
       ]);
     });
 
+    it("advertises the documented web_search engine enum", async () => {
+      const { status, body } = await mcpPost({
+        jsonrpc: "2.0", id: 57, method: "tools/list"
+      });
+
+      expect(status).toBe(200);
+      const webSearch = body.result.tools.find((tool) => tool.name === "web_search");
+      const engineEnum = webSearch.inputSchema.properties.engine.enum;
+      expect(engineEnum).toEqual([
+        "select_best", "duckduckgo_api", "brave_cb", "bing_lp",
+        "mojeek_lp", "google_cb", "bing_cb", "duckduckgo_cb"
+      ]);
+      expect(webSearch.inputSchema.properties.engines.items.enum).toEqual(engineEnum);
+    });
+
     it("responds to initialize via session transport with SSE stream", async () => {
       const res = await fetch(`${MCP_BASE}/mcp`, {
         method: "POST",

@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { SUPPORTED_ENGINES } from "./engines/index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -15,12 +16,7 @@ const WAIT_UNTIL_VALUES = new Set([
   "networkidle2"
 ]);
 
-const SEARCH_ENGINE_VALUES = new Set([
-  "bing_cb", "bing_lp",
-  "duckduckgo_api", "duckduckgo_cb", "duckduckgo_ch",
-  "google_cb", "google_ch", "google_lp",
-  "mojeek_lp"
-]);
+const SEARCH_ENGINE_VALUES = new Set(SUPPORTED_ENGINES);
 
 const BROWSER_BACKEND_VALUES = new Set(["chromium", "cloakbrowser", "lightpanda"]);
 
