@@ -327,7 +327,7 @@ async function navigatePage(args = {}) {
   } catch (error) {
     if (String(error?.message || "").includes("Unknown targetId")) {
       state = await createTarget({ targetId: args.targetId.trim(), url: args.url.trim() });
-      return state;
+      return { ...state, created: true };
     }
     throw error;
   }
@@ -336,7 +336,7 @@ async function navigatePage(args = {}) {
     timeout: manager.config.browserOpTimeoutMs
   });
   await refreshTitle(state);
-  return buildTargetSummary(state);
+  return { ...buildTargetSummary(state), created: false };
 }
 
 async function evaluateRuntime(args = {}) {
@@ -393,24 +393,27 @@ async function evaluateRuntime(args = {}) {
       return `/${parts.join("/")}`;
     }
 
+    function truncateText(value, maxChars) {
+      const text = String(value || "");
+      if (text.length <= maxChars) return text;
+      return `${text.slice(0, Math.max(0, maxChars - 3))}...`;
+    }
+
+    function elementAttributes(element) {
+      const attrs = {};
+      for (const attr of Array.from(element.attributes)) attrs[attr.name] = attr.value;
+      return attrs;
+    }
+
     function describeElement(element) {
       const rect = element.getBoundingClientRect();
       return {
         tagName: element.tagName.toLowerCase(),
-        text: cleanWhitespaceInner(element.innerText || element.textContent || "").slice(0, 500),
+        text: truncateText(cleanWhitespaceInner(element.innerText || element.textContent || ""), 500),
         value: "value" in element ? String(element.value || "") : "",
         selector: cssPath(element),
         xpath: xpathFor(element),
-        attributes: {
-          id: element.id || "",
-          class: element.className || "",
-          role: element.getAttribute("role") || "",
-          name: element.getAttribute("name") || "",
-          type: element.getAttribute("type") || "",
-          href: element.getAttribute("href") || "",
-          src: element.getAttribute("src") || "",
-          placeholder: element.getAttribute("placeholder") || ""
-        },
+        attributes: elementAttributes(element),
         rect: {
           x: Math.round(rect.x),
           y: Math.round(rect.y),
@@ -435,16 +438,23 @@ async function evaluateRuntime(args = {}) {
       }
       if (value instanceof Element) return describeElement(value);
       if (value instanceof NodeList || value instanceof HTMLCollection || Array.isArray(value)) {
-        return Array.from(value).slice(0, 25).map((item) => serialize(item, depth + 1, seen));
+        const list = Array.from(value)
+          .slice(0, 25)
+          .map((item) => serialize(item, depth + 1, seen));
+        const total = value.length;
+        if (total > 25) list.push(`[+${total - 25} more]`);
+        return list;
       }
       if (typeof value === "object") {
         if (seen.has(value)) return "[Circular]";
         seen.add(value);
         if (depth >= 4) return "[MaxDepth]";
         const out = {};
-        for (const key of Object.keys(value).slice(0, 25)) {
+        const keys = Object.keys(value);
+        for (const key of keys.slice(0, 25)) {
           out[key] = serialize(value[key], depth + 1, seen);
         }
+        if (keys.length > 25) out["[+more keys]"] = keys.length - 25;
         return out;
       }
       return String(value);
@@ -547,22 +557,28 @@ async function getDocument(args = {}) {
       return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
     }
 
+    function truncateText(value, maxChars) {
+      const text = String(value || "");
+      if (text.length <= maxChars) return text;
+      return `${text.slice(0, Math.max(0, maxChars - 3))}...`;
+    }
+
+    function elementAttributes(element) {
+      const attrs = {};
+      for (const attr of Array.from(element.attributes)) attrs[attr.name] = attr.value;
+      return attrs;
+    }
+
     function describe(element) {
       const rect = element.getBoundingClientRect();
       return {
         tagName: element.tagName.toLowerCase(),
         role: element.getAttribute("role") || "",
-        text: cleanWhitespaceInner(element.innerText || element.textContent || "").slice(0, 300),
+        text: truncateText(cleanWhitespaceInner(element.innerText || element.textContent || ""), 300),
         selector: cssPath(element),
         xpath: xpathFor(element),
-        attributes: {
-          id: element.id || "",
-          class: element.className || "",
-          name: element.getAttribute("name") || "",
-          type: element.getAttribute("type") || "",
-          href: element.getAttribute("href") || "",
-          placeholder: element.getAttribute("placeholder") || ""
-        },
+        attributes: elementAttributes(element),
+        value: "value" in element ? String(element.value || "") : "",
         visible: visible(element),
         rect: {
           x: Math.round(rect.x),
@@ -683,23 +699,28 @@ async function querySelector(args = {}, multiple = false) {
       return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
     }
 
+    function truncateText(value, maxChars) {
+      const text = String(value || "");
+      if (text.length <= maxChars) return text;
+      return `${text.slice(0, Math.max(0, maxChars - 3))}...`;
+    }
+
+    function elementAttributes(element) {
+      const attrs = {};
+      for (const attr of Array.from(element.attributes)) attrs[attr.name] = attr.value;
+      return attrs;
+    }
+
     function describe(element) {
       const rect = element.getBoundingClientRect();
       return {
         tagName: element.tagName.toLowerCase(),
-        text: cleanWhitespaceInner(element.innerText || element.textContent || "").slice(0, 300),
+        text: truncateText(cleanWhitespaceInner(element.innerText || element.textContent || ""), 300),
         selector: cssPath(element),
         xpath: xpathFor(element),
         visible: visible(element),
-        attributes: {
-          id: element.id || "",
-          class: element.className || "",
-          role: element.getAttribute("role") || "",
-          name: element.getAttribute("name") || "",
-          type: element.getAttribute("type") || "",
-          href: element.getAttribute("href") || "",
-          placeholder: element.getAttribute("placeholder") || ""
-        },
+        attributes: elementAttributes(element),
+        value: "value" in element ? String(element.value || "") : "",
         rect: {
           x: Math.round(rect.x),
           y: Math.round(rect.y),
@@ -813,14 +834,21 @@ async function getOuterHtml(args = {}) {
         : smartRoot;
 
     if (!(element instanceof Element)) {
-      return null;
+      return {
+        found: false,
+        url: location.href,
+        title: document.title,
+        attempted: selector ? `selector=${selector}` : xpath ? `xpath=${xpath}` : "auto"
+      };
     }
 
     const html = element.outerHTML || "";
     return {
+      found: true,
       selector: cssPath(element),
       xpath: xpathFor(element),
       tagName: element.tagName.toLowerCase(),
+      truncated: html.length > limit,
       html: html.length > limit ? `${html.slice(0, Math.max(0, limit - 3))}...` : html
     };
   }, {
@@ -833,8 +861,12 @@ async function getOuterHtml(args = {}) {
     )
   ]);
 
-  if (!result) {
-    throw new Error("Could not resolve element for DOM.getOuterHTML");
+  if (!result || result.found === false) {
+    const where = result?.attempted || (args.selector ? `selector=${args.selector}` : `xpath=${args.xpath}`);
+    throw new Error(
+      `Could not resolve element for DOM.getOuterHTML — ${where} matched nothing on ${result?.url || state.page.url()} (${result?.title || "no title"}). ` +
+      `Use DOM.getDocument first to find a selector that exists on the current page.`
+    );
   }
 
   return {
@@ -974,19 +1006,26 @@ async function getCompactHtml(args = {}) {
           : smartRoot;
 
       if (!(element instanceof Element)) {
-        return null;
+        return {
+          found: false,
+          url: location.href,
+          title: document.title,
+          attempted: selector ? `selector=${selector}` : xpath ? `xpath=${xpath}` : "auto"
+        };
       }
 
       const charsBefore = element.outerHTML.length;
       const clean = compact(element);
       const html = clean.outerHTML || "";
       return {
+        found: true,
         title: document.title || "",
         selector: cssPath(element),
         xpath: xpathFor(element),
         tagName: element.tagName.toLowerCase(),
         charsBefore,
         charsAfter: html.length,
+        truncated: html.length > limit,
         html: html.length > limit ? `${html.slice(0, Math.max(0, limit - 3))}...` : html
       };
     }, {
@@ -999,8 +1038,12 @@ async function getCompactHtml(args = {}) {
     )
   ]);
 
-  if (!result) {
-    throw new Error("Could not resolve element for DOM.getCompactHTML");
+  if (!result || result.found === false) {
+    const where = result?.attempted || (args.selector ? `selector=${args.selector}` : `xpath=${args.xpath}`);
+    throw new Error(
+      `Could not resolve element for DOM.getCompactHTML — ${where} matched nothing on ${result?.url || state.page.url()} (${result?.title || "no title"}). ` +
+      `Use DOM.getDocument first to find a selector that exists on the current page.`
+    );
   }
 
   return {
@@ -1026,13 +1069,30 @@ async function scrollIntoViewIfNeeded(args = {}) {
       return node instanceof Element ? node : null;
     }
 
+    function elementAttributes(element) {
+      const attrs = {};
+      for (const attr of Array.from(element.attributes)) attrs[attr.name] = attr.value;
+      return attrs;
+    }
+
     const element = selector
       ? document.querySelector(selector)
       : firstXpath(xpath);
-    if (!(element instanceof Element)) return null;
+    if (!(element instanceof Element)) {
+      return {
+        found: false,
+        url: location.href,
+        title: document.title,
+        attempted: selector ? `selector=${selector}` : `xpath=${xpath}`,
+        candidates: Array.from(document.querySelectorAll("input, textarea, select, button, a[href], [role='button'], [role='link']"))
+          .slice(0, 10)
+          .map((el) => ({ tag: el.tagName.toLowerCase(), attrs: elementAttributes(el) }))
+      };
+    }
     element.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
     const rect = element.getBoundingClientRect();
     return {
+      found: true,
       tagName: element.tagName.toLowerCase(),
       rect: {
         x: Math.round(rect.x),
@@ -1050,8 +1110,15 @@ async function scrollIntoViewIfNeeded(args = {}) {
     )
   ]);
 
-  if (!result) {
-    throw new Error("Could not resolve element for DOM.scrollIntoViewIfNeeded");
+  if (!result || result.found === false) {
+    const attempted = args.selector ? `selector=${args.selector}` : `xpath=${args.xpath}`;
+    const hint = result?.candidates?.length
+      ? ` Matches nothing; interactive elements present: ${JSON.stringify(result.candidates)}`
+      : "";
+    throw new Error(
+      `Could not resolve element for DOM.scrollIntoViewIfNeeded — ${attempted} matched nothing on ${result?.url || state.page.url()} (${result?.title || "no title"}).${hint} ` +
+      `Use DOM.getDocument first to find a selector that exists on the current page.`
+    );
   }
 
   return {
@@ -1082,13 +1149,30 @@ async function dispatchMouseEvent(args = {}) {
         return node instanceof Element ? node : null;
       }
 
+      function elementAttributes(element) {
+        const attrs = {};
+        for (const attr of Array.from(element.attributes)) attrs[attr.name] = attr.value;
+        return attrs;
+      }
+
       const element = selector
         ? document.querySelector(selector)
         : firstXpath(xpath);
-      if (!(element instanceof Element)) return null;
+      if (!(element instanceof Element)) {
+        return {
+          found: false,
+          url: location.href,
+          title: document.title,
+          attempted: selector ? `selector=${selector}` : `xpath=${xpath}`,
+          candidates: Array.from(document.querySelectorAll("button, a[href], [role='button'], [role='link'], input[type='button'], input[type='submit']"))
+            .slice(0, 10)
+            .map((el) => ({ tag: el.tagName.toLowerCase(), text: (el.innerText || el.value || "").trim().slice(0, 60), attrs: elementAttributes(el) }))
+        };
+      }
       element.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
       const rect = element.getBoundingClientRect();
       return {
+        found: true,
         x: rect.left + Math.max(1, rect.width / 2),
         y: rect.top + Math.max(1, rect.height / 2),
         tagName: element.tagName.toLowerCase()
@@ -1102,8 +1186,15 @@ async function dispatchMouseEvent(args = {}) {
     )
   ]);
 
-  if (!point) {
-    throw new Error("Could not resolve element for Input.dispatchMouseEvent");
+  if (!point || point.found === false) {
+    const attempted = args.selector ? `selector=${args.selector}` : `xpath=${args.xpath}`;
+    const hint = point?.candidates?.length
+      ? ` Matches nothing; clickable elements present: ${JSON.stringify(point.candidates)}`
+      : "";
+    throw new Error(
+      `Could not resolve element for Input.dispatchMouseEvent — ${attempted} matched nothing on ${point?.url || state.page.url()} (${point?.title || "no title"}).${hint} ` +
+      `Use DOM.getDocument first to find a selector that exists on the current page.`
+    );
   }
 
   await Promise.race([
@@ -1139,22 +1230,44 @@ async function insertText(args = {}) {
       return node instanceof Element ? node : null;
     }
 
+    function elementAttributes(element) {
+      const attrs = {};
+      for (const attr of Array.from(element.attributes)) attrs[attr.name] = attr.value;
+      return attrs;
+    }
+
     const element = selector
       ? document.querySelector(selector)
       : firstXpath(xpath);
-    if (!(element instanceof HTMLElement)) return null;
+    if (!(element instanceof HTMLElement)) {
+      return {
+        found: false,
+        url: location.href,
+        title: document.title,
+        attempted: selector ? `selector=${selector}` : `xpath=${xpath}`,
+        candidates: Array.from(document.querySelectorAll("input, textarea, select, [contenteditable='true']"))
+          .slice(0, 10)
+          .map((el) => ({ tag: el.tagName.toLowerCase(), attrs: elementAttributes(el) }))
+      };
+    }
     element.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
     const rect = element.getBoundingClientRect();
     element.focus();
+    const focused = document.activeElement === element || (document.activeElement || {}).contains?.(element) === true;
+    const hadValue = "value" in element ? Boolean(element.value) : false;
     if ("value" in element) {
       element.value = "";
       element.dispatchEvent(new Event("input", { bubbles: true }));
       element.dispatchEvent(new Event("change", { bubbles: true }));
     }
     return {
+      found: true,
       x: rect.left + Math.max(1, rect.width / 2),
       y: rect.top + Math.max(1, rect.height / 2),
-      tagName: element.tagName.toLowerCase()
+      tagName: element.tagName.toLowerCase(),
+      focused,
+      clearedExistingValue: hadValue,
+      readonly: Boolean(element.getAttribute?.("readonly")) || Boolean(element.getAttribute?.("disabled"))
     };
   }, {
     selector: args.selector || "",
@@ -1165,8 +1278,15 @@ async function insertText(args = {}) {
     )
   ]);
 
-  if (!point) {
-    throw new Error("Could not resolve element for Input.insertText");
+  if (!point || point.found === false) {
+    const attempted = args.selector ? `selector=${args.selector}` : `xpath=${args.xpath}`;
+    const hint = point?.candidates?.length
+      ? ` Matches nothing; editable elements present: ${JSON.stringify(point.candidates)}`
+      : "";
+    throw new Error(
+      `Could not resolve element for Input.insertText — ${attempted} matched nothing on ${point?.url || state.page.url()} (${point?.title || "no title"}).${hint} ` +
+      `Use DOM.getDocument first to find a selector that exists on the current page.`
+    );
   }
 
   await Promise.race([
@@ -1181,18 +1301,48 @@ async function insertText(args = {}) {
       setTimeout(() => reject(new Error(`Keyboard type timed out after ${timeoutMs}ms`)), timeoutMs)
     )
   ]);
+
+  let finalValue = null;
+  try {
+    finalValue = await Promise.race([
+      state.page.evaluate(({ selector, xpath }) => {
+        function firstXpath(expression) {
+          const node = document.evaluate(expression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+          return node instanceof Element ? node : null;
+        }
+        const element = selector
+          ? document.querySelector(selector)
+          : firstXpath(xpath);
+        if (!(element instanceof Element)) return null;
+        return {
+          value: "value" in element ? String(element.value || "") : (element.textContent || ""),
+          tagName: element.tagName.toLowerCase()
+        };
+      }, { selector: args.selector || "", xpath: args.xpath || "" }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Value readback timed out after ${timeoutMs}ms`)), timeoutMs)
+      )
+    ]);
+  } catch (error) {
+    console.error(`⌨️  insertText value readback failed: ${String(error?.message || error)}`);
+  }
+
   return {
     targetId: state.targetId,
     insertedText: true,
     length: args.text.length,
-    point
+    point,
+    focused: Boolean(point.focused),
+    clearedExistingValue: Boolean(point.clearedExistingValue),
+    finalValue: finalValue?.value ?? null,
+    valueReadback: finalValue?.value !== undefined
   };
 }
 
 export const devtoolsToolDefinitions = [
   {
     name: "Target.createTarget",
-    description: "Create a persistent browser tab for interactive testing. Provide a url, or a ref_id from a prior web_search / web_fetch to open that page.",
+    description: "Create a persistent browser tab for interactive testing. Provide a url, or a ref_id from a prior web_search / web_fetch to open that page. Targets close automatically after 5 minutes of no interaction.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1226,12 +1376,12 @@ export const devtoolsToolDefinitions = [
   },
   {
     name: "Page.navigate",
-    description: "Navigate an existing testing tab to a new URL.",
+    description: "Navigate an existing testing tab to a new URL. If the targetId does not exist, a new tab is created with that id (the response includes created: true).",
     inputSchema: {
       type: "object",
       properties: {
-        targetId: { type: "string" },
-        url: { type: "string" }
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        url: { type: "string", description: "The URL to navigate to." }
       },
       required: ["targetId", "url"],
       additionalProperties: false
@@ -1239,12 +1389,12 @@ export const devtoolsToolDefinitions = [
   },
   {
     name: "Runtime.evaluate",
-    description: "Evaluate JavaScript in the page context and return a JSON-safe result.",
+    description: "Evaluate a JavaScript expression in the page context and return the result serialized as JSON. Objects/arrays are capped at 25 entries (with a [+more] marker) and depth 4; [Circular] and [MaxDepth] markers indicate truncation.",
     inputSchema: {
       type: "object",
       properties: {
-        targetId: { type: "string" },
-        expression: { type: "string" }
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        expression: { type: "string", description: "JavaScript expression to evaluate in the page." }
       },
       required: ["targetId", "expression"],
       additionalProperties: false
@@ -1265,12 +1415,12 @@ export const devtoolsToolDefinitions = [
   },
   {
     name: "DOM.getDocument",
-    description: "Return an LLM-friendly page snapshot with important elements, selectors, and xpaths.",
+    description: "Return an LLM-friendly page snapshot with important elements, selectors, and xpaths. The attributes map reflects the element's REAL DOM attributes (only attributes that actually exist on the element are listed) plus a value field for form fields. Use this before selector-based tools to discover valid selectors.",
     inputSchema: {
       type: "object",
       properties: {
-        targetId: { type: "string" },
-        limit: { type: "number", default: 15 }
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        limit: { type: "number", default: 15, description: "Max elements to include in the snapshot." }
       },
       required: ["targetId"],
       additionalProperties: false
@@ -1278,13 +1428,13 @@ export const devtoolsToolDefinitions = [
   },
   {
     name: "DOM.querySelector",
-    description: "Query a single element and return its selector, xpath, text, and attributes.",
+    description: "Query a single element by CSS selector or xpath and return its selector, xpath, text, attributes (real DOM attributes only), value, and bounding rect. Returns an error with the page URL and candidate elements if nothing matches.",
     inputSchema: {
       type: "object",
       properties: {
-        targetId: { type: "string" },
-        selector: { type: "string" },
-        xpath: { type: "string" }
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        selector: { type: "string", description: "CSS selector, e.g. \"input[type='password']\"." },
+        xpath: { type: "string", description: "XPath, e.g. \"/html/body/form/div[2]/input\"." }
       },
       required: ["targetId"],
       additionalProperties: false
@@ -1292,14 +1442,14 @@ export const devtoolsToolDefinitions = [
   },
   {
     name: "DOM.querySelectorAll",
-    description: "Query multiple elements and return LLM-friendly descriptors.",
+    description: "Query multiple elements and return LLM-friendly descriptors (selector, xpath, text, attributes, value).",
     inputSchema: {
       type: "object",
       properties: {
-        targetId: { type: "string" },
-        selector: { type: "string" },
-        xpath: { type: "string" },
-        limit: { type: "number", default: 10 }
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        selector: { type: "string", description: "CSS selector to match many elements." },
+        xpath: { type: "string", description: "XPath to match many elements." },
+        limit: { type: "number", default: 10, description: "Max descriptors to return." }
       },
       required: ["targetId"],
       additionalProperties: false
@@ -1307,14 +1457,14 @@ export const devtoolsToolDefinitions = [
   },
   {
     name: "DOM.getOuterHTML",
-    description: "Get outerHTML for a selector/xpath, or smart main content HTML when no locator is provided.",
+    description: "Get outerHTML for a selector/xpath, or smart main content HTML when no locator is provided. The truncated field reports whether maxChars cut the output.",
     inputSchema: {
       type: "object",
       properties: {
-        targetId: { type: "string" },
-        selector: { type: "string" },
-        xpath: { type: "string" },
-        maxChars: { type: "number", default: DEFAULT_HTML_LIMIT }
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        selector: { type: "string", description: "CSS selector, e.g. \"main\"." },
+        xpath: { type: "string", description: "XPath." },
+        maxChars: { type: "number", default: DEFAULT_HTML_LIMIT, description: "Max characters of HTML to return." }
       },
       required: ["targetId"],
       additionalProperties: false
@@ -1322,14 +1472,14 @@ export const devtoolsToolDefinitions = [
   },
   {
     name: "DOM.getCompactHTML",
-    description: "Get minimized HTML for a selector/xpath, or smart main content HTML when no locator is provided. Strips scripts, styles, comments, svg, iframes, head, and non-essential attributes; collapses whitespace; drops empty elements. Returns a single-line minified string — use for fast DOM debugging without raw-page noise.",
+    description: "Get minimized HTML for a selector/xpath, or smart main content HTML when no locator is provided. Strips scripts, styles, comments, svg, iframes, head, and non-essential attributes; collapses whitespace; drops empty elements. Returns a single-line minified string — use for fast DOM debugging without raw-page noise. The truncated field reports whether maxChars cut the output.",
     inputSchema: {
       type: "object",
       properties: {
-        targetId: { type: "string" },
-        selector: { type: "string" },
-        xpath: { type: "string" },
-        maxChars: { type: "number", default: DEFAULT_HTML_LIMIT }
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        selector: { type: "string", description: "CSS selector, e.g. \"main\"." },
+        xpath: { type: "string", description: "XPath." },
+        maxChars: { type: "number", default: DEFAULT_HTML_LIMIT, description: "Max characters of HTML to return." }
       },
       required: ["targetId"],
       additionalProperties: false
@@ -1337,13 +1487,13 @@ export const devtoolsToolDefinitions = [
   },
   {
     name: "DOM.scrollIntoViewIfNeeded",
-    description: "Scroll an element into view using selector or xpath.",
+    description: "Scroll an element into view using selector or xpath. Returns an error listing interactive elements on the page if the selector matches nothing.",
     inputSchema: {
       type: "object",
       properties: {
-        targetId: { type: "string" },
-        selector: { type: "string" },
-        xpath: { type: "string" }
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        selector: { type: "string", description: "CSS selector." },
+        xpath: { type: "string", description: "XPath." }
       },
       required: ["targetId"],
       additionalProperties: false
@@ -1351,13 +1501,13 @@ export const devtoolsToolDefinitions = [
   },
   {
     name: "Input.dispatchMouseEvent",
-    description: "Click an element by selector or xpath using the page mouse.",
+    description: "Click an element by selector or xpath using the page mouse. Returns an error with the page URL and candidate clickable elements if the selector matches nothing.",
     inputSchema: {
       type: "object",
       properties: {
-        targetId: { type: "string" },
-        selector: { type: "string" },
-        xpath: { type: "string" },
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        selector: { type: "string", description: "CSS selector of the element to click." },
+        xpath: { type: "string", description: "XPath of the element to click." },
         button: {
           type: "string",
           enum: ["left", "right", "middle"],
@@ -1371,14 +1521,14 @@ export const devtoolsToolDefinitions = [
   },
   {
     name: "Input.insertText",
-    description: "Focus an input-like element and type text into it.",
+    description: "Focus an input-like element, clear any existing value, and type text into it via the keyboard. Requires selector or xpath. The response reports focused, clearedExistingValue, and finalValue (the element's value read back after typing). Returns an error with the page URL and editable element candidates if the selector matches nothing.",
     inputSchema: {
       type: "object",
       properties: {
-        targetId: { type: "string" },
-        selector: { type: "string" },
-        xpath: { type: "string" },
-        text: { type: "string" }
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        selector: { type: "string", description: "CSS selector of the editable element, e.g. \"input[type='password']\"." },
+        xpath: { type: "string", description: "XPath of the editable element." },
+        text: { type: "string", description: "The text to type. Clears any existing value first." }
       },
       required: ["targetId", "text"],
       additionalProperties: false

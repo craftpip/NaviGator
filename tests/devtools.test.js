@@ -270,6 +270,142 @@ describe("handleDevtoolsToolCall", () => {
     expect(result.html).toContain("<main>");
     expect(result.charsAfter).toBeLessThan(result.charsBefore);
   });
+
+  it("Input.insertText returns focused, clearedExistingValue, and finalValue readback", async () => {
+    getBrowserManager.mockResolvedValue({
+      config: {
+        enableDevtoolsMcp: true,
+        devtoolsBackend: "chromium",
+        defaultBackend: "cloakbrowser",
+        navWaitUntil: "domcontentloaded",
+        browserOpTimeoutMs: 60000,
+        humanTypingDelay: 1,
+      },
+      newPage: vi.fn().mockResolvedValue({
+        goto: vi.fn().mockResolvedValue(undefined),
+        url: vi.fn().mockReturnValue("https://example.com/login"),
+        title: vi.fn().mockResolvedValue("Sign in"),
+        isClosed: vi.fn().mockReturnValue(false),
+        on: vi.fn(),
+        mouse: { click: vi.fn().mockResolvedValue(undefined) },
+        keyboard: { type: vi.fn().mockResolvedValue(undefined) },
+        evaluate: vi
+          .fn()
+          .mockResolvedValueOnce({
+            found: true,
+            x: 100,
+            y: 50,
+            tagName: "input",
+            focused: true,
+            clearedExistingValue: true,
+            readonly: false,
+          })
+          .mockResolvedValueOnce({ value: "admin", tagName: "input" }),
+      }),
+    });
+
+    const { handleDevtoolsToolCall } = await import("../src/devtools.js");
+    const created = await handleDevtoolsToolCall("Target.createTarget", {});
+    const result = await handleDevtoolsToolCall("Input.insertText", {
+      targetId: created.targetId,
+      selector: "input[name='password']",
+      text: "admin",
+    });
+    expect(result.insertedText).toBe(true);
+    expect(result.focused).toBe(true);
+    expect(result.clearedExistingValue).toBe(true);
+    expect(result.finalValue).toBe("admin");
+    expect(result.valueReadback).toBe(true);
+  });
+
+  it("Input.insertText reports a resolve failure with URL and editable candidates", async () => {
+    getBrowserManager.mockResolvedValue({
+      config: {
+        enableDevtoolsMcp: true,
+        devtoolsBackend: "chromium",
+        defaultBackend: "cloakbrowser",
+        navWaitUntil: "domcontentloaded",
+        browserOpTimeoutMs: 60000,
+      },
+      newPage: vi.fn().mockResolvedValue({
+        goto: vi.fn().mockResolvedValue(undefined),
+        url: vi.fn().mockReturnValue("https://example.com/login"),
+        title: vi.fn().mockResolvedValue("Sign in"),
+        isClosed: vi.fn().mockReturnValue(false),
+        on: vi.fn(),
+        mouse: { click: vi.fn() },
+        keyboard: { type: vi.fn() },
+        evaluate: vi.fn().mockResolvedValue({
+          found: false,
+          url: "https://example.com/login",
+          title: "Sign in",
+          attempted: "selector=input[name='password']",
+          candidates: [
+            { tag: "input", attrs: { type: "text", placeholder: "Enter username" } },
+            { tag: "input", attrs: { type: "password", placeholder: "Enter password" } },
+          ],
+        }),
+      }),
+    });
+
+    const { handleDevtoolsToolCall } = await import("../src/devtools.js");
+    const created = await handleDevtoolsToolCall("Target.createTarget", {});
+    await expect(
+      handleDevtoolsToolCall("Input.insertText", {
+        targetId: created.targetId,
+        selector: "input[name='password']",
+        text: "admin",
+      })
+    ).rejects.toThrow(/https:\/\/example\.com\/login/);
+    await expect(
+      handleDevtoolsToolCall("Input.insertText", {
+        targetId: created.targetId,
+        selector: "input[name='password']",
+        text: "admin",
+      })
+    ).rejects.toThrow(/editable elements present/);
+    await expect(
+      handleDevtoolsToolCall("Input.insertText", {
+        targetId: created.targetId,
+        selector: "input[name='password']",
+        text: "admin",
+      })
+    ).rejects.toThrow(/Enter password/);
+  });
+
+  it("DOM.getOuterHTML reports a resolve failure with URL and title", async () => {
+    getBrowserManager.mockResolvedValue({
+      config: {
+        enableDevtoolsMcp: true,
+        devtoolsBackend: "chromium",
+        defaultBackend: "cloakbrowser",
+        navWaitUntil: "domcontentloaded",
+        browserOpTimeoutMs: 60000,
+      },
+      newPage: vi.fn().mockResolvedValue({
+        goto: vi.fn().mockResolvedValue(undefined),
+        url: vi.fn().mockReturnValue("https://example.com/"),
+        title: vi.fn().mockResolvedValue("Example"),
+        isClosed: vi.fn().mockReturnValue(false),
+        on: vi.fn(),
+        evaluate: vi.fn().mockResolvedValue({
+          found: false,
+          url: "https://example.com/",
+          title: "Example",
+          attempted: "selector=main",
+        }),
+      }),
+    });
+
+    const { handleDevtoolsToolCall } = await import("../src/devtools.js");
+    const created = await handleDevtoolsToolCall("Target.createTarget", {});
+    await expect(
+      handleDevtoolsToolCall("DOM.getOuterHTML", { targetId: created.targetId, selector: "main" })
+    ).rejects.toThrow(/https:\/\/example\.com/);
+    await expect(
+      handleDevtoolsToolCall("DOM.getOuterHTML", { targetId: created.targetId, selector: "main" })
+    ).rejects.toThrow(/Use DOM\.getDocument first/);
+  });
 });
 
 describe("formatDevtoolsToolResponse edge cases", () => {
