@@ -269,6 +269,7 @@ export async function loadConfig() {
     hangRestartTimeoutMs: parseNumber(process.env.HANG_RESTART_TIMEOUT_MS, 120000),
     startupUrl: process.env.STARTUP_URL || "about:blank",
     debug: parseBoolean(process.env.DEBUG, false),
+    logToolErrors: parseBoolean(process.env.LOG_TOOL_ERRORS, true),
     domainHintsPath,
     stabilizeStrategy: parseStabilizeStrategy(process.env.STABILIZE_STRATEGY, "network_idle"),
     searchRouteWarmupEngines: parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, ["duckduckgo_api", "google_cb", "google_lp", "bing_lp", "duckduckgo_cb", "bing_cb"]),

@@ -28,6 +28,9 @@ const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 const MAX_SCREENSHOT_DOWNLOADS = 200;
 const MAX_TOOL_CACHE_ENTRIES = 200;
 const WEB_SEARCH_ENGINE_ENUM = ["select_best", ...MCP_SEARCH_ENGINES];
+const TOOL_ERROR_LOG_PATH = path.join(process.cwd(), "logs", "tool-errors.log");
+const MAX_TOOL_ERROR_LOG_BYTES = 5 * 1024 * 1024;
+const SENSITIVE_ARG_KEY_RE = /password|passwd|token|secret|api[_-]?key|authorization|bearer|cookie/i;
 const toolResultCache = {
   web_search: new Map(),
   web_fetch: new Map()
@@ -280,6 +283,55 @@ function logEvent(label, payload) {
 function truncateStr(s, max = 80) {
   if (!s || s.length <= max) return s || "";
   return s.slice(0, max) + "...";
+}
+
+export function redactArgs(args = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (SENSITIVE_ARG_KEY_RE.test(key)) {
+      out[key] = "[REDACTED]";
+    } else if (key === "text" && typeof value === "string") {
+      out[key] = `<${value.length} chars>`;
+    } else {
+      out[key] = typeof value === "string" && value.length > 200 ? `${value.slice(0, 200)}...` : value;
+    }
+  }
+  return out;
+}
+
+async function appendToolErrorLog(filePath, line, maxBytes) {
+  try {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    let stats = null;
+    try {
+      stats = await fs.stat(filePath);
+    } catch (_) {}
+    if (stats && stats.size >= maxBytes) {
+      const backup = `${filePath}.1`;
+      await fs.rm(backup, { force: true });
+      await fs.rename(filePath, backup);
+    }
+    await fs.appendFile(filePath, line, "utf8");
+  } catch (error) {
+    console.error(`📝  tool error log write failed: ${String(error?.message || error)}`);
+  }
+}
+
+export async function logToolError({ tool, args, error, ms, transport, sessionId, logToolErrors, logPath, maxBytes }) {
+  if (logToolErrors === undefined) logToolErrors = manager?.config?.logToolErrors;
+  if (!logToolErrors) return;
+  const entry = {
+    ts: new Date().toISOString(),
+    level: "tool_error",
+    tool,
+    transport,
+    ...(sessionId ? { sessionId } : {}),
+    ...(Number.isFinite(ms) ? { ms } : {}),
+    args: redactArgs(args),
+    error: String(error?.message || error),
+    ...(error?.stack ? { stack: truncateStr(String(error.stack), 2000) } : {})
+  };
+  await appendToolErrorLog(logPath || TOOL_ERROR_LOG_PATH, JSON.stringify(entry) + "\n", maxBytes || MAX_TOOL_ERROR_LOG_BYTES);
 }
 
 function getDomain(u) {
@@ -1709,8 +1761,14 @@ async function handleStatelessMcpPost(body) {
   if (method === "tools/call") {
     const name = body?.params?.name;
     const args = body?.params?.arguments || {};
-    const result = await handleToolCall(name, args);
-    return { jsonrpc: "2.0", id, result };
+    const t0 = Date.now();
+    try {
+      const result = await handleToolCall(name, args);
+      return { jsonrpc: "2.0", id, result };
+    } catch (error) {
+      logToolError({ tool: name, args, error, ms: Date.now() - t0, transport: "stateless" });
+      throw error;
+    }
   }
 
   if (method === "notifications/initialized" || method.startsWith("notifications/")) {
@@ -1767,6 +1825,7 @@ function createMcpServer() {
     } catch (error) {
       console.error(`❌  tool ${name} failed: ${truncateStr(String(error?.message || error), 200)}`);
       if (error?.stack) console.error(`❌  stack: ${truncateStr(error.stack, 600)}`);
+      logToolError({ tool: name, args, error, ms: Date.now() - t0, transport: "mcp" });
       const errorResponse = {
         isError: true,
         ...asMarkdownContent(`Error calling ${name}: ${String(error?.message || error)}`)

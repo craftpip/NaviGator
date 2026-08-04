@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 vi.mock("../src/browser.js", () => ({ getBrowserManager: vi.fn() }));
 vi.mock("../src/search.js", () => ({
@@ -56,6 +59,8 @@ function makeMockManager(overrides = {}) {
       lightpandaPort: 9222,
       screenshotPathPrefix: null,
       enableScreenshotDownloadLink: false,
+      debug: false,
+      logToolErrors: true,
       ...overrides,
     },
     getHealth: vi.fn().mockResolvedValue({
@@ -1272,5 +1277,102 @@ describe("mcp-server HTTP endpoints", () => {
       );
       expect(res.status).toBe(200);
     });
+  });
+});
+
+describe("logToolError", () => {
+  let tmpDir;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tool-err-"));
+  });
+
+  it("does nothing when logToolErrors is false", async () => {
+    const { logToolError } = await import("../src/mcp-server.js");
+    const logPath = path.join(tmpDir, "tool-errors.log");
+    await logToolError({
+      tool: "web_fetch",
+      args: { url: "https://example.com" },
+      error: new Error("boom"),
+      transport: "mcp",
+      logToolErrors: false,
+      logPath,
+    });
+    await expect(fs.promises.access(logPath)).rejects.toThrow();
+  });
+
+  it("writes a JSON line when logToolErrors is on", async () => {
+    const { logToolError } = await import("../src/mcp-server.js");
+    const logPath = path.join(tmpDir, "tool-errors.log");
+    await logToolError({
+      tool: "web_fetch",
+      args: { url: "https://example.com/a/b" },
+      error: new Error("boom"),
+      ms: 12,
+      transport: "mcp",
+      logToolErrors: true,
+      logPath,
+    });
+    const content = await fs.promises.readFile(logPath, "utf8");
+    const line = JSON.parse(content.trim());
+    expect(line.level).toBe("tool_error");
+    expect(line.tool).toBe("web_fetch");
+    expect(line.error).toBe("boom");
+    expect(line.ms).toBe(12);
+    expect(line.transport).toBe("mcp");
+    expect(line.ts).toBeDefined();
+  });
+
+  it("writes by default when the manager config has logToolErrors enabled", async () => {
+    const { logToolError } = await import("../src/mcp-server.js");
+    const logPath = path.join(tmpDir, "tool-errors.log");
+    await logToolError({
+      tool: "web_search",
+      args: { query: "hello world" },
+      error: new Error("route down"),
+      transport: "stateless",
+      logPath,
+    });
+    const content = await fs.promises.readFile(logPath, "utf8");
+    expect(content).toContain('"tool":"web_search"');
+  });
+
+  it("redacts insertText text and sensitive keys", async () => {
+    const { logToolError } = await import("../src/mcp-server.js");
+    const logPath = path.join(tmpDir, "tool-errors.log");
+    await logToolError({
+      tool: "Input.insertText",
+      args: { targetId: "t1", selector: "input[type='password']", text: "hunter2" },
+      error: new Error("Could not resolve element for Input.insertText"),
+      transport: "stateless",
+      logToolErrors: true,
+      logPath,
+    });
+    await logToolError({
+      tool: "some_tool",
+      args: { apiKey: "abc123", url: "https://example.com" },
+      error: new Error("boom"),
+      transport: "stateless",
+      logToolErrors: true,
+      logPath,
+    });
+    const content = await fs.promises.readFile(logPath, "utf8");
+    expect(content).not.toContain("hunter2");
+    expect(content).not.toContain("abc123");
+    const lines = content.trim().split("\n").map((l) => JSON.parse(l));
+    expect(lines[0].args.text).toBe("<7 chars>");
+    expect(lines[1].args.apiKey).toBe("[REDACTED]");
+  });
+
+  it("rotates to a .1 backup past maxBytes", async () => {
+    const { logToolError } = await import("../src/mcp-server.js");
+    const logPath = path.join(tmpDir, "tool-errors.log");
+    await logToolError({ tool: "a", args: {}, error: new Error("x"), transport: "mcp", logToolErrors: true, logPath, maxBytes: 1 });
+    await logToolError({ tool: "b", args: {}, error: new Error("y"), transport: "mcp", logToolErrors: true, logPath, maxBytes: 1 });
+    const backup = await fs.promises.readFile(`${logPath}.1`, "utf8");
+    expect(backup).toContain('"tool":"a"');
+    const current = await fs.promises.readFile(logPath, "utf8");
+    expect(current).toContain('"tool":"b"');
   });
 });

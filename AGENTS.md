@@ -184,6 +184,7 @@ For visual verification, call `web_page_screenshot` with the same `ref_id`.
 | `PRELAUNCH_BROWSER` | `1` | Prelaunch browser on server start |
 | `ENABLE_HTTP_MCP` | `0` | Enable Streamable HTTP transport |
 | `DEBUG` | `0` | Enable per-step benchmark timing logs in `web_fetch` — logs each step (`goto_page`, `stabilize_page`, `extract_text_from_html`, etc.) with ms timing and a TOTAL summary |
+| `LOG_TOOL_ERRORS` | `1` | Log every erroring tool call to `logs/tool-errors.log` (one JSON line per error, redacted args, 5MB rotation). Default on — set to `0` to disable |
 
 ### Key Notes
 
