@@ -62,6 +62,15 @@ function parseEngines(value, fallback) {
   return parsed.length ? [...new Set(parsed)] : fallback;
 }
 
+function parseToolList(value) {
+  if (!value || typeof value !== "string") return [];
+  const parsed = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return [...new Set(parsed)];
+}
+
 export function parseBrowserBackend(value, fallback = "cloakbrowser") {
   const normalizedFallback = BROWSER_BACKEND_VALUES.has(fallback) ? fallback : "cloakbrowser";
   const normalized = String(value || "").trim().toLowerCase();
@@ -270,6 +279,7 @@ export async function loadConfig() {
     startupUrl: process.env.STARTUP_URL || "about:blank",
     debug: parseBoolean(process.env.DEBUG, false),
     logToolErrors: parseBoolean(process.env.LOG_TOOL_ERRORS, true),
+    disableTools: parseToolList(process.env.DISABLE_TOOLS),
     domainHintsPath,
     stabilizeStrategy: parseStabilizeStrategy(process.env.STABILIZE_STRATEGY, "network_idle"),
     searchRouteWarmupEngines: parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, ["duckduckgo_api", "google_cb", "google_lp", "bing_lp", "duckduckgo_cb", "bing_cb"]),

@@ -185,6 +185,7 @@ For visual verification, call `web_page_screenshot` with the same `ref_id`.
 | `ENABLE_HTTP_MCP` | `0` | Enable Streamable HTTP transport |
 | `DEBUG` | `0` | Enable per-step benchmark timing logs in `web_fetch` — logs each step (`goto_page`, `stabilize_page`, `extract_text_from_html`, etc.) with ms timing and a TOTAL summary |
 | `LOG_TOOL_ERRORS` | `1` | Log every erroring tool call to `logs/tool-errors.log` (one JSON line per error, redacted args, 5MB rotation). Default on — set to `0` to disable |
+| `DISABLE_TOOLS` | `` | Comma-separated MCP tool names to hide from `tools/list` and reject on call. Matched case-insensitively. Example: `web_page_ascii,web_page_links`. Default empty (all tools enabled). The docker-compose default keeps `web_page_ascii` disabled |
 
 ### Key Notes
 

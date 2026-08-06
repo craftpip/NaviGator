@@ -19,6 +19,8 @@ services:
           memory: 4g
 
     environment:
+      # All configuration is defined in the .env file (see .env.example).
+      # These entries read from it and fall back to sane defaults when unset.
       HEADLESS: ${HEADLESS:-true}
       BROWSER_BACKEND: ${BROWSER_BACKEND:-cloakbrowser}
       ENABLE_VNC: ${ENABLE_VNC:-1}
@@ -57,6 +59,12 @@ services:
 
       ENABLE_HANG_RESTART: ${ENABLE_HANG_RESTART:-0}
       HANG_RESTART_TIMEOUT_MS: ${HANG_RESTART_TIMEOUT_MS:-120000}
+
+      # Disable MCP tools by name (comma-separated, case-insensitive). Add any
+      # tool to hide it from tools/list and reject its calls. Values come from
+      # the .env file (DISABLE_TOOLS) — empty means all tools enabled.
+      # Example: web_page_ascii,web_page_links
+      DISABLE_TOOLS: ${DISABLE_TOOLS:-}
     volumes:
       - .:/app
       - /tmp/screenshots:/app/screenshots

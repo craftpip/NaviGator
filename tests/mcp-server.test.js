@@ -1376,3 +1376,63 @@ describe("logToolError", () => {
     expect(current).toContain('"tool":"b"');
   });
 });
+
+describe("DISABLE_TOOLS env filtering", () => {
+  const DISABLED_PORT = MCP_PORT + 1;
+  const DISABLED_BASE = `http://localhost:${DISABLED_PORT}`;
+
+  beforeAll(async () => {
+    vi.resetModules();
+    const browserMod = await import("../src/browser.js");
+    browserMod.getBrowserManager.mockResolvedValue(
+      makeMockManager({
+        mcpApiPort: DISABLED_PORT,
+        disableTools: ["web_page_ascii"],
+      })
+    );
+    await import("../src/mcp-server.js");
+    await waitForServer(`${DISABLED_BASE}/health`);
+  }, 15000);
+
+  it("hides a disabled tool from tools/list", async () => {
+    const { status, body } = await mcpPostWithBase(DISABLED_BASE, {
+      jsonrpc: "2.0", id: 60, method: "tools/list",
+    });
+    expect(status).toBe(200);
+    const names = body.result.tools.map((t) => t.name);
+    expect(names).toContain("web_search");
+    expect(names).not.toContain("web_page_ascii");
+  });
+
+  it("rejects calls to a disabled tool", async () => {
+    const { status, body } = await mcpPostWithBase(DISABLED_BASE, {
+      jsonrpc: "2.0",
+      id: 61,
+      method: "tools/call",
+      params: { name: "web_page_ascii", arguments: { url: "https://example.com" } },
+    });
+    expect(status).toBe(500);
+    expect(body.error).toContain("disabled");
+    expect(body.error).toContain("DISABLE_TOOLS");
+  });
+});
+
+async function mcpPostWithBase(base, body, extraHeaders = {}) {
+  const res = await fetch(`${base}/mcp`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      ...extraHeaders,
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = text;
+  }
+  return { status: res.status, headers: res.headers, body: data };
+}

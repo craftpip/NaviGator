@@ -1038,8 +1038,18 @@ async function readJsonBody(req) {
   return JSON.parse(raw);
 }
 
+function getDisabledToolsSet() {
+  const list = manager?.config?.disableTools || [];
+  return new Set(list.map((name) => String(name).trim().toLowerCase()).filter(Boolean));
+}
+
+function isToolDisabled(name) {
+  return getDisabledToolsSet().has(String(name).toLowerCase());
+}
+
 function getToolsListResponse() {
   const devtoolsEnabled = Boolean(manager?.config?.enableDevtoolsMcp);
+  const disabledTools = getDisabledToolsSet();
   return {
     tools: [
       {
@@ -1230,7 +1240,7 @@ function getToolsListResponse() {
         }
       },
       ...(devtoolsEnabled ? devtoolsToolDefinitions : [])
-    ]
+    ].filter((tool) => !disabledTools.has(String(tool.name).toLowerCase()))
   };
 }
 
@@ -1251,6 +1261,13 @@ async function handleToolCallInner(name, args = {}) {
     mode: "mcp"
   });
   let mark = performance.now();
+
+  if (isToolDisabled(name)) {
+    const msg = `Tool "${name}" is disabled (listed in DISABLE_TOOLS). Remove it from DISABLE_TOOLS in the environment to enable it.`;
+    timer.step("disabled_tool", mark);
+    timer.end({ status: "error", error: msg });
+    throw new Error(msg);
+  }
 
   if (name === "web_search") {
     const bypassCache = args.bypassCache === true;
