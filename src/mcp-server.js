@@ -1831,8 +1831,8 @@ function createMcpServer() {
 
     console.error(`📡  ${reqSum}`);
 
+    const t0 = Date.now();
     try {
-      const t0 = Date.now();
       const response = await handleToolCall(name, args);
       const ms = Date.now() - t0;
       const ok = response?.content?.[0]?.text || "";
