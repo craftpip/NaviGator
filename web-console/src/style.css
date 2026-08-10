@@ -7,6 +7,7 @@
   --text: #202124;
   --muted: #68707c;
   --blue: #2563eb;
+  --blue-bg: #dbeafe;
   --green: #166534;
   --green-bg: #dcfce7;
   --amber: #92400e;
@@ -29,6 +30,7 @@ html[data-theme="dark"] {
   --text: #e6e9ef;
   --muted: #9aa3b2;
   --blue: #7aa2ff;
+  --blue-bg: #22304a;
   --green: #6fd08c;
   --green-bg: #14371f;
   --amber: #e8b45a;
@@ -686,12 +688,39 @@ p,
 .manage-message.err {
   color: var(--red);
 }
+.manage-search {
+  width: 240px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel2);
+  color: var(--text);
+  font: 12px var(--sans);
+}
+.manage-search::placeholder {
+  color: var(--muted);
+}
+.manage-search:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+.manage-table-wrap {
+  max-height: calc(100vh - 190px);
+  overflow: auto;
+  border-radius: 0 0 5px 5px;
+}
 .manage-table {
   width: 100%;
-  border-collapse: collapse;
+  min-width: 960px;
+  border-collapse: separate;
+  border-spacing: 0;
   font: 12px var(--sans);
 }
 .manage-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
   text-align: left;
   padding: 6px 8px;
   border-bottom: 1px solid var(--line);
@@ -700,17 +729,30 @@ p,
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
+.manage-table th:nth-child(2) {
+  width: 180px;
+}
+.manage-table th:nth-child(4) {
+  width: 100px;
+}
 .manage-table td {
   padding: 6px 8px;
   border-bottom: 1px solid var(--line2);
-  vertical-align: top;
+  vertical-align: middle;
 }
 .manage-table tr.section td {
+  position: sticky;
+  top: 24px;
+  z-index: 1;
   background: var(--panel2);
   color: var(--muted);
   font-weight: 700;
   font-size: 11px;
   text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+.manage-table tbody tr:not(.section):hover td {
+  background: var(--panel2);
 }
 .config-input {
   width: 100%;
@@ -722,17 +764,37 @@ p,
 }
 .config-input.changed {
   border-color: var(--blue);
-  background: #eff6ff;
+  background: var(--blue-bg);
+}
+.config-input.invalid {
+  border-color: var(--red);
+}
+select.config-input {
+  appearance: auto;
+  cursor: pointer;
+}
+select.config-input option {
+  background: var(--panel);
+  color: var(--text);
+}
+.field-error {
+  color: var(--red);
+  font: 10px var(--sans);
+  margin-top: 3px;
 }
 .val-default {
+  width: 180px;
   color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 .val-eff {
+  width: 100px;
   color: var(--text);
   font-family: var(--mono);
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 /* Tools — MCP schema-driven playground */

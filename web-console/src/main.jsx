@@ -11,6 +11,30 @@ const CATEGORIES = {
   console: "HTTP / Console",
   vnc: "VNC",
 };
+const BACKEND_SUBGROUP = {
+  CHROME_PATH: "chrome",
+  CHROME_USER_DATA_DIR: "chrome",
+  CHROME_PROFILE_DIR: "chrome",
+  LIGHTPANDA_PATH: "lightpanda",
+  LIGHTPANDA_PORT: "lightpanda",
+  CLOAKBROWSER_BINARY_PATH: "cloakbrowser",
+  PRELAUNCH_BROWSER: "launch",
+  STARTUP_URL: "launch",
+  BROWSER_USER_AGENT: "launch",
+};
+const BACKEND_GROUP_LABELS = {
+  core: "Backend",
+  chrome: "Backend — Chrome",
+  lightpanda: "Backend — Lightpanda",
+  cloakbrowser: "Backend — Cloakbrowser",
+  launch: "Backend — Launch",
+};
+const groupKeyOf = (entry) =>
+  entry.category === "backend"
+    ? BACKEND_SUBGROUP[entry.key] || "core"
+    : entry.category;
+const groupLabelOf = (groupKey) =>
+  BACKEND_GROUP_LABELS[groupKey] || CATEGORIES[groupKey] || groupKey;
 const WEB_TOOLS = new Set([
   "web_search",
   "web_fetch",
@@ -830,21 +854,117 @@ function Logs({ logs }) {
   );
 }
 
+function validateEntryValue(entry, value, engineIds) {
+  const raw = String(value ?? "");
+  const type = entry.type || "string";
+  if (raw === "") {
+    if (type === "enum" || type === "boolean") {
+      return { ok: false, message: "Choose a value." };
+    }
+    return { ok: true };
+  }
+  switch (type) {
+    case "boolean":
+      return raw === "true" || raw === "false" || raw === "1" || raw === "0"
+        ? { ok: true }
+        : { ok: false, message: "Must be true or false." };
+    case "number":
+      return Number.isFinite(Number(raw))
+        ? { ok: true }
+        : { ok: false, message: "Must be a number." };
+    case "integer":
+      return Number.isInteger(Number(raw))
+        ? { ok: true }
+        : { ok: false, message: "Must be a whole number." };
+    case "enum": {
+      const allowed = entry.values || [];
+      return allowed.includes(raw)
+        ? { ok: true }
+        : { ok: false, message: `Must be one of: ${allowed.join(", ")}.` };
+    }
+    case "engines": {
+      const unknown = raw
+        .split(",")
+        .map((token) => token.trim())
+        .filter(Boolean)
+        .filter((token) => !engineIds.has(token));
+      return unknown.length
+        ? { ok: false, message: `Unknown engine${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}` }
+        : { ok: true };
+    }
+    default:
+      return { ok: true };
+  }
+}
+function ValueControl({ entry, value, changed, engineIds, onChange }) {
+  const type = entry.type || "string";
+  const { ok, message } = validateEntryValue(entry, value, engineIds);
+  const cls = `config-input ${changed ? "changed" : ""} ${ok ? "" : "invalid"}`;
+  const shared = {
+    className: cls,
+    "aria-label": `${entry.key} value`,
+    value,
+    onChange: (event) => onChange(event.target.value),
+  };
+  const selectOptions =
+    type === "boolean"
+      ? ["true", "false"]
+      : type === "enum"
+        ? entry.values || []
+        : null;
+  if (selectOptions) {
+    return (
+      <>
+        <select {...shared}>
+          {selectOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        {!ok && <div className="field-error">{message}</div>}
+      </>
+    );
+  }
+  return (
+    <>
+      <input type="text" {...shared} />
+      {!ok && <div className="field-error">{message}</div>}
+    </>
+  );
+}
+function normalizeDraftValue(entry, value) {
+  if (entry.type === "boolean") {
+    const raw = String(value).trim().toLowerCase();
+    if (raw === "1" || raw === "true") return "true";
+    if (raw === "0" || raw === "false") return "false";
+    return String(value);
+  }
+  return Array.isArray(value) ? value.join(",") : String(value ?? "");
+}
 function Manage({ config, reload }) {
   const [draft, setDraft] = useState({});
+  const [query, setQuery] = useState("");
   const [message, setMessage] = useState(
     "Changes persist to .env. Green fields apply now; amber fields need a container recreate.",
   );
   const [kind, setKind] = useState("");
+  const envSignature = useRef("");
+  const rawFor = (entry) =>
+    config.env?.[entry.key] ??
+    config.config?.[entry.key.toLowerCase()] ??
+    entry.fallback ??
+    "";
   useEffect(() => {
+    const signature = JSON.stringify({
+      env: config.env || {},
+      schema: (config.schema || []).map((entry) => entry.key),
+    });
+    if (signature === envSignature.current) return;
+    envSignature.current = signature;
     const next = {};
     (config.schema || []).forEach((entry) => {
-      const value =
-        config.env?.[entry.key] ??
-        config.config?.[entry.key.toLowerCase()] ??
-        entry.fallback ??
-        "";
-      next[entry.key] = Array.isArray(value) ? value.join(",") : String(value);
+      next[entry.key] = normalizeDraftValue(entry, rawFor(entry));
     });
     setDraft(next);
   }, [config]);
@@ -869,27 +989,23 @@ function Manage({ config, reload }) {
     }
   };
   const changed = (config.schema || []).filter(
-    (entry) =>
-      draft[entry.key] !==
-      String(
-        Array.isArray(
-          config.env?.[entry.key] ??
-            config.config?.[entry.key.toLowerCase()] ??
-            entry.fallback ??
-            "",
-        )
-          ? (
-              config.env?.[entry.key] ??
-              config.config?.[entry.key.toLowerCase()] ??
-              entry.fallback
-            ).join(",")
-          : (config.env?.[entry.key] ??
-              config.config?.[entry.key.toLowerCase()] ??
-              entry.fallback ??
-              ""),
-      ),
+    (entry) => draft[entry.key] !== normalizeDraftValue(entry, rawFor(entry)),
   );
-  let category = "";
+  let group = "";
+  const engineIds = new Set((config.engines || []).map((engine) => engine.id));
+  const invalidCount = (config.schema || []).filter(
+    (entry) => !validateEntryValue(entry, draft[entry.key] ?? "", engineIds).ok,
+  ).length;
+  const q = query.trim().toLowerCase();
+  const filteredSchema = (config.schema || []).filter((entry) => {
+    if (!q) return true;
+    return (
+      entry.key.toLowerCase().includes(q) ||
+      String(entry.fallback ?? "").toLowerCase().includes(q) ||
+      String(entry.description ?? "").toLowerCase().includes(q) ||
+      String(CATEGORIES[entry.category] || entry.category).toLowerCase().includes(q)
+    );
+  });
   return (
     <section className="panel manage">
       <h2>
@@ -899,8 +1015,16 @@ function Manage({ config, reload }) {
         </span>
       </h2>
       <div className="manage-toolbar">
+        <input
+          className="manage-search"
+          type="search"
+          placeholder="Search variables, defaults, descriptions…"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
         <button
           className="button"
+          disabled={invalidCount > 0}
           onClick={() =>
             changed.length
               ? save({
@@ -911,7 +1035,7 @@ function Manage({ config, reload }) {
               : setMessage("No changes to save.")
           }
         >
-          Save changes
+          Save changes{invalidCount ? ` (${invalidCount} invalid)` : ""}
         </button>
         <button
           className="button"
@@ -927,24 +1051,30 @@ function Manage({ config, reload }) {
         >
           Revert last save
         </button>
-        <span className={`manage-message ${kind}`}>{message}</span>
+        <span className={`manage-message ${invalidCount > 0 ? "err" : kind}`}>
+          {invalidCount > 0
+            ? `${invalidCount} invalid value${invalidCount === 1 ? "" : "s"} — fix before saving.`
+            : message}
+        </span>
       </div>
-      <table className="manage-table">
-        <thead>
-          <tr>
-            <th>Variable</th>
-            <th>Default</th>
-            <th>Value to save</th>
-            <th>Effective (live)</th>
-            <th>Applies</th>
-            <th>Description</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {(config.schema || []).map((entry) => {
-            const heading = entry.category !== category;
-            category = entry.category;
+      <div className="manage-table-wrap">
+        <table className="manage-table">
+          <thead>
+            <tr>
+              <th>Variable</th>
+              <th>Default</th>
+              <th>Value to save</th>
+              <th>Effective</th>
+              <th>Applies</th>
+              <th>Description</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {filteredSchema.map((entry) => {
+            const groupKey = groupKeyOf(entry);
+            const heading = groupKey !== group;
+            group = groupKey;
             const fallback = Array.isArray(entry.fallback)
               ? entry.fallback.join(",")
               : String(entry.fallback ?? "");
@@ -953,12 +1083,13 @@ function Manage({ config, reload }) {
               <FragmentRows
                 key={entry.key}
                 heading={heading}
-                category={entry.category}
+                label={groupLabelOf(groupKey)}
                 entry={entry}
                 fallback={fallback}
                 effective={effective}
                 value={draft[entry.key] ?? ""}
                 changed={changed.some((item) => item.key === entry.key)}
+                engineIds={engineIds}
                 onChange={(value) => setDraft({ ...draft, [entry.key]: value })}
                 reset={() =>
                   save(
@@ -969,19 +1100,26 @@ function Manage({ config, reload }) {
               />
             );
           })}
+          {!filteredSchema.length && (
+            <tr className="section">
+              <td colSpan="7">No variables match “{query}”.</td>
+            </tr>
+          )}
         </tbody>
-      </table>
+        </table>
+      </div>
     </section>
   );
 }
 function FragmentRows({
   heading,
-  category,
+  label,
   entry,
   fallback,
   effective,
   value,
   changed,
+  engineIds,
   onChange,
   reset,
 }) {
@@ -989,18 +1127,19 @@ function FragmentRows({
     <>
       {heading && (
         <tr className="section">
-          <td colSpan="7">{CATEGORIES[category] || category}</td>
+          <td colSpan="7">{label}</td>
         </tr>
       )}
       <tr>
         <td>{entry.key}</td>
         <td className="val-default">{fallback}</td>
         <td>
-          <input
-            className={`config-input ${changed ? "changed" : ""}`}
-            aria-label={`${entry.key} value`}
+          <ValueControl
+            entry={entry}
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            changed={changed}
+            engineIds={engineIds}
+            onChange={onChange}
           />
         </td>
         <td className="val-eff">
