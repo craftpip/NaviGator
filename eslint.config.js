@@ -7,16 +7,20 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ["**/*.js", "**/*.mjs"],
+    files: ["**/*.js", "**/*.mjs", "**/*.jsx"],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: "module",
+      parserOptions: {
+        ecmaFeatures: { jsx: true }
+      },
       globals: {
         ...globals.node,
         window: "readonly",
         document: "readonly",
         navigator: "readonly",
         location: "readonly",
+        localStorage: "readonly",
         MutationObserver: "readonly",
         IntersectionObserver: "readonly",
         requestAnimationFrame: "readonly",
@@ -35,6 +39,13 @@ export default [
         "error",
         { argsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_", ignoreRestSiblings: true }
       ]
+    }
+  },
+  {
+    files: ["**/*.jsx"],
+    rules: {
+      // The project does not use eslint-plugin-react; JSX references are runtime component usage.
+      "no-unused-vars": "off"
     }
   }
 ];

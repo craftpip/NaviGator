@@ -1,5 +1,6 @@
 node_modules/
 .env
+.env.backup-*
 npm-debug.log*
 screenshots/*.png
 !screenshots/.gitkeep

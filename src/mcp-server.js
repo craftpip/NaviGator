@@ -2,8 +2,6 @@ import http from "node:http";
 import net from "node:net";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { randomBytes, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
@@ -32,39 +30,18 @@ import { isAuthorizedMcpRequest } from "./mcp-api-auth.js";
 const require = createRequire(import.meta.url);
 const PACKAGE_JSON = require("../package.json");
 
-const WEB_CONSOLE_HTML_PATH = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "web-console",
-  "index.html"
-);
-const API_CONSOLE_HTML_PATH = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "web-console",
-  "api.html"
-);
-const KEYS_CONSOLE_HTML_PATH = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "web-console",
-  "keys.html"
-);
-let webConsoleHtml = null;
-let apiConsoleHtml = null;
-let keysConsoleHtml = null;
-try {
-  webConsoleHtml = readFileSync(WEB_CONSOLE_HTML_PATH, "utf8");
-} catch (error) {
-  console.error(`⚠️  Web console page not found at ${WEB_CONSOLE_HTML_PATH}: ${String(error?.message || error)}`);
-}
-try {
-  apiConsoleHtml = readFileSync(API_CONSOLE_HTML_PATH, "utf8");
-} catch (error) {
-  console.error(`⚠️  API console page not found at ${API_CONSOLE_HTML_PATH}: ${String(error?.message || error)}`);
-}
-try {
-  keysConsoleHtml = readFileSync(KEYS_CONSOLE_HTML_PATH, "utf8");
-} catch (error) {
-  console.error(`⚠️  API keys console page not found at ${KEYS_CONSOLE_HTML_PATH}: ${String(error?.message || error)}`);
-}
+const webConsoleDir = process.env.WEB_CONSOLE_DIR || path.join(process.cwd(), "web-console", "dist");
+const webConsoleIndexPath = path.join(webConsoleDir, "index.html");
+const WEB_CONSOLE_CONTENT_TYPES = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml"
+};
 
 const CONSOLE_ENGINE_REGISTRY = SUPPORTED_ENGINES.map((id) => {
   const meta = getEngineMetadata(id);
@@ -301,6 +278,33 @@ function sendJson(res, status, payload, extraHeaders) {
   const headers = { "content-type": "application/json", ...extraHeaders };
   res.writeHead(status, headers);
   res.end(JSON.stringify(payload));
+}
+
+async function serveWebConsoleAsset(res, pathname) {
+  const relativePath = pathname.startsWith("/console/assets/")
+    ? pathname.slice("/console/".length)
+    : "index.html";
+  const assetPath = path.resolve(webConsoleDir, relativePath);
+  if (!assetPath.startsWith(`${webConsoleDir}${path.sep}`) && assetPath !== webConsoleIndexPath) {
+    sendJson(res, 403, { ok: false, error: "Invalid console asset path" });
+    return;
+  }
+
+  try {
+    const content = await fs.readFile(assetPath);
+    const extension = path.extname(assetPath);
+    res.writeHead(200, {
+      "cache-control": assetPath === webConsoleIndexPath ? "no-store" : "public, max-age=31536000, immutable",
+      "content-type": WEB_CONSOLE_CONTENT_TYPES[extension] || "application/octet-stream"
+    });
+    res.end(content);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      sendJson(res, 404, { ok: false, error: "Web console not available. Run npm run console:build." });
+      return;
+    }
+    throw error;
+  }
 }
 
 function setCorsHeaders(res) {
@@ -2444,45 +2448,6 @@ async function maybeStartHttpServer(managerOverride) {
         return;
       }
 
-      if (url.pathname === "/console" || url.pathname === "/ui" || url.pathname === "/dashboard") {
-        if (!manager.config.enableWebConsole || webConsoleHtml === null) {
-          sendJson(res, 404, { ok: false, error: "Web console not available" });
-          return;
-        }
-        res.writeHead(200, {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "no-store"
-        });
-        res.end(webConsoleHtml);
-        return;
-      }
-
-      if (url.pathname === "/console/api") {
-        if (!manager.config.enableWebConsole || apiConsoleHtml === null) {
-          sendJson(res, 404, { ok: false, error: "API console not available" });
-          return;
-        }
-        res.writeHead(200, {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "no-store"
-        });
-        res.end(apiConsoleHtml);
-        return;
-      }
-
-      if (url.pathname === "/console/keys") {
-        if (!manager.config.enableWebConsole || keysConsoleHtml === null) {
-          sendJson(res, 404, { ok: false, error: "API keys console not available" });
-          return;
-        }
-        res.writeHead(200, {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "no-store"
-        });
-        res.end(keysConsoleHtml);
-        return;
-      }
-
       if (url.pathname === "/console/api-keys") {
         if (!manager.config.enableWebConsole) {
           sendJson(res, 404, { ok: false, error: "Web console not available" });
@@ -2569,6 +2534,15 @@ async function maybeStartHttpServer(managerOverride) {
         const payload = await handleConsoleLogs(manager, url);
         logEvent("http.request", { method, path: url.pathname });
         sendJson(res, 200, payload);
+        return;
+      }
+
+      if (url.pathname === "/console" || url.pathname.startsWith("/console/") || url.pathname === "/ui" || url.pathname === "/dashboard") {
+        if (!manager.config.enableWebConsole) {
+          sendJson(res, 404, { ok: false, error: "Web console not available" });
+          return;
+        }
+        await serveWebConsoleAsset(res, url.pathname);
         return;
       }
 

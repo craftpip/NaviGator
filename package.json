@@ -8,6 +8,7 @@
   "files": [
     "src",
     "docker",
+    "web-console",
     "scripts",
     "Dockerfile",
     "docker-compose.yml",
@@ -33,20 +34,25 @@
   ],
   "scripts": {
     "start": "node src/mcp-server.js",
+    "console:dev": "vite --config web-console/vite.config.js",
+    "console:build": "vite build --config web-console/vite.config.js",
+    "build": "npm run console:build",
     "bench": "node benchmark/web-search-benchmark.mjs",
     "test:hints": "vitest run tests/domain-hints.test.js",
     "test:hints:live": "LIVE_DOMAIN_HINTS=1 vitest run tests/domain-hints-live.test.js",
     "docs": "typedoc src/ --out doc",
-    "lint": "eslint src/ scripts/ tests/",
-    "lint:fix": "eslint --fix src/ scripts/ tests/",
+    "lint": "eslint src/ scripts/ tests/ web-console/src/",
+    "lint:fix": "eslint --fix src/ scripts/ tests/ web-console/src/",
     "release:patch": "npm version patch",
     "release:minor": "npm version minor",
     "release:major": "npm version major"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
     "@eslint/js": "^9.39.5",
     "eslint": "^9.39.5",
     "typedoc": "^0.28.0",
+    "vite": "^7.3.1",
     "vitest": "^4.1.10"
   },
   "engines": {
@@ -61,6 +67,8 @@
     "cloakbrowser": "^0.5.2",
     "jsdom": "^27.0.0",
     "puppeteer-core": "^24.21.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2"
   }

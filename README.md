@@ -295,7 +295,7 @@ The `comment` field is shown in the extraction output so you always know which h
 
 ### Currently shipped hints
 
-The project ships with research-backed hints for 40+ websites across news, finance, weather, e-commerce, social, developer, and regional-language categories. See `websites/` for detailed research on each site.
+The project ships with research-backed hints for 40+ websites across news, finance, weather, e-commerce, social, developer, and regional-language categories. See `archive/websites/` for detailed research on each site.
 
 ### Disable hints
 
@@ -531,7 +531,7 @@ To report a security issue, open a private report on the GitHub security advisor
 
 Contributions are welcome.
 
-- See the `websites/` directory for the site research that drives domain hints
+- See the `archive/websites/` directory for the site research that drives domain hints
 - Run `npm run lint` and the test suite before opening a PR
 - Follow the tool contract documented in `AGENTS.md`
 
@@ -553,7 +553,7 @@ The repo uses semver tags and GitHub Releases. See `CHANGELOG.md` for the change
 
 - Multi-arch GHCR images (blocked: the bundled `stealthpanda` binary is x86_64-only)
 - npm publishing for `navigator-mcp`
-- More domain hints as the site research in `websites/` grows
+- More domain hints as the site research in `archive/websites/` grows
 
 ## FAQ
 

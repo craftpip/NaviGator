@@ -260,11 +260,11 @@ describe("mcp-server HTTP endpoints", () => {
       expect(res.headers.get("cache-control")).toBe("no-store");
       const html = await res.text();
       expect(html).toContain("<title>Navigator Console</title>");
-      expect(html).toContain("theme: RADAR");
+      expect(html).toContain('src="/console/assets/');
     });
 
-    it("serves /ui and /dashboard aliases", async () => {
-      for (const p of ["/ui", "/dashboard"]) {
+    it("serves legacy console aliases and routes through the SPA", async () => {
+      for (const p of ["/console/api", "/ui", "/dashboard"]) {
         const res = await fetch(`${MCP_BASE}${p}`);
         expect(res.status).toBe(200);
         const html = await res.text();

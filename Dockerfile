@@ -1,3 +1,11 @@
+FROM node:20-bookworm-slim AS console-build
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY web-console ./web-console
+RUN npm run console:build
+
 FROM node:20-bookworm-slim
 
 ENV NODE_ENV=production \
@@ -5,7 +13,8 @@ ENV NODE_ENV=production \
     CHROME_PATH=/usr/bin/chromium \
     CHROME_USER_DATA_DIR=/data/chrome \
     CHROME_PROFILE_DIR=Default \
-    LIGHTPANDA_PATH=/usr/local/bin/stealthpanda
+    LIGHTPANDA_PATH=/usr/local/bin/stealthpanda \
+    WEB_CONSOLE_DIR=/web-console
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
@@ -27,13 +36,14 @@ RUN curl -fsSL "https://github.com/evan108108/StealthPanda/releases/download/v1.
 
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install --omit=dev
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 # Install CloakBrowser stealth Chromium binary
 RUN npx --no-install cloakbrowser install
 
 COPY src ./src
+COPY --from=console-build /app/web-console/dist /web-console
 COPY docker/entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh && mkdir -p /data/chrome
