@@ -1,6 +1,10 @@
 import http from "node:http";
+import net from "node:net";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -18,7 +22,35 @@ import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsTool
 import { transform as asciiTransform } from "./ascii.js";
 import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
-import { MCP_SEARCH_ENGINES } from "./engines/index.js";
+import { MCP_SEARCH_ENGINES, SUPPORTED_ENGINES, getEngineMetadata } from "./engines/index.js";
+import { CONFIG_SCHEMA } from "./config-schema.js";
+
+const require = createRequire(import.meta.url);
+const PACKAGE_JSON = require("../package.json");
+
+const WEB_CONSOLE_HTML_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "web-console",
+  "index.html"
+);
+let webConsoleHtml = null;
+try {
+  webConsoleHtml = readFileSync(WEB_CONSOLE_HTML_PATH, "utf8");
+} catch (error) {
+  console.error(`⚠️  Web console page not found at ${WEB_CONSOLE_HTML_PATH}: ${String(error?.message || error)}`);
+}
+
+const CONSOLE_ENGINE_REGISTRY = SUPPORTED_ENGINES.map((id) => {
+  const meta = getEngineMetadata(id);
+  return {
+    id,
+    backend: meta.backend,
+    pool: meta.pool,
+    exposedInMcp: meta.exposedInMcp,
+    homeUrl: meta.homeUrl,
+    isBrowser: meta.isBrowser
+  };
+});
 
 const screenshotDownloadById = new Map();
 const screenshotStorageDir = path.join(process.cwd(), "screenshots");
@@ -255,6 +287,42 @@ function setCorsHeaders(res) {
 function sendMarkdown(res, status, payload) {
   res.writeHead(status, { "content-type": "text/markdown; charset=utf-8" });
   res.end(payload);
+}
+
+function getConfigEnvSubset() {
+  const out = {};
+  for (const entry of CONFIG_SCHEMA) {
+    const value = process.env[entry.key];
+    if (value !== undefined) out[entry.key] = value;
+  }
+  return out;
+}
+
+function probePort(port, host = "127.0.0.1", timeoutMs = 800) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => finish(true));
+    socket.once("timeout", () => finish(false));
+    socket.once("error", () => finish(false));
+    socket.connect(port, host);
+  });
+}
+
+const vncRunningCache = { at: 0, running: false };
+async function isVncRunning(novncPort = 7900) {
+  const now = Date.now();
+  if (now - vncRunningCache.at < 5000) return vncRunningCache.running;
+  vncRunningCache.at = now;
+  vncRunningCache.running = await probePort(novncPort);
+  return vncRunningCache.running;
 }
 
 const LOG_MAP = {
@@ -2018,7 +2086,13 @@ async function maybeStartHttpServer(managerOverride) {
       if (url.pathname === "/" || url.pathname === "/health") {
         const health = {
           ...(await manager.getHealth()),
-          searchRouteCircuitBreakers: getSearchBackendHealth()
+          searchRouteCircuitBreakers: getSearchBackendHealth(),
+          vnc: {
+            running: await isVncRunning(manager.config.novncPort),
+            enabled: manager.config.vncEnabled,
+            headed: !manager.config.headless,
+            novncPort: manager.config.novncPort
+          }
         };
         logEvent("http.request", { method, path: url.pathname });
         logEvent("http.response", { method, path: url.pathname, result: health });
@@ -2058,6 +2132,38 @@ async function maybeStartHttpServer(managerOverride) {
         logEvent("http.request", { method, path: url.pathname });
         logEvent("http.response", { method, path: url.pathname, result: stats });
         sendJson(res, 200, stats);
+        return;
+      }
+
+      if (url.pathname === "/console" || url.pathname === "/ui" || url.pathname === "/dashboard") {
+        if (!manager.config.enableWebConsole || webConsoleHtml === null) {
+          sendJson(res, 404, { ok: false, error: "Web console not available" });
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store"
+        });
+        res.end(webConsoleHtml);
+        return;
+      }
+
+      if (url.pathname === "/console/config") {
+        if (!manager.config.enableWebConsole) {
+          sendJson(res, 404, { ok: false, error: "Web console not available" });
+          return;
+        }
+        const payload = {
+          config: manager.config,
+          env: getConfigEnvSubset(),
+          engines: CONSOLE_ENGINE_REGISTRY,
+          mcpEngines: MCP_SEARCH_ENGINES,
+          package: { name: PACKAGE_JSON.name, version: PACKAGE_JSON.version },
+          schema: CONFIG_SCHEMA,
+          envPath: path.join(process.cwd(), ".env")
+        };
+        logEvent("http.request", { method, path: url.pathname });
+        sendJson(res, 200, payload);
         return;
       }
 

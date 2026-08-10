@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<!-- Navigator web console — theme: RADAR (deep navy, radar-green/cyan/amber/red) -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Navigator Console</title>
+<style>
+  :root {
+    --bg: #0a1120;
+    --bg-deep: #070d18;
+    --panel: #0f1a2e;
+    --panel-2: #0c1526;
+    --border: #1c2b45;
+    --border-dim: #142036;
+    --green: #35e07a;
+    --green-dim: #1f8a4d;
+    --cyan: #2dd4bf;
+    --cyan-dim: #1b7d72;
+    --amber: #f5a623;
+    --red: #ef4444;
+    --text: #cbd5e1;
+    --muted: #5b7294;
+    --dim: #3a4d6b;
+    --mono: "SFMono-Regular", ui-monospace, "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 12px; }
+  body {
+    background-image:
+      linear-gradient(rgba(28, 43, 69, 0.18) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(28, 43, 69, 0.18) 1px, transparent 1px);
+    background-size: 22px 22px;
+    min-height: 100vh;
+  }
+  #app { max-width: 1500px; margin: 0 auto; padding: 10px; }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 8px 12px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 4px;
+    margin-bottom: 8px; flex-wrap: wrap;
+  }
+  .logo { font-weight: 700; letter-spacing: 1px; color: var(--cyan); }
+  .logo span { color: var(--text); }
+  .live { display: inline-flex; align-items: center; gap: 6px; color: var(--green); }
+  .live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .live.paused { color: var(--amber); }
+  .live.paused .dot { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .live.off { color: var(--muted); }
+  .live.off .dot { background: var(--muted); box-shadow: none; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+  .live.ok .dot { animation: pulse 2s infinite; }
+  .hdr-item { color: var(--muted); }
+  .hdr-item b { color: var(--text); font-weight: 600; }
+  .spacer { flex: 1; }
+  .btn {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.5px;
+    background: var(--panel-2); color: var(--cyan); border: 1px solid var(--cyan-dim);
+    padding: 5px 10px; border-radius: 3px; cursor: pointer; text-transform: uppercase;
+  }
+  .btn:hover:not(:disabled) { background: var(--cyan-dim); color: #04120f; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; color: var(--muted); border-color: var(--border-dim); }
+  .btn.vnc-on { background: var(--cyan-dim); color: #04120f; }
+
+  /* ---------- banner ---------- */
+  #banner {
+    padding: 8px 12px; margin-bottom: 8px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text); font-size: 12px; display: none;
+  }
+  #banner.show { display: flex; flex-direction: column; gap: 4px; }
+  #banner .status-line { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.5px; }
+  #banner .status-line .tag { padding: 2px 8px; border-radius: 3px; text-transform: uppercase; }
+  #banner .status-line .tag.ok { background: var(--green-dim); color: #04120f; }
+  #banner .status-line .tag.degraded { background: #6b4a12; color: #ffe9c2; }
+  #banner .status-line .tag.critical { background: #7f1d1d; color: #ffd7d7; }
+  #banner .issues { color: var(--amber); }
+  #banner .issues .crit { color: var(--red); }
+
+  /* ---------- grid ---------- */
+  .grid {
+    display: grid; grid-template-columns: 1fr 1.6fr 1fr; gap: 8px; margin-bottom: 8px;
+  }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  .grid.two { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 1000px) { .grid.two { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+    padding: 8px 10px; min-height: 120px;
+  }
+  .panel h2 {
+    font-size: 10px; letter-spacing: 1.5px; color: var(--cyan);
+    text-transform: uppercase; margin-bottom: 8px; font-weight: 700;
+  }
+  .panel h2 .sub { color: var(--muted); margin-left: 8px; font-weight: 400; }
+
+  .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dashed var(--border-dim); }
+  .row:last-child { border-bottom: none; }
+  .row .k { color: var(--muted); }
+  .row .v { color: var(--text); text-align: right; word-break: break-all; }
+  .row .v.green { color: var(--green); }
+  .row .v.amber { color: var(--amber); }
+  .row .v.red { color: var(--red); }
+  .row .v.cyan { color: var(--cyan); }
+
+  table.engines { width: 100%; border-collapse: collapse; }
+  table.engines th {
+    font-size: 9px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase;
+    text-align: left; padding: 2px 4px; border-bottom: 1px solid var(--border);
+  }
+  table.engines td { padding: 3px 4px; border-bottom: 1px dashed var(--border-dim); font-size: 11px; }
+  table.engines tr:last-child td { border-bottom: none; }
+  .pill { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; letter-spacing: 0.5px; }
+  .pill.ok { background: var(--green-dim); color: #04120f; }
+  .pill.warn { background: #6b4a12; color: #ffe9c2; }
+  .pill.err { background: #7f1d1d; color: #ffd7d7; }
+  .pill.info { background: #14344a; color: #b7e4ff; }
+  .pill.off { background: #1c2436; color: var(--muted); }
+
+  .spark { width: 100%; height: 40px; display: block; }
+  .bars { display: flex; align-items: flex-end; gap: 2px; height: 34px; }
+  .bar { flex: 1; background: var(--cyan-dim); border-radius: 1px 1px 0 0; min-height: 1px; }
+
+  #alerts { list-style: none; }
+  #alerts li { padding: 3px 0; border-bottom: 1px dashed var(--border-dim); color: var(--red); }
+  #alerts li:last-child { border-bottom: none; }
+  #alerts .none { color: var(--muted); }
+
+  .config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 4px 18px; }
+  .config-grid .row { border-bottom: none; }
+
+  /* ---------- VNC drawer ---------- */
+  #vnc-wrap { margin-top: 8px; }
+  #vnc-bar {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+  }
+  #vnc-bar .label { color: var(--cyan); letter-spacing: 1px; text-transform: uppercase; font-weight: 700; }
+  #vnc-bar .state { color: var(--muted); }
+  #vnc-bar .state.live { color: var(--green); }
+  #vnc-bar .state.err { color: var(--red); }
+  #vnc-frame-wrap { display: none; margin-top: 6px; }
+  #vnc-frame-wrap.open { display: block; }
+  #vnc-frame { width: 100%; height: 70vh; border: 1px solid var(--border); border-radius: 4px; background: #000; }
+
+  /* ---------- mode toggle ---------- */
+  .mode-switch { display: flex; border: 1px solid var(--border-dim); border-radius: 3px; overflow: hidden; }
+  .mode-switch button {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    background: var(--panel-2); color: var(--muted); border: none; padding: 5px 12px; cursor: pointer;
+  }
+  .mode-switch button.active { background: var(--cyan-dim); color: #04120f; font-weight: 700; }
+
+  /* ---------- MANAGE mode ---------- */
+  #manage-view { display: none; }
+  #manage-view.show { display: block; }
+  #manage-view table { width: 100%; border-collapse: collapse; }
+  #manage-view th {
+    font-size: 9px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase;
+    text-align: left; padding: 4px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel);
+  }
+  #manage-view td { padding: 4px; border-bottom: 1px dashed var(--border-dim); vertical-align: top; }
+  #manage-view tr.section td { color: var(--cyan); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; font-size: 10px; padding-top: 10px; border-bottom: 1px solid var(--border); }
+  .val-default { color: var(--muted); }
+  .val-env { color: var(--amber); }
+  .val-eff { color: var(--green); }
+  .badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; letter-spacing: 0.5px; }
+  .badge.hot { background: #14344a; color: #b7e4ff; }
+  .badge.restart { background: #4a3b14; color: #ffe9c2; }
+
+  #status-line { display: flex; gap: 6px; align-items: center; color: var(--muted); }
+  #status-line .s { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+  #status-line.ok .s { background: var(--green); box-shadow: 0 0 5px var(--green); }
+  #status-line.degraded .s { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
+  #status-line.critical .s { background: var(--red); box-shadow: 0 0 5px var(--red); }
+  #status-line.off .s { background: var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">▸ NAVIGATOR<span> CONSOLE</span></div>
+    <div id="live" class="live off"><span class="dot"></span><span id="live-text">connecting</span></div>
+    <div class="hdr-item">uptime <b id="hdr-uptime">–</b></div>
+    <div class="hdr-item">mem <b id="hdr-mem">–</b></div>
+    <div class="hdr-item">sessions <b id="hdr-sessions">–</b></div>
+    <div class="spacer"></div>
+    <div class="mode-switch">
+      <button id="mode-status" class="active">Status</button>
+      <button id="mode-manage">Manage</button>
+    </div>
+    <button id="btn-pause" class="btn" title="Pause live polling">[⏸]</button>
+    <button id="btn-vnc" class="btn" disabled title="VNC not available">Enable VNC</button>
+    <button id="btn-vnc-open" class="btn" disabled>Open VNC</button>
+  </header>
+
+  <div id="banner"></div>
+
+  <div id="status-view">
+    <div class="grid">
+      <div class="panel" id="p-drivers"><h2>[ DRIVERS ]</h2><div id="drivers"></div></div>
+      <div class="panel" id="p-engines"><h2>[ ENGINES ]</h2><div id="engines"></div></div>
+      <div class="panel" id="p-runtime"><h2>[ RUNTIME ]</h2><div id="runtime"></div></div>
+    </div>
+
+    <div class="grid two">
+      <div class="panel" id="p-stats"><h2>[ SEARCH STATS ]</h2><div id="stats"></div></div>
+      <div class="panel" id="p-alerts"><h2>[ ALERTS ]</h2><div id="alerts"></div></div>
+    </div>
+
+    <div class="panel" id="p-config"><h2>[ CONFIG — as parsed from env ] <span class="sub">read-only in Phase 1 · Manage tab to edit</span></h2><div id="config"></div></div>
+
+    <div id="vnc-wrap">
+      <div id="vnc-bar">
+        <span class="label">VNC ▸ live browser screen</span>
+        <span id="vnc-state" class="state">not running</span>
+      </div>
+      <div id="vnc-frame-wrap"><iframe id="vnc-frame" title="VNC"></iframe></div>
+    </div>
+  </div>
+
+  <div id="manage-view">
+    <div class="panel">
+      <h2>[ MANAGE — environment configuration ] <span class="sub" id="manage-envpath"></span></h2>
+      <div style="color:var(--muted); margin-bottom:8px;">Phase 1: read-only view of defaults / env / effective values. Editing ships in Phase 3.</div>
+      <table id="manage-table"><thead><tr>
+        <th>Variable</th><th>Default</th><th>Env (.env)</th><th>Effective (live)</th><th>Applies</th><th>Description</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const $ = (sel) => document.querySelector(sel);
+  const POLL_MS = 2000;
+
+  let snapshot = { health: null, stats: null, config: null, ok: false };
+  let paused = false;
+  let configLoaded = false;
+
+  const CATEGORIES = {
+    backend: "Backend",
+    search: "Search",
+    ops: "Ops / Timeouts",
+    console: "HTTP / Console",
+    vnc: "VNC"
+  };
+
+  function fmtBytes(n) {
+    if (n == null || !Number.isFinite(n)) return "–";
+    const units = ["B", "KB", "MB", "GB"];
+    let i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i += 1; }
+    return n.toFixed(n >= 100 || i === 0 ? 0 : 1) + units[i];
+  }
+  function fmtTime(s) {
+    if (s == null || !Number.isFinite(s)) return "–";
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  }
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function row(k, v, cls) {
+    return `<div class="row"><span class="k">${esc(k)}</span><span class="v ${cls || ""}">${esc(v)}</span></div>`;
+  }
+
+  /* ---------- status computation (Phase 1 minimal set) ---------- */
+  function computeStatus(h, s) {
+    const issues = [];
+    let level = "ok";
+    const mark = (lvl, text) => { issues.push({ lvl, text }); const order = { ok: 0, degraded: 1, critical: 2 }; if (order[lvl] > order[level]) level = lvl; };
+
+    if (h) {
+      if (h.headless === undefined || h.browserConnected === undefined) mark("critical", "health payload incomplete");
+      if (h.browserConnected === false) mark("critical", `${h.backend || "browser"} disconnected`);
+      if (h.lightpandaConnected === false && h.lightpandaConnected !== undefined && !h.cloakbrowserConnected && !h.browserConnected) { /* n/a */ }
+      if (Array.isArray(h.searchRouteCircuitBreakers)) {
+        for (const c of h.searchRouteCircuitBreakers) {
+          if (c.remainingMs > 0) mark("critical", `circuit open: ${c.route} (${Math.ceil(c.remainingMs / 1000)}s)${c.lastError ? " — " + c.lastError : ""}`);
+          else if (c.state === "half_open") mark("degraded", `circuit half-open: ${c.route}`);
+        }
+      }
+      if (h.pageLimiter) {
+        const p = h.pageLimiter;
+        if (p.maxConcurrentPageOps && p.inUse >= p.maxConcurrentPageOps) mark("degraded", `page ops saturated (${p.inUse}/${p.maxConcurrentPageOps}${p.queued ? ", " + p.queued + " queued" : ""})`);
+      }
+      if (h.vnc && h.vnc.running && h.vnc.headed === false) mark("degraded", "VNC running but browser still headless");
+      if (h.vnc && !h.vnc.running && h.vnc.enabled) mark("degraded", "VNC enabled but noVNC unreachable");
+    }
+    if (s) {
+      if (s.recentErrors && s.recentErrors.length) mark("critical", `${s.recentErrors.length} recent error(s)`);
+      if (s.requests && s.requests.err > 0 && s.requests.total > 0 && s.requests.err / s.requests.total > 0.5) mark("degraded", "request fail-rate > 50%");
+    }
+    if (!snapshot.ok) mark("critical", "server unreachable");
+    return { level, issues };
+  }
+
+  /* ---------- renderers ---------- */
+  function renderBanner(st) {
+    const el = $("#banner");
+    if (!st) { el.classList.remove("show"); el.innerHTML = ""; return; }
+    const tag = { ok: ["ok", "OK"], degraded: ["degraded", "DEGRADED"], critical: ["critical", "CRITICAL"] }[st.level] || ["off", "OFFLINE"];
+    const top = st.issues.slice(0, 4).map((i) => `<span class="${i.lvl === "critical" ? "crit" : ""}">${esc(i.text)}</span>`).join(" · ");
+    el.classList.add("show");
+    el.innerHTML = `<div class="status-line"><span>STATUS:</span><span class="tag ${tag[0]}">${tag[1]}</span><span class="issues">${top || "all systems nominal"}</span></div>`;
+  }
+
+  function renderDrivers(h, s) {
+    const el = $("#drivers");
+    if (!h) { el.innerHTML = row("", "no data"); return; }
+    const instances = (s && s.instances) || [];
+    let html = row("default →", h.backend || "–", "cyan");
+    html += row("devtools →", h.devtoolsBackend || "–");
+    html += row("headless", h.headless === true ? "yes" : h.headless === false ? "no" : "–", h.headless === true ? "" : "amber");
+    for (const inst of instances) {
+      const state = inst.connected ? `<span class="pill ok">● ${inst.tabs}t</span>` : `<span class="pill err">✗</span>`;
+      html += row(inst.backend, `${state} pid ${inst.pid ?? "–"} · spawns ${inst.spawns ?? 0}`);
+    }
+    el.innerHTML = html;
+  }
+
+  function renderEngines(cfg, h) {
+    const el = $("#engines");
+    const engines = (cfg && cfg.engines) || [];
+    if (!engines.length) { el.innerHTML = '<div class="row"><span class="k">no engine registry</span></div>'; return; }
+    const warmup = new Set((cfg && cfg.config && cfg.config.searchRouteWarmupEngines) || []);
+    const fallback = new Set((cfg && cfg.config && cfg.config.searchFallback) || []);
+    const circuits = new Map((h && h.searchRouteCircuitBreakers || []).map((c) => [c.route, c]));
+    let html = `<table class="engines"><tr><th>id</th><th>drv</th><th>role</th><th>state</th></tr>`;
+    for (const e of engines) {
+      const c = circuits.get(e.id);
+      let state;
+      if (c && c.remainingMs > 0) state = `<span class="pill err">✗ ${Math.ceil(c.remainingMs / 1000)}s</span>`;
+      else if (c && c.state === "half_open") state = `<span class="pill warn">half-open</span>`;
+      else if (e.exposedInMcp) state = `<span class="pill ok">✓</span>`;
+      else state = `<span class="pill off">hidden</span>`;
+      const role = warmup.has(e.id) ? `<span class="pill info">★ warmup</span>` : fallback.has(e.id) ? `<span class="pill info">fallback</span>` : `<span class="pill off">–</span>`;
+      html += `<tr><td>${esc(e.id)}</td><td>${esc(e.backend)}</td><td>${role}</td><td>${state}</td></tr>`;
+    }
+    html += "</table>";
+    el.innerHTML = html;
+  }
+
+  function renderRuntime(h, s) {
+    const el = $("#runtime");
+    if (!h || !s) { el.innerHTML = row("", "no data"); return; }
+    const mem = s.memory ? s.memory.rss : null;
+    const windows = h.searchWindows || { total: 0, byEngine: {} };
+    const limiter = h.pageLimiter || {};
+    const cache = s.cache || { total: 0 };
+    const cacheHits = s.counters && s.counters.cacheHits, cacheMisses = s.counters && s.counters.cacheMisses;
+    const hitRate = (cacheHits + cacheMisses) > 0 ? Math.round((cacheHits / (cacheHits + cacheMisses)) * 100) : null;
+    let html = row("windows", windows.total + " open");
+    html += row("page slots", `${limiter.inUse ?? 0}/${limiter.maxConcurrentPageOps ?? "?"}${limiter.queued ? ` · ${limiter.queued} wait` : ""}`, limiter.queued ? "amber" : "");
+    html += row("memory", fmtBytes(mem));
+    html += row("cache", `${cache.total} entries${hitRate !== null ? ` · ${hitRate}% hits` : ""}`, hitRate !== null && hitRate < 30 ? "amber" : "");
+    html += row("sessions", s.sessions ?? "–");
+    const blocks = s.counters && s.counters.botBlocks;
+    if (blocks) html += row("bot blocks", blocks, blocks > 0 ? "amber" : "");
+    el.innerHTML = html;
+  }
+
+  function renderStats(s) {
+    const el = $("#stats");
+    if (!s) { el.innerHTML = row("", "no data"); return; }
+    const c = s.counters || {};
+    const r = s.requests || {};
+    const e = s.engineAttempts || {};
+    let html = "";
+    const p5 = r.byPeriod && r.byPeriod["5m"];
+    html += row("searches", c.searches ?? 0);
+    html += row("fetches", c.fetches ?? 0);
+    html += row("screenshots", c.screenshots ?? 0);
+    html += row("5m requests", p5 ? `${p5.ok} ok / ${p5.err} err` : "–", p5 && p5.err > 0 ? "amber" : "");
+    html += row("attempts", `${e.total ?? 0} total · ${e.ok ?? 0} ok · ${e.fail ?? 0} fail`, e.fail > 0 ? "amber" : "");
+    el.innerHTML = html;
+  }
+
+  function renderAlerts(s) {
+    const el = $("#alerts");
+    const errors = (s && s.recentErrors) || [];
+    if (!errors.length) { el.innerHTML = '<li class="none">no recent errors</li>'; return; }
+    el.innerHTML = errors.map((er) => `<li>✗ [${er.minutesAgo}m ago] ${esc(er.tool)} — ${esc(er.error)}</li>`).join("");
+  }
+
+  function renderConfig(cfg) {
+    const el = $("#config");
+    if (!cfg || !cfg.config) { el.innerHTML = row("", "no config"); return; }
+    const map = { backend: "Backend", search: "Search", ops: "Ops / Timeouts", console: "HTTP / Console", vnc: "VNC" };
+    const groups = {};
+    for (const entry of cfg.schema || []) {
+      const eff = cfg.config[entry.key.toLowerCase()];
+      if (eff === undefined) continue;
+      (groups[entry.category] ||= []).push([entry.key, eff, entry.description]);
+    }
+    let html = "";
+    for (const cat of Object.keys(groups)) {
+      html += `<div style="margin-bottom:8px;"><div style="color:var(--cyan);letter-spacing:1px;text-transform:uppercase;font-size:10px;margin-bottom:4px;">${esc(map[cat] || cat)}</div>`;
+      html += `<div class="config-grid">`;
+      for (const [k, v, desc] of groups[cat]) {
+        html += `<div class="row"><span class="k">${esc(k)}</span><span class="v" title="${esc(desc || "")}">${esc(Array.isArray(v) ? v.join(",") : typeof v === "boolean" ? (v ? "true" : "false") : v)}</span></div>`;
+      }
+      html += `</div></div>`;
+    }
+    el.innerHTML = html;
+  }
+
+  function renderManage(cfg) {
+    const tbody = document.querySelector("#manage-table tbody");
+    if (!cfg || !cfg.schema || !cfg.config) { tbody.innerHTML = '<tr><td colspan="6">no schema</td></tr>'; return; }
+    const env = cfg.env || {};
+    const eff = cfg.config;
+    let html = "";
+    let lastCat = null;
+    for (const entry of cfg.schema) {
+      const key = entry.key;
+      if (entry.category !== lastCat) {
+        lastCat = entry.category;
+        html += `<tr class="section"><td colspan="6">${esc(CATEGORIES[entry.category] || entry.category)}</td></tr>`;
+      }
+      const def = Array.isArray(entry.fallback) ? entry.fallback.join(",") : entry.fallback;
+      const envVal = env[key];
+      const effVal = eff[key.toLowerCase()];
+      const badge = entry.applies === "hot"
+        ? '<span class="badge hot">hot-apply</span>'
+        : '<span class="badge restart">recreate</span>';
+      html += `<tr>
+        <td>${esc(key)}</td>
+        <td class="val-default">${esc(def)}</td>
+        <td class="val-env">${envVal === undefined ? '<span style="color:var(--dim)">(unset)</span>' : esc(envVal)}</td>
+        <td class="val-eff">${esc(Array.isArray(effVal) ? effVal.join(",") : typeof effVal === "boolean" ? (effVal ? "true" : "false") : effVal)}</td>
+        <td>${badge}</td>
+        <td style="color:var(--muted);font-size:10px;">${esc(entry.description || "")}</td>
+      </tr>`;
+    }
+    tbody.innerHTML = html;
+    $("#manage-envpath").textContent = cfg.envPath ? `writes → ${cfg.envPath}` : "";
+  }
+
+  function renderVnc(h) {
+    const btn = $("#btn-vnc");
+    const openBtn = $("#btn-vnc-open");
+    const stateEl = $("#vnc-state");
+    if (!h || !h.vnc) { btn.disabled = true; openBtn.disabled = true; stateEl.textContent = "unknown"; return; }
+    const v = h.vnc;
+    const port = v.novncPort || 7900;
+    const vncUrl = `http://${location.hostname}:${port}/vnc.html`;
+    btn.disabled = false;
+    if (v.running) {
+      btn.textContent = "VNC LIVE";
+      btn.classList.add("vnc-on");
+      openBtn.disabled = false;
+      openBtn.href = vncUrl;
+      openBtn.target = "_blank";
+      stateEl.textContent = `running · ${v.headed ? "headed" : "headless browser"} · :${port}`;
+      stateEl.className = "state live";
+    } else {
+      btn.textContent = "Enable VNC";
+      btn.classList.remove("vnc-on");
+      openBtn.disabled = true;
+      stateEl.textContent = v.enabled ? `enabled but unreachable · :${port}` : `not running · headless mode${v.headed ? "" : " (headed browser)"}`;
+      stateEl.className = v.enabled ? "state err" : "state";
+    }
+  }
+
+  function renderHeader(s, pausedFlag) {
+    const live = $("#live");
+    const ok = snapshot.ok;
+    live.className = `live ${pausedFlag ? "paused" : ok ? "ok" : "off"}`;
+    $("#live-text").textContent = pausedFlag ? "paused" : ok ? `LIVE ${Math.round(POLL_MS / 1000)}s` : "offline";
+    $("#hdr-uptime").textContent = s && s.uptimeSeconds ? fmtTime(s.uptimeSeconds) : "–";
+    $("#hdr-mem").textContent = s && s.memory ? fmtBytes(s.memory.rss) : "–";
+    $("#hdr-sessions").textContent = s && s.sessions != null ? s.sessions : "–";
+  }
+
+  function renderAll() {
+    const h = snapshot.health, s = snapshot.stats, cfg = snapshot.config;
+    const st = computeStatus(h, s);
+    renderHeader(s, paused);
+    renderBanner(st);
+    renderDrivers(h, s);
+    renderEngines(cfg, h);
+    renderRuntime(h, s);
+    renderStats(s);
+    renderAlerts(s);
+    renderConfig(cfg);
+    renderManage(cfg);
+    renderVnc(h);
+  }
+
+  /* ---------- data fetching ---------- */
+  async function fetchJson(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  }
+
+  async function loadConfig() {
+    if (configLoaded) return;
+    try {
+      snapshot.config = await fetchJson("/console/config");
+      configLoaded = true;
+    } catch (err) {
+      snapshot.config = null;
+    }
+  }
+
+  async function poll() {
+    if (paused) return;
+    try {
+      const [h, s] = await Promise.all([fetchJson("/health"), fetchJson("/stats")]);
+      snapshot.health = h;
+      snapshot.stats = s;
+      snapshot.ok = true;
+    } catch (err) {
+      snapshot.ok = false;
+      snapshot.health = null;
+      snapshot.stats = null;
+    }
+    renderAll();
+  }
+
+  /* ---------- events ---------- */
+  $("#btn-pause").addEventListener("click", () => {
+    paused = !paused;
+    $("#btn-pause").textContent = paused ? "[▶]" : "[⏸]";
+    renderHeader(snapshot.stats, paused);
+  });
+
+  const modeStatus = $("#mode-status"), modeManage = $("#mode-manage");
+  function setMode(mode) {
+    const status = mode === "status";
+    $("#status-view").style.display = status ? "block" : "none";
+    $("#manage-view").classList.toggle("show", !status);
+    modeStatus.classList.toggle("active", status);
+    modeManage.classList.toggle("active", !status);
+  }
+  modeStatus.addEventListener("click", () => setMode("status"));
+  modeManage.addEventListener("click", () => setMode("manage"));
+
+  $("#btn-vnc").addEventListener("click", async () => {
+    if (!snapshot.health || !snapshot.health.vnc) return;
+    if (snapshot.health.vnc.running) {
+      $("#vnc-frame-wrap").classList.toggle("open");
+      if ($("#vnc-frame-wrap").classList.contains("open")) {
+        $("#vnc-frame").src = `http://${location.hostname}:${snapshot.health.vnc.novncPort || 7900}/vnc.html`;
+      } else {
+        $("#vnc-frame").src = "about:blank";
+      }
+    } else {
+      const btn = $("#btn-vnc");
+      btn.disabled = true;
+      btn.textContent = "Starting…";
+      $("#vnc-state").textContent = "VNC enable ships in Phase 4 — compose ENABLE_VNC=1 to run it at boot for now";
+      $("#vnc-state").className = "state";
+      setTimeout(() => renderAll(), 2000);
+    }
+  });
+
+  $("#vnc-bar").addEventListener("click", () => {
+    if (snapshot.health && snapshot.health.vnc && snapshot.health.vnc.running) {
+      $("#vnc-frame-wrap").classList.toggle("open");
+      const open = $("#vnc-frame-wrap").classList.contains("open");
+      if (open) $("#vnc-frame").src = `http://${location.hostname}:${snapshot.health.vnc.novncPort || 7900}/vnc.html`;
+      else $("#vnc-frame").src = "about:blank";
+    }
+  });
+
+  /* ---------- boot ---------- */
+  async function boot() {
+    await loadConfig();
+    await poll();
+    setInterval(poll, POLL_MS);
+    setInterval(() => { if (!configLoaded) loadConfig(); }, 5000);
+    setInterval(renderAll, POLL_MS);
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

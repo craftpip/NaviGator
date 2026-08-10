@@ -24,6 +24,7 @@ services:
       HEADLESS: ${HEADLESS:-true}
       BROWSER_BACKEND: ${BROWSER_BACKEND:-cloakbrowser}
       ENABLE_VNC: ${ENABLE_VNC:-1}
+      ENABLE_WEB_CONSOLE: ${ENABLE_WEB_CONSOLE:-1}
       ENABLE_HTTP_MCP: ${ENABLE_HTTP_MCP:-1}
       ENABLE_DEVTOOLS_MCP: ${ENABLE_DEVTOOLS_MCP:-1}
       DEVTOOLS_BROWSER_BACKEND: ${DEVTOOLS_BROWSER_BACKEND:-${BROWSER_BACKEND:-cloakbrowser}}
@@ -71,6 +72,7 @@ services:
       - chrome_profile_data:/data/chrome
     ports:
       - "${MCP_API_PORT:-3000}:${MCP_API_PORT:-3000}"
+      - "${NOVNC_PORT:-7900}:${NOVNC_PORT:-7900}"
     stdin_open: true
     tty: true
 

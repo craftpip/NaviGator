@@ -59,6 +59,10 @@ function makeMockManager(overrides = {}) {
       lightpandaPort: 9222,
       screenshotPathPrefix: null,
       enableScreenshotDownloadLink: false,
+      enableWebConsole: true,
+      vncEnabled: false,
+      vncPort: 5900,
+      novncPort: 7900,
       debug: false,
       logToolErrors: true,
       ...overrides,
@@ -217,6 +221,63 @@ describe("mcp-server HTTP endpoints", () => {
         total: 4, ok: 3, fail: 1, skip: 0,
         recentFailures: [{ minutesAgo: 0, engine: "bing_lp", error: "captcha detected" }],
       });
+    });
+  });
+
+  describe("GET /health.vnc", () => {
+    it("includes a vnc object with running/enabled/headed/novncPort", async () => {
+      const res = await fetch(`${MCP_BASE}/health`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.vnc).toMatchObject({
+        enabled: false,
+        headed: false,
+        novncPort: 7900,
+      });
+      expect(typeof body.vnc.running).toBe("boolean");
+    });
+  });
+
+  describe("GET /console", () => {
+    it("serves the web console HTML page", async () => {
+      const res = await fetch(`${MCP_BASE}/console`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/html");
+      expect(res.headers.get("cache-control")).toBe("no-store");
+      const html = await res.text();
+      expect(html).toContain("<title>Navigator Console</title>");
+      expect(html).toContain("theme: RADAR");
+    });
+
+    it("serves /ui and /dashboard aliases", async () => {
+      for (const p of ["/ui", "/dashboard"]) {
+        const res = await fetch(`${MCP_BASE}${p}`);
+        expect(res.status).toBe(200);
+        const html = await res.text();
+        expect(html).toContain("<title>Navigator Console</title>");
+      }
+    });
+  });
+
+  describe("GET /console/config", () => {
+    it("returns config, env subset, engine registry, package, schema and envPath", async () => {
+      const res = await fetch(`${MCP_BASE}/console/config`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.config).toMatchObject({ enableWebConsole: true, novncPort: 7900 });
+      expect(body.engines.length).toBeGreaterThan(0);
+      const ddgApi = body.engines.find((e) => e.id === "duckduckgo_api");
+      expect(ddgApi).toMatchObject({ backend: "api", isBrowser: false, exposedInMcp: true });
+      expect(Array.isArray(body.mcpEngines)).toBe(true);
+      expect(body.package).toMatchObject({ name: "navigator-mcp" });
+      expect(Array.isArray(body.schema)).toBe(true);
+      expect(body.schema.length).toBeGreaterThan(30);
+      const schemaKeys = body.schema.map((e) => e.key);
+      expect(schemaKeys).toContain("HEADLESS");
+      expect(schemaKeys).toContain("ENABLE_VNC");
+      expect(schemaKeys).toContain("NOVNC_PORT");
+      expect(typeof body.env).toBe("object");
+      expect(typeof body.envPath).toBe("string");
     });
   });
 

@@ -153,6 +153,26 @@ curl -s http://127.0.0.1:3000/health
 
 You should see a JSON response with `"ok": true`.
 
+### Web Console (live management panel)
+
+The server hosts a live management console on the **same URL and port as the
+MCP endpoint** — open it in your browser:
+
+```text
+http://127.0.0.1:3000/console
+```
+
+It shows the same data as `navigator.js monitoring` but live: browser drivers,
+search engines and circuit breakers, runtime stats, recent errors, and the
+parsed environment config (defaults / env / effective). The **Manage** tab
+lists every supported env variable with its default, current `.env` value, and
+live effective value, plus whether it hot-applies or needs a container
+recreate. The **VNC** control opens the live browser screen via noVNC (the
+display stack starts at boot when `ENABLE_VNC=1`; runtime enable/disable
+ships in a later phase).
+
+`/ui` and `/dashboard` are aliases. Disable with `ENABLE_WEB_CONSOLE=0`.
+
 ### Connect Your MCP Client
 
 Use this MCP endpoint:
