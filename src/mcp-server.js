@@ -57,6 +57,7 @@ const CONSOLE_ENGINE_REGISTRY = SUPPORTED_ENGINES.map((id) => {
 
 const screenshotDownloadById = new Map();
 const screenshotStorageDir = path.join(process.cwd(), "screenshots");
+const CONSOLE_API_KEY = `nvg_console_${randomBytes(32).toString("base64url")}`;
 const TOOL_CACHE_TTL_MS = 5 * 60 * 1000;
 const SCREENSHOT_DOWNLOAD_TTL_MS = 60 * 60 * 1000;
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
@@ -397,6 +398,7 @@ async function getConsoleApiKeysPayload(manager) {
   return {
     ok: true,
     allowUnauthenticated: manager.config.mcpAllowUnauthenticated,
+    consoleKey: CONSOLE_API_KEY,
     keys: manager.config.mcpApiKeys.map((key, index) => ({ id: index, preview: maskApiKey(key) })),
     envPath
   };
@@ -2327,7 +2329,7 @@ async function maybeStartHttpServer(managerOverride) {
             return;
           }
 
-          if (!isAuthorizedMcpRequest(req.headers, manager.config)) {
+          if (!isAuthorizedMcpRequest(req.headers, { ...manager.config, mcpApiKeys: [...manager.config.mcpApiKeys, CONSOLE_API_KEY] })) {
             sendMcpUnauthorized(res);
             return;
           }

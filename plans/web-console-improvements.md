@@ -9,9 +9,11 @@ environment mapped. User is dictating improvements live; everything lands in
 
 ### Checklist
 
-- [ ] Confirm which two improvement areas to implement (see [Improvement Areas](#improvement-areas)).
-- [ ] Write a per-area implementation sub-plan once selected.
-- [ ] Implement, build (`npm run console:build`), deploy (image rebuild + container recreate), verify live.
+- [x] Request log #1–#6 implemented in `main.jsx` (header alignment, welcome prose removed, error filter + professional look, VNC drawer removed, schema-driven Tools page + internal console key, response timing/size).
+- [x] `style.css` fully rewritten (~700 readable lines, was the old 7-line minified file) to style all new component classes.
+- [x] Lint clean over `web-console/src/`, `console:build` succeeds.
+- [x] **Deployed 2026-08-11**: image rebuilt (`docker build -t navigator:latest .`), container recreated with exact captured env/volumes/ports. All 4 modes verified live.
+- [ ] Decide next: Area A (code health — split + format + baseline tests) vs Areas B–E. `plans/console-redesign.md` tracks the status-page reorg + SQLite separately.
 
 ---
 

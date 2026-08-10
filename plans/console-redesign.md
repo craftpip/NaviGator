@@ -20,13 +20,112 @@ requirement set — keep the two from colliding.
 
 | # | Date | Request | Status |
 |---|------|---------|--------|
-| 1 | 2026-08-11 | _awaiting first request — user will dictate_ | new |
+| 1 | 2026-08-11 | Reorganize the status page. Search engines are the #1 thing to see (their health, which is the most working, what's going on with searches) — must come BEFORE browser drivers. Open-tabs count must be visible first. "Drivers online 1/3" metric is useless/redundant (drivers panel already shows it). "Current activity" memory number is redundant with the top bar. Wants a reorganized layout (ASCII mock proposed). | logged, layout proposed |
+| 2 | 2026-08-11 | User's mental model (drives layout): 3 browser engines = internal plumbing; 2 tool groups = web extraction (web_search/web_fetch/web_page_screenshot) + devtools (Puppeteer CDP). web_search fans out across many search engines/backends; web_fetch/web_page_screenshot always use ONLY the default engine. | context |
+| 3 | 2026-08-11 | Wants a **live activity feed** on the console: what searches are coming in, which engine each search used, did that engine produce output, which searches failed. Real-time incoming feed with success/failure. | logged, design pending |
+| 4 | 2026-08-11 | **Make this a professional project**, not a side project. First professional decision: introduce a **SQLite database** for activity persistence. Confirmed today there is NO database — all in-memory (requestLog ring buffer src/mcp-server.js:84, engineAttempts src/search.js:217, ref memory, tool cache) and lost on restart. | direction |
+| 5 | 2026-08-11 | **Browser drivers card consolidation:** one card shows the browser engines AND each driver's open tabs (tab count + tab names inline). Remove the separate "Open tabs" card. Each listed tab must show an **inactivity countdown timer** — how much time is left until it auto-closes. | logged |
+| 6 | 2026-08-11 | **DECIDED: stay on Node 20 + `better-sqlite3`** (not node:22/node:sqlite). | decided |
 
 ---
 
 ## 2. Improvement Areas
 
-(to be filled once requirements are collected)
+### Area A — Status page reorganization (requested first)
+
+Goal: lead with search-engine health; treat drivers as infra; kill redundancy.
+
+Proposed page order:
+1. Thin status banner (keeps `default browser` — it's what web_fetch/screenshot hit).
+2. Metric row → **Engines ready · Open tabs · Pages in use · Requests 5m** (drop "Drivers online").
+3. **Search engines** (top panel, sorted by health) — add per-engine success bar from
+   `stats.engineAttempts.byEngine` + "most working" badge on the top engine.
+4. **Browser drivers** (with per-driver tab list + inactivity countdowns — see below).
+5. **Activity** (memory sparkline trend + search windows + cache + page slots) and
+   **Work completed** side by side — memory *number* stays only in the header.
+6. Recent errors (wide) — filter stays.
+7. **Live feed** (new, from Area B) — position TBD, likely right under the metric row or pinned bottom.
+
+**No separate "Open tabs" card** — tabs are listed inline inside each driver in the
+Browser drivers card (request #5).
+
+### Browser drivers card — with tabs + inactivity countdown
+
+One card, one row per browser engine. Each row expands to list its open tabs with
+title and an auto-close countdown:
+
+```
+┌─ BROWSER DRIVERS ──────────────────────────────────────────────────────┐
+│  ● cloakbrowser   default   3 tabs · pid 1234 · 12 spawns     online   │
+│      ▸ NSE India — option chain                    closes in 4:12      │
+│      ▸ GitHub — craftpip                           closes in 3:55      │
+│      ▸ about:blank (search window)                 sticky (no timer)   │
+│  ○ lightpanda     —         0 tabs · not started              idle     │
+│  ○ chromium       —         0 tabs · not started              idle     │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+Data gap to close (server-side):
+- `getInstanceStats().openTabs` (src/browser.js:1020) returns only `{ title, url }`
+  today — **no timestamps**. Must enrich to `{ title, url, kind, lastActiveAt, closesInMs }`.
+- Only devtools testing tabs have a real auto-close policy: `lastActiveAt` tracked +
+  `INACTIVITY_TIMEOUT_MS = 300_000` (src/devtools.js:9,59,101), created via
+  `manager.newPage` so they appear in `instance.pages()`. For these, compute
+  `closesInMs = 300_000 - (now - lastActiveAt)` → render live countdown.
+- Browser-managed pages (sticky search windows, page-op tabs) have **no auto-close** —
+  show `sticky` / no timer rather than a fake countdown.
+- Countdown should tick every ~1s client-side (start from `closesInMs`, decrement),
+  so the 2s poll doesn't need per-second refresh.
+
+### Area B — SQLite database + live activity feed (professionalization)
+
+Goal: persistent, queryable record of searches → engine attempts → outcomes, plus
+a real-time incoming feed on the console.
+
+Design (proposed):
+- SQLite, WAL mode, single file `data/navigator.db` (gitignored), on a Docker volume
+  so data survives container recreates.
+- `src/db.js` — connection + versioned migration runner (`schema_version` table,
+  numbered migration array).
+- `src/activity.js` — sole writer/reader of activity. Records searches, engine
+  attempts, page ops; exposes queries (recent feed, engine stats over time).
+- Schema v1:
+  - `searches(id, ts, query, variants, requested_engine, engines, result_count, duration_ms, ok, error, source)` — one row per web_search fan-out.
+  - `engine_attempts(id, search_id→searches, ts, engine, backend, status[ok|fail|skip], result_count, duration_ms, error)` — one row per engine attempt.
+  - `page_ops(id, ts, tool[web_fetch|web_page_screenshot], url, backend, duration_ms, ok, error)` — always-default-backend ops.
+- Feed endpoint: `GET /stats/activity?since=<id>&limit=100` — id-cursor incremental
+  polling (console already polls every 2s), no new transport. Future: SSE push.
+- Console: new **Live feed** panel — each search → its engine attempts → ok/fail
+  coloring, per the user's mental model.
+
+**Node decision (2026-08-11):** stay on **Node 20 + `better-sqlite3`** (native dep
+with prebuilds; add `@types` optional). NOT upgrading to node:22. Install must be
+pinned and the Docker build must verify the prebuilt binary loads (`npm ci` in
+Dockerfile; prebuilds exist for bookworm). DB file lives on a volume, so recreate
+doesn't wipe it.
+
+### ASCII mock (v1 — proposed 2026-08-11)
+
+See conversation; wireframe agreed in principle pending user review.
+
+### Gaps / open questions (flagged 2026-08-11)
+
+1. **In-flight searches must be visible.** Feed should show a search as soon as it
+   starts ("running" spinner), then resolve to ok/fail. Requires `searches.status`
+   (`running|ok|fail`) + insert-on-start, update-on-complete. Schema §B update.
+2. **DB retention policy.** Add auto-prune (e.g. keep 7 days or cap ~50k rows per
+   table, run on migration/open + periodically). Prevents unbounded growth.
+3. **DB file location + volume.** Container currently has 3 volumes, none for data.
+   Plan: DB at `data/navigator.db`, new named Docker volume mounted at `/data` (or
+   repo dir if bind-mounted already — check `docker inspect navigator` mounts),
+   `.gitignore` `data/`. WAL + `-wal`/`-shm` files live alongside.
+4. **"Most working engine" needs a window.** Decide success-rate window: last 24h
+   (recommended) vs all-time vs 5m. Feed panel + engines card must use the same one.
+5. **Feed scope: searches only vs all ops.** `page_ops` is in the schema; user's
+   feed ask was about searches. Decide: feed shows searches (default), with a
+   filter/tab to include fetch/screenshot ops.
+6. **Render `result_count` per engine attempt** in the feed so "did it produce
+   output" is visible at a glance, not just ok/fail.
 
 ---
 
