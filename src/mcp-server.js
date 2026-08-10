@@ -20,6 +20,8 @@ import { validateConfigValue, hotApplyConfig } from "./config-manager.js";
 import { getEnvFilePath, readEnvFile, writeEnvFile, upsertEnvText, removeEnvKeysText, backupEnvFile, revertEnvFile, recordEnvChange, getEnvChangeHistory, latestBackupPath } from "./env-file.js";
 import { vncManager } from "./vnc-manager.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats } from "./search.js";
+import { getRecentActivity } from "./activity.js";
+import { initDb } from "./db.js";
 import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters } from "./devtools.js";
 import { transform as asciiTransform } from "./ascii.js";
 import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
@@ -2230,6 +2232,7 @@ function createMcpServer() {
 
 async function maybeStartHttpServer(managerOverride) {
   const manager = managerOverride || (await getBrowserManager());
+  initDb();
   if (!manager.config.enableHttpHealth && !manager.config.enableHttpMcp) return;
 
   const mcpTransports = new Map();
@@ -2442,11 +2445,24 @@ async function maybeStartHttpServer(managerOverride) {
             cacheMisses: cacheCounters.misses
           },
           requests: getRequestStats(),
-          engineAttempts: getEngineAttemptStats()
+          engineAttempts: getEngineAttemptStats(),
+          activity: getRecentActivity({ sinceId: 0, limit: 20, includePageOps: true })
         };
         logEvent("http.request", { method, path: url.pathname });
         logEvent("http.response", { method, path: url.pathname, result: stats });
         sendJson(res, 200, stats);
+        return;
+      }
+
+      if (url.pathname === "/stats/activity") {
+        const sinceId = Math.max(0, Number(url.searchParams.get("since")) || 0);
+        const sinceOpId = Math.max(0, Number(url.searchParams.get("sinceOps")) || 0);
+        const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit")) || 100));
+        const includePageOps = url.searchParams.get("pageOps") === "1";
+        sendJson(res, 200, {
+          ok: true,
+          ...getRecentActivity({ sinceId, sinceOpId, limit, includePageOps })
+        });
         return;
       }
 

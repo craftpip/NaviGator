@@ -443,6 +443,23 @@ Creating extraction hints for a website is an iterative process. One site at a t
 
 Do not remove `console.log` / `console.error` calls from `src/search.js` or other server source files. These are the primary debugging tool for tracing server behavior in production. Only remove them if the user explicitly asks.
 
+### Console Redesign — SQLite Activity DB, Two-Cursor Feed, Tab Timers
+
+**Created:** 2026-08-11
+
+**What:** Console status page now leads with search-engine health (24h success bars, most-working badge, health sort), drivers show inline tabs with per-tab inactivity countdowns, and a Live activity panel streams searches + engine attempts + page ops from a SQLite DB (`data/navigator.db`, gitignored, 7-day prune, WAL). Modules: `src/db.js`, `src/activity.js`, `src/tab-timers.js`.
+
+**Durable facts:**
+- `initDb()` defaults to `process.cwd()/data` (container cwd `/app` = bind mount → host `data/`). `DATA_DIR` env is NOT read by db.js. Host smoke tests writing activity rows will pollute the live DB unless run from a temp cwd.
+- `recordDbEngineAttempt` takes an **options object** and gets its `search_id` FK from `searchContext` (AsyncLocalStorage) — it MUST be called inside `searchContext.run({ searchId }, …)`. `browserSearch` already does this (src/search.js:1523).
+- `searches` and `page_ops` have **independent id sequences** — a single `since` cursor across both drops rows. `GET /stats/activity` takes `since` (searches) and `sinceOps` (page_ops) separately; the console tracks two refs.
+- Activity rows store `ts` as epoch ms (`Date.now()`), not ISO. `formatTime` in main.jsx must handle epoch-ms (and epoch-s < 1e12).
+- Feed merge lives in `App.load()` and `feed` is passed as a direct prop to `StatusView` — stuffing it into `snapshot` state creates a stale-closure bug because `load` is captured by the mount-once effect.
+- Console deploy: image rebuild copies the built bundle to `/web-console`; verify the new hashed `assets/index-*.js` is what `index.html` references.
+- New CSS vars needed by the console: `--gold` (countdowns, most-working badge) — defined in both `:root` themes.
+
+**Unfinished:** commit is pending; plan checklist in `plans/console-redesign.md` §6 has the full log.
+
 ### SSE Keepalive and Stream Lifecycle
 
 **Created:** 2026-07-15

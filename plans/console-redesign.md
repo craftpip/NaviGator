@@ -2,17 +2,21 @@
 
 ## Plan Status
 
-**Status: GATHERING REQUIREMENTS** — created 2026-08-11. User is dictating
-desired improvements live. This is a fresh plan; an earlier improvement plan
+**Status: AREAS A + B IMPLEMENTED** — created 2026-08-11. User dictated
+improvements live; implementation landed 2026-08-11 in the working tree
+(not yet deployed). An earlier improvement plan
 (`plans/web-console-improvements.md`, IN PROGRESS) covers a different
 requirement set — keep the two from colliding.
 
 ### Checklist
 
-- [ ] Collect user requirements (User Request Log below).
-- [ ] Group into improvement areas, rank by leverage, confirm scope.
-- [ ] Write per-area implementation sub-plans.
-- [ ] Implement, build (`npm run console:build`), deploy (image rebuild + container recreate), verify live.
+- [x] Collect user requirements (User Request Log below).
+- [x] Group into improvement areas, rank by leverage, confirm scope.
+- [x] Write per-area implementation sub-plans.
+- [x] Implement (SQLite `src/db.js`, activity recording `src/activity.js`, tab timers `src/tab-timers.js`, console Area A + Area B).
+- [x] Build (`npm run console:build`) and lint — pass (only pre-existing `scripts/benchmark/web-search-benchmark.mjs:209` unused `fastest` error remains).
+- [ ] Deploy (image rebuild + container recreate), verify live.
+- [ ] Commit (backend + console together or in two commits).
 
 ---
 
@@ -155,3 +159,37 @@ Key facts:
 3. Rebuild image + recreate container (this host has no docker compose).
 4. Hard-refresh `http://10.69.1.164:3000/console`, verify each mode renders,
    live dot updates every 2 s, dark/light toggle, and no console errors.
+
+## 6. Implementation log
+
+### 2026-08-11 — Areas A + B implemented, deployed, verified
+
+**Deploy:** `docker build -t navigator:latest .` + recreate with captured env
+(`/tmp/opencode/navigator.env`), network `navigator_default`, `--init --shm-size=2g -m 4g --cpus=4.0`, ports 3000/7900, three mounts.
+
+**Verified live** (browser target on `/console`):
+- Metrics row = Engines ready 8/8 · Open tabs · Pages in use · Requests 5m.
+- Grid order = Engines (wide, first) → Drivers → Activity → Work → Live activity → Recent errors.
+- 10 engine rows, driver tabs with countdowns, feed rows populate.
+- Real `web_search` through the live MCP endpoint recorded search #6 + `duckduckgo_api(api) ok 9 results` in `/stats/activity`.
+- Only console error = favicon 404 (pre-existing).
+
+**Gotchas fixed during implementation:**
+- `searches` and `page_ops` have independent id sequences — a single `since`
+  cursor loses rows (off-by-one on the shared max). Fixed with two cursors:
+  `GET /stats/activity?since=<searchId>&sinceOps=<pageOpId>`. `getRecentActivity`
+  now takes `{ sinceId, sinceOpId }`.
+- `recordDbEngineAttempt` takes an options object, not positional args, and
+  relies on `searchContext.run({ searchId }, …)` (AsyncLocalStorage) for the FK
+  — test harnesses must wrap calls in the context.
+- `initDb()` defaults to `process.cwd()/data` (container cwd `/app` = the bind
+  mount → `data/navigator.db` on the host, gitignored). `DATA_DIR` env is NOT
+  read by db.js. Host smoke tests pollute the live DB unless run from a temp cwd.
+- `formatTime` must handle epoch-ms `ts` (activity rows store `Date.now()`).
+- Feed merging in `App.load()`: pass `feed` as a direct prop (stale-closure
+  hazard if stuffed into `snapshot`).
+- ESLint: `recordSearchStart` had an unused `source` param (removed); `search.js`
+  imported `initDb` unused (removed). Remaining lint error is pre-existing
+  (`scripts/benchmark/web-search-benchmark.mjs:209` unused `fastest`).
+
+**Not committed yet** as of this log entry — see git status.

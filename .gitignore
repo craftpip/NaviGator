@@ -10,3 +10,6 @@ screenshots/*.png
 *.log
 dist/
 doc/
+
+# SQLite activity database
+data/

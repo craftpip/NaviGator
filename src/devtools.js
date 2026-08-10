@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { getBrowserManager } from "./browser.js";
 import { resolveRefIdToUrl } from "./ref-memory.js";
+import { clearTab, touchTab } from "./tab-timers.js";
 
 const MAX_TARGETS = 20;
 const MAX_CONSOLE_MESSAGES = 200;
@@ -66,6 +67,7 @@ function getTargetState(targetId) {
     throw new Error(`Unknown targetId: ${targetId}`);
   }
   state.lastActiveAt = new Date().toISOString();
+  touchTab(state.backend, state.targetId);
   return state;
 }
 
@@ -109,6 +111,7 @@ function startInactivityCleanup() {
         closedTargets.set(targetId, { closedAt: new Date().toISOString() });
         devtoolsCounters.targetsInactivityClosed += 1;
         targetsById.delete(targetId);
+        clearTab(state.backend, targetId);
         state.page.close().catch(() => {});
       }
     }
@@ -221,6 +224,7 @@ async function createTarget(args = {}) {
   installPageObservers(state);
   targetsById.set(state.targetId, state);
   devtoolsCounters.targetsCreated += 1;
+  touchTab(backend, state.targetId);
 
   if (url !== "about:blank") {
     await page.goto(url, {
@@ -255,6 +259,7 @@ async function closeTarget(args = {}) {
   const state = getTargetState(args.targetId);
   await state.page.close();
   targetsById.delete(state.targetId);
+  clearTab(state.backend, state.targetId);
   devtoolsCounters.targetsClosed += 1;
   return {
     targetId: state.targetId,

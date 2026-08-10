@@ -6,6 +6,7 @@ import http from "node:http";
 import puppeteer from "puppeteer-core";
 import { loadConfig, findLightpandaPath } from "./config.js";
 import { getBrowserWarmupEngines, getEngineMetadata } from "./engines/index.js";
+import { getTabTimings } from "./tab-timers.js";
 
 const LOCK_FILES = ["SingletonLock", "SingletonCookie", "SingletonSocket"];
 const CLONE_EXCLUDE_NAMES = new Set([
@@ -1020,7 +1021,17 @@ export class BrowserManager {
         openTabs = await Promise.all(activePages.map(async (page) => {
           let title = "Untitled page";
           try { title = await page.title() || title; } catch {}
-          return { title, url: page.url() };
+          let targetId = null;
+          try { targetId = page.target()?.id?.() || null; } catch {}
+          const timing = targetId ? getTabTimings(backend, targetId) : null;
+          return {
+            title,
+            url: page.url(),
+            targetId,
+            lastActiveAt: timing?.lastActiveAt ?? null,
+            closesInMs: timing?.closesInMs ?? null,
+            autoClose: Boolean(timing)
+          };
         }));
       } catch {
         tabs = 0;

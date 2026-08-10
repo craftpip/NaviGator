@@ -47,6 +47,24 @@ function formatMs(ms) {
   if (!Number.isFinite(ms)) return "-";
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`;
 }
+function formatCountdown(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return "0:00";
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+function Countdown({ closesInMs }) {
+  const [left, setLeft] = useState(closesInMs);
+  useEffect(() => {
+    setLeft(closesInMs);
+    if (!Number.isFinite(closesInMs)) return undefined;
+    const tick = setInterval(() => setLeft((current) => Math.max(0, current - 1000)), 1000);
+    return () => clearInterval(tick);
+  }, [closesInMs]);
+  if (!Number.isFinite(left) || left <= 0) return <span className="countdown off">closing…</span>;
+  return <span className="countdown">{formatCountdown(left)}</span>;
+}
 function list(value) {
   return String(value || "")
     .split(/\r?\n/)
@@ -294,18 +312,17 @@ function computeStatus(health, stats, ok) {
   return { level, issues };
 }
 
-function StatusView({ snapshot, history, toggleVnc, vncBusy }) {
+function StatusView({ snapshot, history, toggleVnc, vncBusy, feed }) {
   const { health = {}, stats = {}, config = {}, logs = [], ok } = snapshot;
   const instances = stats.instances || [];
   const engines = config.engines || [];
   const circuits = health.searchRouteCircuitBreakers || [];
   const state = computeStatus(health, stats, ok);
-  const connected = instances.filter((item) => item.connected).length;
   const exposed = engines.filter((item) => item.exposedInMcp);
   const unavailable = circuits.filter((item) => item.remainingMs > 0).length;
   const tabs = instances.reduce((sum, item) => sum + (item.tabs || 0), 0);
   const limiter = health.pageLimiter || {};
-  const counters = stats.counters || {};
+  const period = stats.requests?.byPeriod?.["5m"] || {};
   return (
     <>
       <section className="overview">
@@ -329,11 +346,6 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy }) {
         </section>
         <section className="metrics">
           <Metric
-            label="Drivers online"
-            value={`${connected}/${instances.length || 3}`}
-            note="browser drivers online"
-          />
-          <Metric
             label="Engines ready"
             value={`${Math.max(0, exposed.length - unavailable)}/${exposed.length}`}
             note={
@@ -355,9 +367,9 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy }) {
             }
           />
           <Metric
-            label="Searches run"
-            value={counters.searches ?? 0}
-            note={`${counters.fetches ?? 0} fetches · ${counters.screenshots ?? 0} shots`}
+            label="Requests 5m"
+            value={`${period.ok || 0} ok`}
+            note={period.err ? `${period.err} failed` : "no failures"}
           />
         </section>
       </section>
@@ -377,11 +389,11 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy }) {
         </section>
       )}
       <section className="content-grid">
-        <Runtime health={health} stats={stats} history={history} />
-        <Drivers health={health} instances={instances} />
         <Engines config={config} health={health} stats={stats} />
-        <Tabs instances={instances} />
+        <Drivers health={health} instances={instances} />
+        <Runtime health={health} stats={stats} history={history} />
         <Work stats={stats} />
+        <LiveFeed feed={feed} />
         <Logs logs={logs} />
       </section>
     </>
@@ -403,7 +415,7 @@ function Runtime({ health, stats, history }) {
   const hits = stats.counters?.cacheHits || 0;
   const misses = stats.counters?.cacheMisses || 0;
   return (
-    <Panel title="Current activity" sub="what the server is doing now">
+    <Panel title="Activity" sub="capacity, cache and windows">
       <div className="list">
         <Item
           tone={limiter.queued ? "warn" : ""}
@@ -442,25 +454,41 @@ function Item({ title, detail, tone = "" }) {
 function Drivers({ health, instances }) {
   const byBackend = new Map(instances.map((item) => [item.backend, item]));
   return (
-    <Panel title="Browser drivers" sub="processes and tabs">
+    <Panel title="Browser drivers" sub="engines, tabs and close timers">
       <div className="list">
         {["cloakbrowser", "lightpanda", "chromium"].map((backend) => {
           const instance = byBackend.get(backend);
           const online = Boolean(instance?.connected);
           const defaultDriver = backend === health.backend;
           const detail = online
-            ? `${instance.tabs || 0} open tabs · pid ${instance.pid ?? "-"} · ${instance.spawns || 0} spawns`
+            ? `${instance.tabs || 0} tabs · pid ${instance.pid ?? "-"} · ${instance.spawns || 0} spawns`
             : defaultDriver
               ? "Default driver is not connected"
               : "Not started";
           return (
-            <div className="item" key={backend}>
+            <div className="item driver-item" key={backend}>
               <Dot tone={online ? "" : defaultDriver ? "err" : "off"} />
               <div className="item-main">
                 <div className="item-title">
                   {backend} {defaultDriver && <Pill tone="info">default</Pill>}
                 </div>
                 <div className="item-detail">{detail}</div>
+                {online && (instance.openTabs || []).length > 0 && (
+                  <div className="driver-tabs">
+                    {(instance.openTabs || []).map((tab, index) => (
+                      <div className="driver-tab" key={`${tab.targetId || index}`}>
+                        <span className="driver-tab-title" title={tab.url}>
+                          {tab.title || tab.url || "Untitled page"}
+                        </span>
+                        {tab.autoClose ? (
+                          <Countdown closesInMs={tab.closesInMs} />
+                        ) : (
+                          <span className="countdown sticky">sticky</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <Pill tone={online ? "ok" : defaultDriver ? "err" : "off"}>
                 {online ? "online" : defaultDriver ? "offline" : "idle"}
@@ -482,11 +510,20 @@ function Engines({ config, health, stats }) {
   const attempts = stats.engineAttempts?.byEngine || {};
   const warmup = new Set(config.config?.searchRouteWarmupEngines || []);
   const fallback = new Set(config.config?.searchFallback || []);
-  const engines = [...(config.engines || [])].sort(
-    (a, b) =>
-      Number(Boolean(circuits.get(`${a.id}/${a.backend}`)?.remainingMs)) -
-      Number(Boolean(circuits.get(`${b.id}/${b.backend}`)?.remainingMs)),
-  );
+  const rateFor = (id) => {
+    const period = attempts[id]?.byPeriod?.["24h"] || attempts[id] || {};
+    const tried = (period.ok || 0) + (period.fail || 0);
+    return tried ? { tried, rate: (period.ok || 0) / tried } : { tried: 0, rate: 0 };
+  };
+  const engines = [...(config.engines || [])].sort((a, b) => {
+    const openA = Boolean(circuits.get(`${a.id}/${a.backend}`)?.remainingMs);
+    const openB = Boolean(circuits.get(`${b.id}/${b.backend}`)?.remainingMs);
+    if (openA !== openB) return openA ? 1 : -1;
+    const rateA = rateFor(a.id);
+    const rateB = rateFor(b.id);
+    if (rateA.tried !== rateB.tried) return rateA.tried ? -1 : 1;
+    return rateB.rate - rateA.rate;
+  });
   if (!engines.length)
     return (
       <Panel title="Search engines" wide>
@@ -496,21 +533,34 @@ function Engines({ config, health, stats }) {
   let healthy = 0;
   let recovering = 0;
   let unavailable = 0;
+  const ranked = engines.filter(
+    (item) => item.exposedInMcp && !circuits.get(`${item.id}/${item.backend}`)?.remainingMs,
+  );
+  const mostWorking = ranked
+    .filter((item) => rateFor(item.id).tried > 0)
+    .sort((a, b) => rateFor(b.id).rate - rateFor(a.id).rate)[0];
   return (
     <Panel
       title="Search engines"
-      sub="routes available for the next search"
+      sub="routes for the next search — best working first"
       wide
     >
       <div className="engine-summary">
         <b>{engines.filter((item) => item.exposedInMcp).length}</b> configured
         routes
+        {mostWorking && (
+          <span className="most-working">
+            ★ most working: {mostWorking.id} (
+            {Math.round(rateFor(mostWorking.id).rate * 100)}% over 24h)
+          </span>
+        )}
       </div>
       <div className="engine-grid">
         {engines.map((engine) => {
           const circuit = circuits.get(`${engine.id}/${engine.backend}`);
           const stat = attempts[engine.id] || {};
           const attempted = (stat.ok || 0) + (stat.fail || 0);
+          const { rate } = rateFor(engine.id);
           let tone = "ok";
           let route = "closed";
           if (circuit?.remainingMs > 0) {
@@ -534,6 +584,7 @@ function Engines({ config, health, stats }) {
             : fallback.has(engine.id)
               ? "fallback"
               : "available";
+          const pct = Math.round(rate * 100);
           return (
             <div
               className="engine engine-row"
@@ -543,7 +594,11 @@ function Engines({ config, health, stats }) {
               <Dot tone={tone === "ok" ? "" : tone} />
               <div className="engine-main">
                 <div className="engine-name">
-                  {engine.id} <Pill tone={tone}>{route}</Pill>
+                  {engine.id}{" "}
+                  {engine.id === mostWorking?.id && (
+                    <Pill tone="best">★ most working</Pill>
+                  )}
+                  <Pill tone={tone}>{route}</Pill>
                 </div>
                 <div className="engine-meta">
                   {engine.backend} · {role} ·{" "}
@@ -551,13 +606,22 @@ function Engines({ config, health, stats }) {
                     ? `${pool.inUse}/${pool.total} windows${pool.pending ? ` · ${pool.pending} opening` : ""}`
                     : "no window"}
                 </div>
+                <div className="engine-success">
+                  <span
+                    className="engine-bar"
+                    style={{
+                      background: tone === "err" ? "#f43f5e" : tone === "warn" ? "#f59e0b" : "#35e07a",
+                      width: `${tone === "err" ? 4 : Math.max(4, pct)}%`,
+                    }}
+                  />
+                  <span className="engine-pct">
+                    {attempted ? `${pct}%` : "no attempts"}
+                  </span>
+                </div>
               </div>
               <div className="engine-stats">
                 <b>{stat.results || 0}</b> results · {stat.ok || 0} ok ·{" "}
-                {stat.fail || 0} failed · {stat.skip || 0} skipped ·{" "}
-                {attempted
-                  ? `${Math.round(((stat.ok || 0) / attempted) * 100)}% success`
-                  : "no completed searches"}
+                {stat.fail || 0} failed · {stat.skip || 0} skipped · 24h
               </div>
             </div>
           );
@@ -566,40 +630,6 @@ function Engines({ config, health, stats }) {
       <div className="engine-summary">
         {healthy} ready · {recovering} recovering · {unavailable} unavailable
       </div>
-    </Panel>
-  );
-}
-function Tabs({ instances }) {
-  const tabs = instances.flatMap((instance) =>
-    (instance.openTabs || []).map((tab) => ({
-      ...tab,
-      backend: instance.backend,
-    })),
-  );
-  return (
-    <Panel title="Open tabs" sub="live browser pages">
-      {tabs.length ? (
-        <div className="list">
-          {tabs.map((tab, index) => (
-            <div className="item" key={`${tab.backend}-${tab.url}-${index}`}>
-              <Dot />
-              <div className="item-main">
-                <div className="item-title">
-                  {tab.title || "Untitled page"}{" "}
-                  <Pill tone="info">{tab.backend}</Pill>
-                </div>
-                <div className="item-detail tab-url" title={tab.url}>
-                  {tab.url || "about:blank"}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <Empty>
-          No open pages. Tabs appear here as Navigator launches browser work.
-        </Empty>
-      )}
     </Panel>
   );
 }
@@ -620,6 +650,120 @@ function Work({ stats }) {
           detail={`${attempts.total || 0} engine attempts · ${attempts.ok || 0} succeeded · ${attempts.fail || 0} failed`}
         />
       </div>
+    </Panel>
+  );
+}
+function formatTime(ts) {
+  if (ts == null) return "";
+  const ms = typeof ts === "number" && ts < 1e12 ? ts * 1000 : Number(ts);
+  if (!Number.isFinite(ms) || ms <= 0) return String(ts || "");
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return String(ts);
+  return date.toLocaleTimeString([], { hour12: false });
+}
+function buildFeed(entries, pageOps) {
+  const rows = [];
+  for (const search of entries || []) {
+    rows.push({
+      key: `s-${search.id}`,
+      ts: search.ts,
+      kind: "search",
+      status: search.status || "",
+      label: String(search.query || "").slice(0, 80),
+      note: [
+        search.requested_engine || "select_best",
+        search.result_count != null ? `${search.result_count} results` : "",
+        search.duration_ms != null ? formatMs(search.duration_ms) : "",
+        search.error ? "error" : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    });
+    for (const attempt of search.attempts || []) {
+      rows.push({
+        key: `a-${attempt.id}`,
+        ts: attempt.ts,
+        kind: "attempt",
+        status: attempt.status || "",
+        label: `${attempt.engine}${attempt.backend ? ` (${attempt.backend})` : ""}`,
+        note: [
+          attempt.status === "ok" ? `${attempt.result_count || 0} results` : attempt.error || attempt.status,
+          attempt.duration_ms != null ? formatMs(attempt.duration_ms) : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      });
+    }
+  }
+  for (const op of pageOps || []) {
+    rows.push({
+      key: `p-${op.id}`,
+      ts: op.ts,
+      kind: "page_op",
+      status: op.ok ? "ok" : "fail",
+      label: op.tool || "page",
+      note: [
+        String(op.url || "").slice(0, 70),
+        op.duration_ms != null ? formatMs(op.duration_ms) : "",
+        op.error || "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    });
+  }
+  return rows.sort((a, b) => Number(b.ts) - Number(a.ts));
+}
+function LiveFeed({ feed }) {
+  const [showPageOps, setShowPageOps] = useState(true);
+  const [limit, setLimit] = useState(25);
+  const rows = (feed || []).filter((entry) => showPageOps || entry.kind !== "page_op");
+  const visible = rows.slice(0, limit);
+  return (
+    <Panel
+      title="Live activity"
+      sub={
+        <label className="feed-toggle">
+          <input
+            type="checkbox"
+            checked={showPageOps}
+            onChange={(event) => setShowPageOps(event.target.checked)}
+          />
+          show page fetches
+        </label>
+      }
+      wide
+    >
+      {visible.length ? (
+        <>
+          <div className="feed">
+            {visible.map((entry) => (
+              <div
+                className={`feed-row ${entry.status === "ok" ? "ok" : entry.status === "fail" || entry.status === "error" ? "fail" : ""}`}
+                key={entry.key || `${entry.kind}-${entry.ts}`}
+              >
+                <span className="feed-time">{formatTime(entry.ts)}</span>
+                <span className="feed-kind">
+                  {entry.kind === "search" ? "search" : entry.kind === "page_op" ? "page" : "engine"}
+                </span>
+                <span className="feed-label" title={entry.note}>
+                  {entry.label}
+                </span>
+                <span className="feed-note">{entry.note}</span>
+              </div>
+            ))}
+          </div>
+          {rows.length > limit && (
+            <button className="feed-more" onClick={() => setLimit((current) => current + 40)}>
+              show more
+            </button>
+          )}
+        </>
+      ) : (
+        <Empty>
+          No activity recorded yet. Searches and engine attempts will stream
+          here as they happen.
+        </Empty>
+      )}
     </Panel>
   );
 }
@@ -1412,12 +1556,15 @@ function App() {
   const [mode, setMode] = useState(() => modeFromPath(location.pathname));
   const [snapshot, setSnapshot] = useState({});
   const [paused, setPaused] = useState(false);
+  const [feed, setFeed] = useState([]);
   const [history, setHistory] = useState({
     memory: [],
     slots: [],
     requests: [],
   });
   const [vncBusy, setVncBusy] = useState(false);
+  const feedSince = useRef(0);
+  const feedOpsSince = useRef(0);
   const navigate = (next) => {
     const path = pathForMode(next);
     if (location.pathname !== path) window.history.pushState({}, "", path);
@@ -1425,12 +1572,26 @@ function App() {
   };
   const load = async () => {
     try {
-      const [health, stats, config, logPayload] = await Promise.all([
+      const [health, stats, config, logPayload, activity] = await Promise.all([
         request("/health"),
         request("/stats"),
         request("/console/config"),
         request("/console/logs?n=20"),
+        request(`/stats/activity?since=${feedSince.current}&sinceOps=${feedOpsSince.current}&limit=100&pageOps=1`),
       ]);
+      setFeed((current) => {
+        const merged = [...current];
+        for (const row of buildFeed(activity.entries, activity.pageOps)) {
+          if (!merged.some((existing) => existing.key === row.key)) merged.push(row);
+        }
+        return merged.sort((a, b) => Number(b.ts) - Number(a.ts)).slice(0, 200);
+      });
+      for (const entry of activity.entries || []) {
+        feedSince.current = Math.max(feedSince.current, Number(entry.id) || 0);
+      }
+      for (const op of activity.pageOps || []) {
+        feedOpsSince.current = Math.max(feedOpsSince.current, Number(op.id) || 0);
+      }
       setSnapshot({
         health,
         stats,
@@ -1497,6 +1658,7 @@ function App() {
           history={history}
           toggleVnc={toggleVnc}
           vncBusy={vncBusy}
+          feed={feed}
         />
       ) : mode === "manage" ? (
         <Manage config={snapshot.config || {}} reload={load} />

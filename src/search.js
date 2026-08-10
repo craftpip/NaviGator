@@ -5,6 +5,13 @@ import { Readability } from "@mozilla/readability";
 import { performance } from "node:perf_hooks";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import {
+  recordDbEngineAttempt,
+  recordPageOp,
+  recordSearchEnd,
+  recordSearchStart,
+  searchContext
+} from "./activity.js";
 import { findDomainHint, getDomainHints } from "./domain-hints.js";
 import { htmlToMarkdown } from "./markdown.js";
 import { getEngineDriver, getEngineMetadata, SUPPORTED_ENGINES } from "./engines/index.js";
@@ -206,12 +213,20 @@ function persistEngineAttemptLog() {
   }
 }
 
-export function recordEngineAttempt(engine, status, errorMsg, resultCount = 0) {
+export function recordEngineAttempt(engine, status, errorMsg, resultCount = 0, durationMs = 0) {
   engineAttemptLog.push({ t: Date.now(), engine, status, results: status === "ok" ? Math.max(0, Number(resultCount) || 0) : 0, err: status === "ok" ? "" : String(errorMsg || status).slice(0, 300) });
   if (engineAttemptLog.length > ENGINE_ATTEMPT_LOG_MAX) {
     engineAttemptLog.splice(0, engineAttemptLog.length - ENGINE_ATTEMPT_LOG_MAX);
   }
   persistEngineAttemptLog();
+  recordDbEngineAttempt({
+    engine,
+    backend: getEngineMetadata(engine)?.backend,
+    status,
+    resultCount,
+    error: status === "ok" ? "" : errorMsg,
+    durationMs
+  });
 }
 
 export function getEngineAttemptStats() {
@@ -1304,6 +1319,7 @@ function routeConcurrencyForEngines(engines, _config) {
 
 async function runSearchRoute({ manager, query, engine, config, explicit }) {
   const circuit = getRouteCircuit(engine);
+  const routeStart = performance.now();
   if (circuit.open) {
     recordEngineAttempt(engine, "skip", circuit.lastError || "route open");
     throw new Error(`Search route ${circuit.key} is temporarily disabled for ${Math.ceil(circuit.remainingMs / 1000)}s: ${circuit.lastError || "previous failure"}`);
@@ -1323,11 +1339,11 @@ async function runSearchRoute({ manager, query, engine, config, explicit }) {
       value = await execute();
     }
     recordRouteSuccess(engine);
-    recordEngineAttempt(engine, "ok", "", value.results?.length || 0);
+    recordEngineAttempt(engine, "ok", "", value.results?.length || 0, performance.now() - routeStart);
     return value;
   } catch (error) {
     recordRouteFailure(engine, error, config.searchRouteCircuitOpenMs);
-    recordEngineAttempt(engine, "fail", error);
+    recordEngineAttempt(engine, "fail", error, 0, performance.now() - routeStart);
     if (explicit) throw error;
     throw error;
   }
@@ -1466,6 +1482,7 @@ function buildQueryResult({ query, settled, limit, fallbackAttempted }) {
 export async function browserSearch({ query, queries, limit = 5, engines }) {
   const manager = await getBrowserManager();
   activityCounters.searches += 1;
+  const tSearchStart = performance.now();
   const explicitEngines = Array.isArray(engines)
     ? engines.length > 0
     : engines !== undefined && engines !== null && String(engines).trim() !== "";
@@ -1495,62 +1512,91 @@ export async function browserSearch({ query, queries, limit = 5, engines }) {
     throw new Error("Missing query/queries: provide at least one search query");
   }
 
-  const perQueryTasks = uniqueQueries.map((singleQuery) =>
-    explicitEngines
-      ? runExplicitEngineGroup({ manager, query: singleQuery, engines: selectedEngines, limit, config: manager.config })
-      : runFallbackEngineGroups({ manager, query: singleQuery, limit, config: manager.config })
-  );
+  const searchId = recordSearchStart({
+    query: uniqueQueries[0],
+    variants: uniqueQueries,
+    requestedEngine: explicitEngines ? String(engines) : "select_best",
+    engines: selectedEngines.length ? selectedEngines : undefined
+  });
 
-  const queryResults = await Promise.all(perQueryTasks);
+  try {
+    const result = await searchContext.run({ searchId }, async () => {
+      const perQueryTasks = uniqueQueries.map((singleQuery) =>
+        explicitEngines
+          ? runExplicitEngineGroup({ manager, query: singleQuery, engines: selectedEngines, limit, config: manager.config })
+          : runFallbackEngineGroups({ manager, query: singleQuery, limit, config: manager.config })
+      );
 
-  if (queryResults.length === 1) {
-    return {
-      query: queryResults[0].query,
-      resultCount: queryResults[0].resultCount,
-      results: queryResults[0].results,
-      directAnswerCount: queryResults[0].directAnswerCount,
-      directAnswers: queryResults[0].directAnswers,
-      errors: queryResults[0].errors,
-      ...(queryResults[0].fallback ? { fallback: queryResults[0].fallback } : {}),
-      ...(queryResults[0].fallbackAttempted ? { fallbackAttempted: true } : {})
-    };
-  }
+      return await Promise.all(perQueryTasks);
+    });
 
-  const combinedByUrl = new Map();
-  const combinedDirectAnswers = [];
-  for (const item of queryResults) {
-    combinedDirectAnswers.push(
-      ...(item.directAnswers || []).map((answer) => ({
-        ...answer,
-        queryVariant: item.query
-      }))
-    );
+    if (result.length === 1) {
+      recordSearchEnd(searchId, {
+        ok: true,
+        resultCount: result[0].resultCount,
+        durationMs: performance.now() - tSearchStart
+      });
+      return {
+        query: result[0].query,
+        resultCount: result[0].resultCount,
+        results: result[0].results,
+        directAnswerCount: result[0].directAnswerCount,
+        directAnswers: result[0].directAnswers,
+        errors: result[0].errors,
+        ...(result[0].fallback ? { fallback: result[0].fallback } : {}),
+        ...(result[0].fallbackAttempted ? { fallbackAttempted: true } : {})
+      };
+    }
 
-    for (const result of item.results) {
-      if (!combinedByUrl.has(result.url)) {
-        combinedByUrl.set(result.url, {
-          ...result,
-          queryVariants: [item.query]
-        });
-        continue;
-      }
+    const combinedByUrl = new Map();
+    const combinedDirectAnswers = [];
+    for (const item of result) {
+      combinedDirectAnswers.push(
+        ...(item.directAnswers || []).map((answer) => ({
+          ...answer,
+          queryVariant: item.query
+        }))
+      );
 
-      const existing = combinedByUrl.get(result.url);
-      if (!existing.queryVariants.includes(item.query)) {
-        existing.queryVariants.push(item.query);
+      for (const itemResult of item.results) {
+        if (!combinedByUrl.has(itemResult.url)) {
+          combinedByUrl.set(itemResult.url, {
+            ...itemResult,
+            queryVariants: [item.query]
+          });
+          continue;
+        }
+
+        const existing = combinedByUrl.get(itemResult.url);
+        if (!existing.queryVariants.includes(item.query)) {
+          existing.queryVariants.push(item.query);
+        }
       }
     }
-  }
 
-  return {
-    queries: uniqueQueries,
-    queryCount: uniqueQueries.length,
-    totalResultCount: [...combinedByUrl.values()].length,
-    results: [...combinedByUrl.values()].slice(0, Math.max(1, limit || 1)),
-    totalDirectAnswerCount: dedupeDirectAnswers(combinedDirectAnswers).length,
-    directAnswers: dedupeDirectAnswers(combinedDirectAnswers),
-    queryResults
-  };
+    recordSearchEnd(searchId, {
+      ok: true,
+      resultCount: [...combinedByUrl.values()].length,
+      durationMs: performance.now() - tSearchStart
+    });
+
+    return {
+      queries: uniqueQueries,
+      queryCount: uniqueQueries.length,
+      totalResultCount: [...combinedByUrl.values()].length,
+      results: [...combinedByUrl.values()].slice(0, Math.max(1, limit || 1)),
+      totalDirectAnswerCount: dedupeDirectAnswers(combinedDirectAnswers).length,
+      directAnswers: dedupeDirectAnswers(combinedDirectAnswers),
+      queryResults: result
+    };
+  } catch (error) {
+    recordSearchEnd(searchId, {
+      ok: false,
+      error: String(error?.message || error),
+      durationMs: performance.now() - tSearchStart
+    });
+    throw error;
+  }
 }
 
 function enrichNumericLinkText(a, text, href) {
@@ -1686,7 +1732,8 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
   const hint = findDomainHint(url, hints);
   debugLog("load_domain_hints", t);
 
-  return manager.withPageSlot(async () => {
+  try {
+    const result = await manager.withPageSlot(async () => {
     t = performance.now();
     const page = await manager.newPage({ backend: manager.config.defaultBackend });
     debugLog("new_page", t);
@@ -1872,7 +1919,13 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
       }
       debugLog("close_page", t);
     }
-  });
+    });
+    recordPageOp({ tool: "web_fetch", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tOverall, ok: true });
+    return result;
+  } catch (error) {
+    recordPageOp({ tool: "web_fetch", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tOverall, ok: false, error: String(error?.message || error) });
+    throw error;
+  }
 }
 
 export async function browserCaptureScreenshot({
@@ -1883,13 +1936,15 @@ export async function browserCaptureScreenshot({
 }) {
   activityCounters.screenshots += 1;
   const manager = await getBrowserManager();
+  const tShotStart = performance.now();
   const normalizedFormat = format === "jpeg" ? "jpeg" : "png";
   const normalizedQuality =
     normalizedFormat === "jpeg"
       ? Math.max(1, Math.min(100, Math.floor(Number.isFinite(quality) ? quality : 75)))
       : undefined;
 
-  return manager.withPageSlot(async () => {
+  try {
+    const result = await manager.withPageSlot(async () => {
     const page = await manager.newPage({ backend: manager.config.defaultBackend });
 
     try {
@@ -1954,5 +2009,11 @@ export async function browserCaptureScreenshot({
         await page.close();
       }
     }
-  });
+    });
+    recordPageOp({ tool: "web_page_screenshot", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tShotStart, ok: true });
+    return result;
+  } catch (error) {
+    recordPageOp({ tool: "web_page_screenshot", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tShotStart, ok: false, error: String(error?.message || error) });
+    throw error;
+  }
 }
