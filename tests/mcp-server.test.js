@@ -1,9 +1,22 @@
-import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 vi.mock("../src/browser.js", () => ({ getBrowserManager: vi.fn() }));
+vi.mock("../src/vnc-manager.js", () => {
+  const fakeVnc = {
+    display: ":99",
+    status: "stopped",
+    steps: [],
+    lastError: null,
+    ownedPids: new Map(),
+    start: vi.fn().mockResolvedValue({ ok: true }),
+    stop: vi.fn().mockResolvedValue({ ok: true }),
+    getStatus: vi.fn().mockResolvedValue({ running: false }),
+  };
+  return { VncManager: vi.fn(), vncManager: fakeVnc };
+});
 vi.mock("../src/search.js", () => ({
   browserSearch: vi.fn(),
   browserOpenAndExtract: vi.fn(),
@@ -81,6 +94,7 @@ function makeMockManager(overrides = {}) {
     ]),
     shutdown: vi.fn().mockResolvedValue(undefined),
     prelaunchIfConfigured: vi.fn().mockResolvedValue(undefined),
+    relaunchDefaultBackend: vi.fn().mockImplementation(async (headless) => ({ ok: true, backend: "cloakbrowser", relaunched: true, headless: Boolean(headless) })),
   };
 }
 
@@ -278,6 +292,186 @@ describe("mcp-server HTTP endpoints", () => {
       expect(schemaKeys).toContain("NOVNC_PORT");
       expect(typeof body.env).toBe("object");
       expect(typeof body.envPath).toBe("string");
+    });
+  });
+
+  describe("PUT /console/config — config manager", () => {
+    let envDir;
+    let envFile;
+
+    beforeEach(() => {
+      envDir = fs.mkdtempSync(path.join(os.tmpdir(), "navigator-console-env-"));
+      envFile = path.join(envDir, ".env");
+      fs.writeFileSync(envFile, "# test env\nMAX_CONCURRENT_PAGE_OPS=30\nHEADLESS=true\n");
+      process.env.NAVIGATOR_ENV_FILE = envFile;
+    });
+
+    afterEach(() => {
+      delete process.env.NAVIGATOR_ENV_FILE;
+      try { fs.rmSync(envDir, { recursive: true, force: true }); } catch {}
+    });
+
+    it("hot-applies a valid update and persists to .env with backup", async () => {
+      const res = await fetch(`${MCP_BASE}/console/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ updates: { MAX_CONCURRENT_PAGE_OPS: 40 } }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.hotApplied).toContain("MAX_CONCURRENT_PAGE_OPS");
+      expect(body.envWritten).toBe(true);
+      expect(typeof body.backup).toBe("string");
+
+      const after = fs.readFileSync(envFile, "utf8");
+      expect(after).toContain("# test env");
+      expect(after).toContain("MAX_CONCURRENT_PAGE_OPS=40");
+      expect(fs.readdirSync(envDir).some((f) => f.includes(".env.backup-"))).toBe(true);
+    });
+
+    it("returns restartRequired for recreate-apply keys", async () => {
+      const res = await fetch(`${MCP_BASE}/console/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ updates: { BROWSER_BACKEND: "chromium" } }),
+      });
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.restartRequired).toContain("BROWSER_BACKEND");
+      expect(body.hotApplied).not.toContain("BROWSER_BACKEND");
+    });
+
+    it("rejects unknown variables and invalid values", async () => {
+      const res = await fetch(`${MCP_BASE}/console/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ updates: { NOT_A_REAL_VAR: "1", MAX_CONCURRENT_PAGE_OPS: "not-a-number" } }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.ok).toBe(false);
+      expect(body.invalid.length).toBe(2);
+    });
+
+    it("reset removes a key from .env and returns hot-applied default", async () => {
+      const res = await fetch(`${MCP_BASE}/console/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reset: ["MAX_CONCURRENT_PAGE_OPS"] }),
+      });
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.hotApplied.some((k) => k.startsWith("MAX_CONCURRENT_PAGE_OPS"))).toBe(true);
+      const after = fs.readFileSync(envFile, "utf8");
+      expect(after).not.toContain("MAX_CONCURRENT_PAGE_OPS=");
+    });
+
+    it("revert restores the previous .env", async () => {
+      await fetch(`${MCP_BASE}/console/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ updates: { MAX_CONCURRENT_PAGE_OPS: 40 } }),
+      });
+      const res = await fetch(`${MCP_BASE}/console/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ revert: true }),
+      });
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.reverted).toBe(true);
+      const after = fs.readFileSync(envFile, "utf8");
+      expect(after).toContain("MAX_CONCURRENT_PAGE_OPS=30");
+    });
+
+    it("GET /console/config exposes envFile info and change history", async () => {
+      const res = await fetch(`${MCP_BASE}/console/config`);
+      const body = await res.json();
+      expect(body.envFile).toMatchObject({ path: envFile });
+      expect(Array.isArray(body.changeHistory)).toBe(true);
+    });
+  });
+
+  describe("POST /console/vnc", () => {
+    let envDir;
+    let envFile;
+
+    beforeEach(async () => {
+      envDir = fs.mkdtempSync(path.join(os.tmpdir(), "navigator-console-vnc-"));
+      envFile = path.join(envDir, ".env");
+      fs.writeFileSync(envFile, "HEADLESS=true\nENABLE_VNC=0\n");
+      process.env.NAVIGATOR_ENV_FILE = envFile;
+      const vncMod = await import("../src/vnc-manager.js");
+      vncMod.vncManager.steps = [];
+      vncMod.vncManager.status = "stopped";
+      vncMod.vncManager.start.mockClear();
+      vncMod.vncManager.stop.mockClear();
+    });
+
+    afterEach(() => {
+      delete process.env.NAVIGATOR_ENV_FILE;
+      try { fs.rmSync(envDir, { recursive: true, force: true }); } catch {}
+    });
+
+    it("enable spawns the stack, relaunches headed and persists ENABLE_VNC=1", async () => {
+      const res = await fetch(`${MCP_BASE}/console/vnc`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "enable" }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.running).toBe(true);
+      expect(body.relaunch.headless).toBe(false);
+
+      const vncMod = await import("../src/vnc-manager.js");
+      expect(vncMod.vncManager.start).toHaveBeenCalled();
+
+      const after = fs.readFileSync(envFile, "utf8");
+      expect(after).toContain("ENABLE_VNC=1");
+      expect(after).toContain("HEADLESS=false");
+    });
+
+    it("disable stops the stack and persists ENABLE_VNC=0", async () => {
+      const res = await fetch(`${MCP_BASE}/console/vnc`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "disable" }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.running).toBe(false);
+      expect(body.relaunch.headless).toBe(true);
+
+      const vncMod = await import("../src/vnc-manager.js");
+      expect(vncMod.vncManager.stop).toHaveBeenCalled();
+
+      const after = fs.readFileSync(envFile, "utf8");
+      expect(after).toContain("ENABLE_VNC=0");
+    });
+
+    it("rejects unknown actions", async () => {
+      const res = await fetch(`${MCP_BASE}/console/vnc`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "nuke" }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.ok).toBe(false);
+    });
+  });
+
+  describe("GET /console/logs", () => {
+    it("returns a log tail with tool error entries", async () => {
+      const res = await fetch(`${MCP_BASE}/console/logs?n=5`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(Array.isArray(body.entries)).toBe(true);
     });
   });
 

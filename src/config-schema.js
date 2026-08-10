@@ -35,6 +35,7 @@ export const CONFIG_SCHEMA = [
   { key: "ENABLE_WEB_CONSOLE", category: "console", type: "boolean", fallback: true, applies: "recreate", description: "Serve the web console at /console." },
   { key: "ENABLE_HTTP_HEALTH", category: "console", type: "boolean", fallback: false, applies: "recreate", description: "Serve /health and /stats." },
   { key: "ENABLE_HTTP_MCP", category: "console", type: "boolean", fallback: false, applies: "recreate", description: "Serve the MCP endpoint at /mcp." },
+  { key: "MCP_ALLOW_UNAUTHENTICATED", category: "console", type: "boolean", fallback: true, applies: "hot", description: "Allow /mcp requests without an API key." },
   { key: "ENABLE_STDIO_MCP", category: "console", type: "boolean", fallback: true, applies: "recreate", description: "Run MCP over stdio." },
   { key: "ENABLE_DEVTOOLS_MCP", category: "console", type: "boolean", fallback: false, applies: "recreate", description: "Expose devtools browser tools via MCP." },
   { key: "MCP_API_PORT", category: "console", type: "number", fallback: 3000, applies: "recreate", description: "Port the HTTP server listens on." },

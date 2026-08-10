@@ -118,6 +118,16 @@ describe("findCloakbrowserPath", () => {
 });
 
 describe("loadConfig (parse engine behavior)", () => {
+  it("parses MCP API key settings", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("MCP_API_KEYS", "first, second,first");
+    vi.stubEnv("MCP_ALLOW_UNAUTHENTICATED", "0");
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.mcpApiKeys).toEqual(["first", "second"]);
+    expect(config.mcpAllowUnauthenticated).toBe(false);
+  });
+
   it("parses SEARCH_ROUTE_WARMUP_ENGINES correctly", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
     vi.stubEnv("SEARCH_ROUTE_WARMUP_ENGINES", "google_cb,bing_lp,invalid_engine");
@@ -223,6 +233,8 @@ describe("loadConfig (parse engine behavior)", () => {
       "MCP_API_PORT",
       "HEALTH_PORT",
       "ENABLE_HTTP_MCP",
+      "MCP_API_KEYS",
+      "MCP_ALLOW_UNAUTHENTICATED",
       "ENABLE_STDIO_MCP",
       "ENABLE_DEVTOOLS_MCP",
       "SEARCH_KEEP_MIN_WORKING_WINDOWS",
@@ -245,6 +257,8 @@ describe("loadConfig (parse engine behavior)", () => {
     expect(config.browserOpTimeoutMs).toBe(60000);
     expect(config.mcpApiPort).toBe(3000);
     expect(config.enableHttpMcp).toBe(false);
+    expect(config.mcpApiKeys).toEqual([]);
+    expect(config.mcpAllowUnauthenticated).toBe(true);
     expect(config.enableStdioMcp).toBe(true);
     expect(config.enableDevtoolsMcp).toBe(false);
     expect(config.searchKeepMinWorkingWindows).toBe(2);

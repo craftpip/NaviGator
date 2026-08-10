@@ -5,9 +5,12 @@
 ## Table of Contents
 
 - [Tool Contract](#tool-contract)
+- [Code References](#code-references)
+- [Search Engine Drivers](#search-engine-drivers)
 - [Agent Flow](#agent-flow)
 - [Configuration](#configuration)
 - [Development](#development)
+- [Navigator CLI and Stats](#navigator-cli-and-stats)
 - [Known Issues](#known-issues)
 - [Fix Patterns](#fix-patterns)
 - [Project Learnings](#project-learnings)
@@ -154,7 +157,51 @@ All tool schemas are defined in `getToolsListResponse()`:
 | `src/search.js` | `browserSearch()`, `browserOpenAndExtract()`, `browserCaptureScreenshot()` |
 | `src/browser.js` | `BrowserManager`, page lifecycle, `newPage()` |
 | `src/config.js` | `loadConfig()`, env var parsing |
+| `src/engines/` | Search engine driver registry — `index.js` (registry), `driver.js` (contract), `api-driver.js`, `browser-driver.js`, `util.js`, one file per engine. See [Search Engine Drivers](#search-engine-drivers) |
 | `src/ref-memory.js` | Shared link ref memory (`rememberLink()`, `getRememberedLinkRecord()`, `resolveRefIdToUrl()`) — used by mcp-server and devtools |
+| `navigator.js` | Host-side CLI — `statistics` / `monitoring` against the live server. See [Navigator CLI and Stats](#navigator-cli-and-stats) |
+
+---
+
+## Search Engine Drivers
+
+All search-engine transport, navigation, block detection, and SERP parsing lives in `src/engines/`. `src/search.js` is the orchestrator only — it owns query normalization, circuit breakers, fallback sequencing, cross-engine dedup, result formatting, page-slot accounting, and timing logs. Driver code owns route-specific work.
+
+**Import direction (one-way — the registry must stay dependency-free):**
+
+```
+config ------> engines
+browser -----> engines
+search ------> engines
+mcp-server --> engines
+```
+
+`src/engines/index.js` imports no `search.js` / `browser.js` / `config.js`. `config.js` imports `SUPPORTED_ENGINES` from it.
+
+**Driver contract** (`src/engines/driver.js`): instance properties `id`, `backend` (`api` | `cloakbrowser` | `chromium` | `lightpanda`), `pool` (`engine` | `shared`, browser drivers only), `exposedInMcp`, `homeUrl` (null for API drivers), `inputSelectors`, `resultSelectors`; methods `searchUrl(query)`, `search({ query })` (API only), `submit(page, query)`, `extract(page)`, `assertNotBlocked(page)` (browser drivers). Every driver returns `{ results, directAnswers }` with each item tagged `engine: this.id`.
+
+- `BrowserSearchDriver.submit()` = goto → body wait → 500ms settle → `waitForAnySelector` with before/after `assertNotBlocked`.
+- DuckDuckGo overrides `submit()` (set the form value, wait for form-submission navigation). Google and Mojeek override `assertNotBlocked()` for their block checks.
+- `ApiSearchDriver` is a convenience base for API routes — no fake `homeUrl`, never browser-warmed or pooled.
+- Driver `extract()` functions are plain functions referencing global `document`; tests run them via jsdom `eval` with `runScripts: "outside-only"`.
+
+**Registry** (`src/engines/index.js`) — load-time validation (unique ids, known backends, API routes have no pool/homeUrl, browser routes have homeUrl + valid pool). Exports:
+- `SUPPORTED_ENGINES` — ordered, frozen array of all internal ids (10).
+- `MCP_SEARCH_ENGINES` — the `exposedInMcp` subset (8).
+- `getEngineDriver(engine, config)` — instantiates a driver or throws for an unknown id.
+- `getEngineMetadata(engine)` — `{ backend, pool, homeUrl, isBrowser }`; **must NOT throw for unknown engines** (`browser.newPage()` receives arbitrary engine names).
+- `getBrowserWarmupEngines(engines)` — filters configured engine ids to browser drivers only.
+
+**Route metadata:**
+
+| backend | pool | routes |
+|---|---|---|
+| `api` | — | `duckduckgo_api` (the only API route — `brave_api` was removed 2026-08-01) |
+| `cloakbrowser` | engine | `duckduckgo_cb`, `google_cb`, `bing_cb`, `brave_cb` |
+| `chromium` | engine | `duckduckgo_ch`, `google_ch` (valid internal routes, not advertised via MCP) |
+| `lightpanda` | shared | `google_lp`, `bing_lp`, `mojeek_lp` |
+
+**Adding a route** = implement a driver in `src/engines/`, register it in `index.js`, and choose `exposedInMcp`. Do not re-add engine maps to `src/search.js` — use the registry functions so one representation cannot drift. Keep the MCP enum exactly `["select_best", ...MCP_SEARCH_ENGINES]`; never expose the Chromium-only routes. Timing logs stay in `src/search.js` (the orchestrator owns them); API drivers do not log timings.
 
 ---
 
@@ -221,6 +268,56 @@ docker compose exec navigator npm install --include=dev   # After every containe
 docker compose exec navigator npx vitest run              # Run all tests
 docker compose exec navigator npx vitest run tests/mcp-server.test.js  # Single file
 ```
+
+---
+
+## Navigator CLI and Stats
+
+### `navigator.js` (host command, run from the repo root)
+
+`./navigator.js <command>` talks to the live server over HTTP. Host-only — never run inside the container. Built as a tiny subcommand dispatcher so commands can be added later (`status`, `sessions`, `cache`, `engines`, `logs`, `restart`, …).
+
+- `statistics` (aliases `stats`, `stat`) — one-shot snapshot: engines + circuit-breaker state, browser instances (tabs/pid/spawns), search windows, page limiter, MCP sessions, cache, activity counters, request + per-engine failure rates.
+- `monitoring` (alias `mon`) — live auto-refreshing view (like `docker stats`), redraws every `--interval` seconds (default 2) until Ctrl+C.
+
+Options: `--url <base>` (resolution: flag → `NAVIGATOR_URL` env → `.env` `MCP_API_HOST`/`MCP_API_PORT` → `http://localhost:3000`), `--interval <sec>`, `--json`, `--help`. Exit 0 on success, 1 if the server is unreachable (with a "is the container running?" hint).
+
+### `GET /stats` (src/mcp-server.js)
+
+Exposes state that `/health` deliberately hides. `/health` stays the fast liveness check; `/stats` may await `pages()` per backend.
+
+```js
+{
+  ok, uptimeSeconds,
+  memory: { rss, heapUsed, heapTotal },                 // process.memoryUsage()
+  sessions,                                             // mcpTransports.size
+  cache: { total, byTool: { web_search, web_fetch } },  // toolResultCache
+  instances: [{ backend, connected, pid, tabs, spawns }], // BrowserManager.getInstanceStats()
+  counters: { searches, fetches, screenshots, botBlocks,
+              targetsCreated, targetsClosed, targetsInactivityClosed,
+              cacheHits, cacheMisses },
+  requests: { total, ok, err,
+              byPeriod: { "5m","15m","1h","24h","all" },
+              byTool, recentErrors },                   // requestLog ring buffer, REQUEST_LOG_MAX = 20000
+  engineAttempts: { total, ok, fail, skip,
+                    byEngine: { ... byPeriod }, recentFailures }
+}
+```
+
+- Cumulative counters are in-memory and reset on restart (by design).
+- `instances` come from `BrowserManager.getInstanceStats()` (`src/browser.js`) — `{connected, pid, tabCount, spawnCount}` per backend, null-safe.
+- `counters` come from `getActivityCounters()` (`src/search.js`) + `getDevtoolsCounters()` (`src/devtools.js`); `requests` from `getRequestStats()`; `engineAttempts` from `getEngineAttemptStats()`.
+- Request and engine-attempt telemetry feed `recordRequest()` (`src/mcp-server.js`) and `recordEngineAttempt()` (`src/search.js`) — also used to detect degrading engines before a circuit trips.
+
+### Tool error logging (`LOG_TOOL_ERRORS`)
+
+Default on; independent of `DEBUG` (error logs exist in production). Implementation notes:
+
+- `logToolError()` (src/mcp-server.js, exported) appends one JSON line per error to `logs/tool-errors.log` — auto-mkdir, ~5MB rotation to `.1`, `*.log` gitignored. Entry: `{ ts, level: "tool_error", tool, transport: "mcp" | "stateless", sessionId?, ms?, args, error, stack? }`.
+- Wired into BOTH error paths: the SDK `CallToolRequestSchema` handler (stdio + session HTTP) and the stateless POST `tools/call` branch (`handleStatelessMcpPost`) — the stateless path previously had no try/catch, so tool name + args were lost.
+- `redactArgs` masks keys matching `/password|passwd|token|secret|api[_-]?key|authorization|bearer|cookie/i`; `Input.insertText` `text` is logged only as `"<N chars>"` (typing a password is exactly what insertText does).
+- Console `❌` lines are untouched; devtools errors flow through the same two paths, so no `src/devtools.js` changes are needed.
+- Tail it from the web console at `/console/logs`.
 
 ---
 
@@ -741,4 +838,4 @@ For each site:
 - MCP tools return text content; a JSON formatter returns the JSON string as the text content (`JSON.stringify(payload, null, 2)`), not `structuredContent`, so all MCP clients render it.
 - Plan for JSON output: `plans/web-fetch-json.md`.
 
-**Plans convention:** New feature plans go in `plans/<topic>.md` (e.g., `generalize-web-fetch.md`, `web-fetch-json.md`, `navigator-cli.md`, `monitoring.md`, `search-engine-drivers.md`, `opensource-prep.md`).
+**Plans convention:** New feature plans go in `plans/<topic>.md` (e.g., `generalize-web-fetch.md`, `monitoring.md`, `opensource-prep.md`). When a plan is fully implemented, absorb its durable knowledge into this file (or `docs/`) and move the plan file to `plans/archive/`.

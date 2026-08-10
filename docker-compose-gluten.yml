@@ -59,7 +59,7 @@ services:
       - /tmp/screenshots:/app/screenshots
       - chrome_profile_data_gluetun:/data/chrome
 
-    network_mode: "container:gluetun-global"
+    network_mode: "container:gluetun-proton1"
 
     stdin_open: true
     tty: true

@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -15,15 +15,19 @@ import {
   ListToolsRequestSchema,
   isInitializeRequest
 } from "@modelcontextprotocol/sdk/types.js";
-import { formatBrowserBackendShort, parseBrowserBackend, DEFAULT_MAX_CHARS } from "./config.js";
+import { formatBrowserBackendShort, parseApiKeys, parseBrowserBackend, DEFAULT_MAX_CHARS } from "./config.js";
 import { getBrowserManager } from "./browser.js";
+import { CONFIG_SCHEMA } from "./config-schema.js";
+import { validateConfigValue, hotApplyConfig } from "./config-manager.js";
+import { getEnvFilePath, readEnvFile, writeEnvFile, upsertEnvText, removeEnvKeysText, backupEnvFile, revertEnvFile, recordEnvChange, getEnvChangeHistory, latestBackupPath } from "./env-file.js";
+import { vncManager } from "./vnc-manager.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats } from "./search.js";
 import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters } from "./devtools.js";
 import { transform as asciiTransform } from "./ascii.js";
 import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
 import { MCP_SEARCH_ENGINES, SUPPORTED_ENGINES, getEngineMetadata } from "./engines/index.js";
-import { CONFIG_SCHEMA } from "./config-schema.js";
+import { isAuthorizedMcpRequest } from "./mcp-api-auth.js";
 
 const require = createRequire(import.meta.url);
 const PACKAGE_JSON = require("../package.json");
@@ -33,11 +37,33 @@ const WEB_CONSOLE_HTML_PATH = path.join(
   "web-console",
   "index.html"
 );
+const API_CONSOLE_HTML_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "web-console",
+  "api.html"
+);
+const KEYS_CONSOLE_HTML_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "web-console",
+  "keys.html"
+);
 let webConsoleHtml = null;
+let apiConsoleHtml = null;
+let keysConsoleHtml = null;
 try {
   webConsoleHtml = readFileSync(WEB_CONSOLE_HTML_PATH, "utf8");
 } catch (error) {
   console.error(`⚠️  Web console page not found at ${WEB_CONSOLE_HTML_PATH}: ${String(error?.message || error)}`);
+}
+try {
+  apiConsoleHtml = readFileSync(API_CONSOLE_HTML_PATH, "utf8");
+} catch (error) {
+  console.error(`⚠️  API console page not found at ${API_CONSOLE_HTML_PATH}: ${String(error?.message || error)}`);
+}
+try {
+  keysConsoleHtml = readFileSync(KEYS_CONSOLE_HTML_PATH, "utf8");
+} catch (error) {
+  console.error(`⚠️  API keys console page not found at ${KEYS_CONSOLE_HTML_PATH}: ${String(error?.message || error)}`);
 }
 
 const CONSOLE_ENGINE_REGISTRY = SUPPORTED_ENGINES.map((id) => {
@@ -279,8 +305,8 @@ function sendJson(res, status, payload, extraHeaders) {
 
 function setCorsHeaders(res) {
   res.setHeader("access-control-allow-origin", "*");
-  res.setHeader("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
-  res.setHeader("access-control-allow-headers", "content-type, accept, mcp-session-id");
+  res.setHeader("access-control-allow-methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("access-control-allow-headers", "content-type, accept, authorization, x-api-key, mcp-session-id");
   res.setHeader("access-control-expose-headers", "mcp-session-id");
 }
 
@@ -323,6 +349,280 @@ async function isVncRunning(novncPort = 7900) {
   vncRunningCache.at = now;
   vncRunningCache.running = await probePort(novncPort);
   return vncRunningCache.running;
+}
+
+const envFileState = { mtimeMs: null, size: null, changed: false };
+async function checkEnvFileChanged(filePath) {
+  try {
+    const stat = await fs.stat(filePath);
+    if (envFileState.mtimeMs !== null && (stat.mtimeMs !== envFileState.mtimeMs || stat.size !== envFileState.size)) {
+      envFileState.changed = true;
+    }
+    envFileState.mtimeMs = stat.mtimeMs;
+    envFileState.size = stat.size;
+  } catch {
+    // env file missing — not an error
+  }
+  return envFileState.changed;
+}
+
+async function getConsoleConfigPayload(manager) {
+  const envPath = getEnvFilePath();
+  const backupPath = await latestBackupPath(envPath);
+  return {
+    config: manager.config,
+    env: getConfigEnvSubset(),
+    envFile: { path: envPath, changedOnDisk: envFileState.changed, backup: backupPath },
+    engines: CONSOLE_ENGINE_REGISTRY,
+    mcpEngines: MCP_SEARCH_ENGINES,
+    package: { name: PACKAGE_JSON.name, version: PACKAGE_JSON.version },
+    schema: CONFIG_SCHEMA,
+    envPath,
+    changeHistory: getEnvChangeHistory()
+  };
+}
+
+function maskApiKey(key) {
+  if (key.length <= 8) return "********";
+  return `${key.slice(0, 4)}...${key.slice(-4)}`;
+}
+
+async function getConsoleApiKeysPayload(manager) {
+  const envPath = getEnvFilePath();
+  await checkEnvFileChanged(envPath);
+  return {
+    ok: true,
+    allowUnauthenticated: manager.config.mcpAllowUnauthenticated,
+    keys: manager.config.mcpApiKeys.map((key, index) => ({ id: index, preview: maskApiKey(key) })),
+    envPath
+  };
+}
+
+async function persistMcpApiAuth(manager, { keys = manager.config.mcpApiKeys, allowUnauthenticated = manager.config.mcpAllowUnauthenticated }) {
+  const envPath = getEnvFilePath();
+  const normalizedKeys = parseApiKeys(keys.join(","));
+  const envText = await readEnvFile(envPath);
+  const updated = upsertEnvText(envText, {
+    MCP_API_KEYS: normalizedKeys.join(","),
+    MCP_ALLOW_UNAUTHENTICATED: allowUnauthenticated ? "1" : "0"
+  });
+  const backup = await backupEnvFile(envPath);
+  await writeEnvFile(envPath, updated.text);
+  manager.config.mcpApiKeys = normalizedKeys;
+  manager.config.mcpAllowUnauthenticated = Boolean(allowUnauthenticated);
+  await checkEnvFileChanged(envPath);
+  envFileState.changed = false;
+  recordEnvChange({ action: "update_mcp_api_auth", keys: ["MCP_API_KEYS", "MCP_ALLOW_UNAUTHENTICATED"] });
+  return { backup, keys: normalizedKeys };
+}
+
+async function handleConsoleApiKeys(manager, body) {
+  const action = body?.action;
+  if (action === "create") {
+    const key = `nvg_${randomBytes(32).toString("base64url")}`;
+    await persistMcpApiAuth(manager, { keys: [...manager.config.mcpApiKeys, key] });
+    return { ok: true, key, ...await getConsoleApiKeysPayload(manager) };
+  }
+
+  if (action === "revoke") {
+    const index = Number(body?.id);
+    if (!Number.isInteger(index) || index < 0 || index >= manager.config.mcpApiKeys.length) {
+      return { ok: false, error: "Unknown API key" };
+    }
+    const keys = manager.config.mcpApiKeys.filter((_, keyIndex) => keyIndex !== index);
+    await persistMcpApiAuth(manager, { keys });
+    return getConsoleApiKeysPayload(manager);
+  }
+
+  if (action === "set_allow_unauthenticated") {
+    if (typeof body?.allowUnauthenticated !== "boolean") {
+      return { ok: false, error: "allowUnauthenticated must be a boolean" };
+    }
+    await persistMcpApiAuth(manager, { allowUnauthenticated: body.allowUnauthenticated });
+    return getConsoleApiKeysPayload(manager);
+  }
+
+  return { ok: false, error: "Unknown API key action" };
+}
+
+function sendMcpUnauthorized(res) {
+  res.setHeader("www-authenticate", 'Bearer realm="navigator-mcp"');
+  sendJson(res, 401, {
+    jsonrpc: "2.0",
+    error: { code: -32001, message: "Unauthorized: provide a valid Bearer token or X-API-Key." },
+    id: null
+  });
+}
+
+async function applyConfigUpdates(manager, body) {
+  const updates = body?.updates && typeof body.updates === "object" ? body.updates : null;
+  const resets = Array.isArray(body?.reset) ? body.reset.map((key) => String(key).toUpperCase()) : [];
+  const revert = body?.revert === true;
+  const envPath = getEnvFilePath();
+  const payload = { ok: true, hotApplied: [], restartRequired: [], invalid: [], unchanged: [], envWritten: false, backup: null, reverted: false };
+
+  if (revert) {
+    const backupPath = await revertEnvFile(envPath);
+    if (!backupPath) {
+      payload.ok = false;
+      payload.error = "No backup available to revert to";
+      return payload;
+    }
+    payload.reverted = true;
+    payload.backup = backupPath;
+    recordEnvChange({ action: "revert", backup: backupPath });
+    await checkEnvFileChanged(envPath);
+    envFileState.changed = false;
+    return payload;
+  }
+
+  const changedKeys = new Set();
+  let envText = await readEnvFile(envPath);
+
+  const validated = [];
+  if (updates) {
+    for (const [rawKey, rawValue] of Object.entries(updates)) {
+      const key = String(rawKey).toUpperCase();
+      const entry = CONFIG_SCHEMA.find((item) => item.key === key);
+      if (!entry) {
+        payload.invalid.push({ key, error: "unknown variable" });
+        continue;
+      }
+      const parsed = validateConfigValue(entry, rawValue);
+      if (!parsed.valid) {
+        payload.invalid.push({ key, error: `invalid value for ${entry.type}` });
+        continue;
+      }
+      validated.push({ key, entry, parsed });
+    }
+  }
+
+  if (payload.invalid.length) {
+    return { ok: false, error: `${payload.invalid.length} invalid value(s)`, invalid: payload.invalid };
+  }
+
+  for (const { key, entry, parsed } of validated) {
+    if (entry.applies === "hot") {
+      const applied = hotApplyConfig(manager.config, key, parsed.value);
+      if (applied) {
+        payload.hotApplied.push(key);
+        changedKeys.add(key);
+      } else {
+        payload.restartRequired.push(key);
+      }
+    } else {
+      payload.restartRequired.push(key);
+      changedKeys.add(key);
+    }
+  }
+
+  if (resets.length) {
+    const { text: afterReset, removed } = removeEnvKeysText(envText, resets);
+    if (removed.length) {
+      envText = afterReset;
+      for (const key of removed) {
+        changedKeys.add(key);
+        const entry = CONFIG_SCHEMA.find((item) => item.key === key);
+        if (entry && entry.applies === "hot") {
+          hotApplyConfig(manager.config, key, entry.fallback);
+          payload.hotApplied.push(`${key}→default`);
+        } else {
+          payload.restartRequired.push(`${key}→default`);
+        }
+      }
+    }
+  }
+
+  if (changedKeys.size) {
+    if (updates) {
+      const updated = upsertEnvText(envText, Object.fromEntries(
+        Object.entries(updates).map(([rawKey, rawValue]) => [String(rawKey).toUpperCase(), String(rawValue)])
+      ));
+      envText = updated.text;
+      payload.unchanged = updated.unchanged;
+    }
+    const backup = await backupEnvFile(envPath);
+    if (backup) payload.backup = backup;
+    await writeEnvFile(envPath, envText);
+    payload.envWritten = true;
+    await checkEnvFileChanged(envPath);
+    envFileState.changed = false;
+    recordEnvChange({
+      action: "update",
+      keys: [...changedKeys],
+      hotApplied: payload.hotApplied.slice(),
+      restartRequired: payload.restartRequired.slice()
+    });
+  }
+
+  return payload;
+}
+
+async function handleConsoleVnc(manager, body) {
+  const action = body?.action;
+  if (action !== "enable" && action !== "disable") {
+    return { ok: false, error: "action must be 'enable' or 'disable'" };
+  }
+  const envPath = getEnvFilePath();
+
+  if (action === "enable") {
+    process.env.DISPLAY = vncManager.display;
+    const start = await vncManager.start();
+    if (!start.ok) {
+      return { ok: false, error: start.error, steps: vncManager.steps };
+    }
+    const relaunch = await manager.relaunchDefaultBackend(false);
+    manager.config.vncEnabled = true;
+    let envText = await readEnvFile(envPath);
+    envText = upsertEnvText(envText, { ENABLE_VNC: "1", HEADLESS: "false" }).text;
+    const backup = await backupEnvFile(envPath);
+    await writeEnvFile(envPath, envText);
+    vncRunningCache.at = 0;
+    await checkEnvFileChanged(envPath);
+    envFileState.changed = false;
+    return { ok: true, action, steps: vncManager.steps, relaunch, running: true, headed: !manager.config.headless, backup };
+  }
+
+  if (action === "disable") {
+    await vncManager.stop();
+    delete process.env.DISPLAY;
+    const relaunch = await manager.relaunchDefaultBackend(true);
+    manager.config.vncEnabled = false;
+    let envText = await readEnvFile(envPath);
+    const { text, removed } = removeEnvKeysText(envText, ["ENABLE_VNC"]);
+    envText = text;
+    if (removed.includes("ENABLE_VNC")) {
+      envText = upsertEnvText(envText, { ENABLE_VNC: "0" }).text;
+    }
+    const backup = await backupEnvFile(envPath);
+    await writeEnvFile(envPath, envText);
+    vncRunningCache.at = 0;
+    await checkEnvFileChanged(envPath);
+    envFileState.changed = false;
+    return { ok: true, action, steps: vncManager.steps, relaunch, running: false, headed: !manager.config.headless, backup };
+  }
+
+  return { ok: false, error: "unreachable" };
+}
+
+async function handleConsoleLogs(manager, url) {
+  const rawN = parseInt(url.searchParams.get("n") || "50", 10);
+  const n = Math.max(1, Math.min(200, Number.isFinite(rawN) && rawN > 0 ? rawN : 50));
+  const logPath = TOOL_ERROR_LOG_PATH;
+  let lines = [];
+  try {
+    const text = await fs.readFile(logPath, "utf8");
+    lines = text.trim().split("\n").filter(Boolean).map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return { ts: "", level: "tool_error", tool: "?", error: line };
+      }
+    });
+  } catch {
+    // no log file yet
+  }
+  return { ok: true, n, entries: lines.slice(-n).reverse() };
 }
 
 const LOG_MAP = {
@@ -1938,10 +2238,10 @@ async function maybeStartHttpServer(managerOverride) {
       const method = req.method || "GET";
       const url = new URL(req.url || "/", "http://localhost");
 
-      if (manager.config.enableHttpMcp && url.pathname === "/mcp") {
-        setCorsHeaders(res);
+        if (manager.config.enableHttpMcp && url.pathname === "/mcp") {
+          setCorsHeaders(res);
 
-        if (method === "OPTIONS") {
+          if (method === "OPTIONS") {
           res.writeHead(204);
           res.end();
           return;
@@ -2023,6 +2323,11 @@ async function maybeStartHttpServer(managerOverride) {
             return;
           }
 
+          if (!isAuthorizedMcpRequest(req.headers, manager.config)) {
+            sendMcpUnauthorized(res);
+            return;
+          }
+
           // Route non-initialize requests to the existing session transport.
           // Use exact-match lookup only — never fall back to a different session.
           {
@@ -2078,7 +2383,8 @@ async function maybeStartHttpServer(managerOverride) {
         return;
       }
 
-      if (method !== "GET") {
+      if (method !== "GET" &&
+           !(url.pathname.startsWith("/console/") || url.pathname === "/console" || url.pathname === "/ui" || url.pathname === "/dashboard")) {
         sendJson(res, 405, { ok: false, error: "Method not allowed" });
         return;
       }
@@ -2091,7 +2397,10 @@ async function maybeStartHttpServer(managerOverride) {
             running: await isVncRunning(manager.config.novncPort),
             enabled: manager.config.vncEnabled,
             headed: !manager.config.headless,
-            novncPort: manager.config.novncPort
+            novncPort: manager.config.novncPort,
+            status: vncManager.status,
+            steps: vncManager.steps.slice(),
+            lastError: vncManager.lastError
           }
         };
         logEvent("http.request", { method, path: url.pathname });
@@ -2148,20 +2457,116 @@ async function maybeStartHttpServer(managerOverride) {
         return;
       }
 
+      if (url.pathname === "/console/api") {
+        if (!manager.config.enableWebConsole || apiConsoleHtml === null) {
+          sendJson(res, 404, { ok: false, error: "API console not available" });
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store"
+        });
+        res.end(apiConsoleHtml);
+        return;
+      }
+
+      if (url.pathname === "/console/keys") {
+        if (!manager.config.enableWebConsole || keysConsoleHtml === null) {
+          sendJson(res, 404, { ok: false, error: "API keys console not available" });
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store"
+        });
+        res.end(keysConsoleHtml);
+        return;
+      }
+
+      if (url.pathname === "/console/api-keys") {
+        if (!manager.config.enableWebConsole) {
+          sendJson(res, 404, { ok: false, error: "Web console not available" });
+          return;
+        }
+        if (method === "GET") {
+          sendJson(res, 200, await getConsoleApiKeysPayload(manager));
+          return;
+        }
+        if (method === "POST") {
+          try {
+            const result = await handleConsoleApiKeys(manager, await readJsonBody(req));
+            sendJson(res, result.ok ? 200 : 400, result);
+          } catch (error) {
+            sendJson(res, 400, { ok: false, error: String(error?.message || error) });
+          }
+          return;
+        }
+        sendJson(res, 405, { ok: false, error: "Method not allowed" });
+        return;
+      }
+
       if (url.pathname === "/console/config") {
         if (!manager.config.enableWebConsole) {
           sendJson(res, 404, { ok: false, error: "Web console not available" });
           return;
         }
-        const payload = {
-          config: manager.config,
-          env: getConfigEnvSubset(),
-          engines: CONSOLE_ENGINE_REGISTRY,
-          mcpEngines: MCP_SEARCH_ENGINES,
-          package: { name: PACKAGE_JSON.name, version: PACKAGE_JSON.version },
-          schema: CONFIG_SCHEMA,
-          envPath: path.join(process.cwd(), ".env")
-        };
+        if (method === "GET") {
+          const envPath = getEnvFilePath();
+          await checkEnvFileChanged(envPath);
+          const payload = await getConsoleConfigPayload(manager);
+          logEvent("http.request", { method, path: url.pathname });
+          sendJson(res, 200, payload);
+          return;
+        }
+        if (method === "PUT" || method === "POST") {
+          try {
+            const body = await readJsonBody(req);
+            const result = await applyConfigUpdates(manager, body);
+            if (!result.ok) {
+              sendJson(res, 400, result);
+              return;
+            }
+            logEvent("http.request", { method, path: url.pathname, updates: body?.updates });
+            sendJson(res, 200, result);
+          } catch (error) {
+            sendJson(res, 400, { ok: false, error: String(error?.message || error) });
+          }
+          return;
+        }
+        sendJson(res, 405, { ok: false, error: "Method not allowed" });
+        return;
+      }
+
+      if (url.pathname === "/console/vnc") {
+        if (!manager.config.enableWebConsole) {
+          sendJson(res, 404, { ok: false, error: "Web console not available" });
+          return;
+        }
+        if (method === "POST") {
+          try {
+            const body = await readJsonBody(req);
+            const result = await handleConsoleVnc(manager, body);
+            if (!result.ok) {
+              sendJson(res, 400, result);
+              return;
+            }
+            logEvent("http.request", { method, path: url.pathname, action: body?.action });
+            sendJson(res, 200, result);
+          } catch (error) {
+            sendJson(res, 500, { ok: false, error: String(error?.message || error) });
+          }
+          return;
+        }
+        sendJson(res, 405, { ok: false, error: "Method not allowed" });
+        return;
+      }
+
+      if (url.pathname === "/console/logs") {
+        if (!manager.config.enableWebConsole) {
+          sendJson(res, 404, { ok: false, error: "Web console not available" });
+          return;
+        }
+        const payload = await handleConsoleLogs(manager, url);
         logEvent("http.request", { method, path: url.pathname });
         sendJson(res, 200, payload);
         return;

@@ -399,6 +399,8 @@ Quick idea of the flow:
 The most important environment variables are:
 
 - `ENABLE_HTTP_MCP`: enable HTTP MCP on `/mcp`
+- `MCP_API_KEYS`: comma-separated API keys accepted by HTTP MCP
+- `MCP_ALLOW_UNAUTHENTICATED`: set to `0` to require an API key on `/mcp`; default `1` keeps local deployments open
 - `ENABLE_STDIO_MCP`: enable stdio transport
 - `ENABLE_DEVTOOLS_MCP`: enable the optional browser-testing tool set
 - `MCP_API_PORT`: HTTP server port, default `3000`
@@ -414,6 +416,10 @@ The most important environment variables are:
 - `ENABLE_VNC`: enable VNC and noVNC in Docker
 
 See `.env.example` for the full list (the pre-cleanup reference copy is kept at `.env.example.full`).
+
+Create and revoke keys at `/console/keys`. MCP clients can send either
+`Authorization: Bearer <key>` or `X-API-Key: <key>`. Keep the console behind a
+trusted network or reverse-proxy access control; MCP API keys do not protect it.
 
 ## Docker Notes
 

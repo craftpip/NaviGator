@@ -1,5 +1,42 @@
 # Web Console (Navigator self-console)
 
+## Plan Status
+
+**Status: IN PROGRESS** — verified 2026-08-10. Phase 1 committed (`e61551e feat: web console Phase 1 — config schema, /console endpoints, console page`). Phases 2–5 are substantially built but UNCOMMITTED (working tree has new `src/config-manager.js`, `src/env-file.js`, `src/vnc-manager.js`, `tests/env-file.test.js` + modifications to `src/browser.js`, `src/config.js`, `src/mcp-server.js`, `tests/mcp-server.test.js`). Sparklines and live verification/tests are not complete.
+
+### Checklist
+
+**Phase 1 — data + page skeleton**
+- [x] `config.js` vnc/config fields (`enableWebConsole`, `vncEnabled`, `vncPort`, `novncPort`).
+- [x] `src/config-schema.js` (drives MANAGE view).
+- [x] `GET /console/config` + `/health.vnc`; console page served at `/console` (also `/ui`, `/dashboard`).
+- [x] Console page: RADAR theme, DRIVERS/ENGINES/RUNTIME/STATS/ALERTS/CONFIG regions, STATUS | MANAGE modes.
+
+**Phase 2 — diagnostics + real-time polish**
+- [x] Diagnostics rules engine (banner + per-region flags).
+- [ ] Rolling 60-sample canvas sparklines (memory, windows, slots, request rate, engine 5m) — not present in `index.html`.
+- [ ] Delta-flash on change, pause-on-hidden-tab, stale indicator.
+
+**Phase 3 — config manager (write path)**
+- [x] `PUT /console/config` + `applyConfigUpdates` (`src/config-manager.js`): validation, hot-apply, restart-required badges.
+- [x] Comment-preserving `.env` writer + `.env.backup-<ts>` (`src/env-file.js`), change history, revert.
+- [x] MANAGE view in page (edit fields, save, reset).
+
+**Phase 4 — VNC manager (runtime, no restart)**
+- [x] `src/vnc-manager.js` (spawn/kill Xvfb + fluxbox + x11vnc + websockify, idempotent `:99`).
+- [x] `POST /console/vnc` (enable/disable composite toggle, relaunch backend headed, persist `ENABLE_VNC`/`HEADLESS` to `.env`).
+- [x] compose publishes `NOVNC_PORT` + `ENABLE_VNC`/`ENABLE_WEB_CONSOLE` defaults.
+
+**Phase 5 (optional)**
+- [x] `GET /console/logs` — tail of `logs/tool-errors.log` into ALERTS.
+- [ ] Per-engine window drill-down.
+
+**Remaining before "done"**
+- [ ] Commit Phases 2–4 (currently uncommitted: config-manager, env-file, vnc-manager, browser/config/mcp-server changes, tests).
+- [ ] Sparklines + Phase-2 polish.
+- [ ] Run `npx vitest run tests/mcp-server.test.js` + `npm run test:mcporter` green.
+- [ ] Live verification: `/console`, `/console/config`, PUT config (hot vs restart-required), VNC enable/disable round-trip, counters/sparklines moving.
+
 ## Goal
 
 Give the navigator server its own **live management console** — a browser page
@@ -23,7 +60,7 @@ whole composite at runtime (spawn the X display stack, relaunch the browser
 headed, open the noVNC link) and back again — no container restart, no manual
 env flag juggling.
 
-Status: planned.
+Status: in progress — Phase 1 committed, Phases 2–5 built but uncommitted (see Plan Status above).
 
 ## Design (decided)
 

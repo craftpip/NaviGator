@@ -1,5 +1,22 @@
 # LLM-Managed Domain Hints Plan
 
+## Plan Status
+
+**Status: NOT STARTED** — verified 2026-08-10. No request-scoped `domainHint` in `web_fetch` (schema at `src/mcp-server.js` still has only `url`/`urls`/`ref_id`/`ref_ids`/`maxChars`/`bypassCache`), no `domain_hints` MCP tool, no `ENABLE_DOMAIN_HINT_MANAGEMENT` / `ENABLE_DYNAMIC_HINT_WORKFLOWS` config, no `ManagedDomainHintStore`.
+
+### Checklist
+
+- [ ] 1. Canonical schema + resolver in `src/domain-hints.js`: `validateHintRule`, `validateSelector`, `resolveDomainHint`, `mergeDomainHints`.
+- [ ] 2. Request-scoped `domainHint` param on `web_fetch`: schema, single-target-only enforcement, merge/replace modes, normalized hint in cache key.
+- [ ] 3. `domain_hints` MCP tool behind `ENABLE_DOMAIN_HINT_MANAGEMENT=1`: `list` / `get` / `validate` / `upsert` / `disable` / `remove`, `additionalProperties: false`, mutation rejected when disabled.
+- [ ] 4. `ManagedDomainHintStore` (`src/domain-hints.js`) + `DOMAIN_HINTS_MANAGED_PATH` (default `/data/navigator/domain-hints.managed.json`) with atomic writes, 0600 mode, write queue, revision counter.
+- [ ] 5. Precedence: request-replace → request-merge → managed → static → none; managed overrides static without touching `domain-hints.json`.
+- [ ] 6. Cache correctness: managed revision in web-fetch cache key (or cache clear on mutation); request hints never bump the managed revision.
+- [ ] 7. Docker Compose named volume at `/data/navigator` for the managed store.
+- [ ] 8. Tests: schema/resolver, managed-store, integration (request hint scoping, cache invalidation, tool absence when disabled, telemetry redaction).
+- [ ] 9. Documentation: `AGENTS.md` + tool contract (format, semantics, default-deny, no auto-save).
+- [ ] 10. Dynamic workflows (stage 5) — only after `plans/domain-hint-workflows.md` lands, gated by `ENABLE_DYNAMIC_HINT_WORKFLOWS=1`.
+
 ## Goal
 
 Let an LLM use domain-hint rules dynamically while calling `web_fetch`, then optionally save validated rules for future requests without editing the repository's `domain-hints.json`.

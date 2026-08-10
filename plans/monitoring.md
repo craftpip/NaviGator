@@ -1,5 +1,16 @@
 # Performance Monitoring Plan
 
+## Plan Status
+
+**Status: NOT STARTED** — verified 2026-08-10. No `/metrics` endpoint, no `prom-client`, no `src/metrics.js`, no `src/logger.js`, no structured event logging, no Grafana/Prometheus compose services. Note: the navigator-cli work (completed and absorbed into `AGENTS.md` → [Navigator CLI and Stats](../../AGENTS.md#navigator-cli-and-stats); plan archived at `plans/archive/navigator-cli.md`) already added `GET /stats` with uptime/memory/sessions/cache/instances/counters plus request + per-engine failure telemetry, which overlaps with the Phase-1 data surface but is not Prometheus-formatted or scrapeable.
+
+### Checklist
+
+- [ ] 1. Phase 1 — `/metrics` endpoint: add `prom-client`, create `src/metrics.js`, instrument `BrowserManager.getMetrics()`, MCP handlers, HTTP handlers, periodic 10s collection.
+- [ ] 2. Phase 2 — structured event logging: `src/logger.js`, JSON event taxonomy (browser connect/disconnect, window open/close, tool call, http request, circuit open, process memory/hang/startup).
+- [ ] 3. Phase 3 — Grafana dashboard: `prometheus` + `grafana` services, `docker/prometheus.yml`, dashboard rows (overview, browser health, operations, circuits, anomalies). (Lightweight alternative: cron snapshots of `/metrics`.)
+- [ ] 4. Phase 4 — anomaly detection (optional): threshold warnings (slots >25, event-loop lag >500ms, RSS >3GB, circuit failures) + hang-restart liveness.
+
 ## Goal
 
 Passively track what happens inside the container so that when load spikes or hangs occur, we can answer:

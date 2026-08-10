@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Navigator web console — theme: RADAR (deep navy, radar-green/cyan/amber/red) -->
+<!-- Navigator web console — theme: RADAR, live operational overview and configuration. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -89,7 +89,7 @@
 
   .panel {
     background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
-    padding: 8px 10px; min-height: 120px;
+    padding: 8px 10px;
   }
   .panel h2 {
     font-size: 10px; letter-spacing: 1.5px; color: var(--cyan);
@@ -157,12 +157,21 @@
   /* ---------- MANAGE mode ---------- */
   #manage-view { display: none; }
   #manage-view.show { display: block; }
-  #manage-view table { width: 100%; border-collapse: collapse; }
+  #manage-view .panel { overflow-x: auto; }
+  #manage-view table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   #manage-view th {
     font-size: 9px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase;
     text-align: left; padding: 4px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel);
   }
+  #manage-view td, #manage-view th { overflow-wrap: anywhere; word-break: break-word; }
   #manage-view td { padding: 4px; border-bottom: 1px dashed var(--border-dim); vertical-align: top; }
+  #manage-table th:nth-child(1), #manage-table td:nth-child(1) { width: 14%; }
+  #manage-table th:nth-child(2), #manage-table td:nth-child(2) { width: 11%; }
+  #manage-table th:nth-child(3), #manage-table td:nth-child(3) { width: 17%; }
+  #manage-table th:nth-child(4), #manage-table td:nth-child(4) { width: 14%; }
+  #manage-table th:nth-child(5), #manage-table td:nth-child(5) { width: 9%; }
+  #manage-table th:nth-child(6), #manage-table td:nth-child(6) { width: 29%; }
+  #manage-table th:nth-child(7), #manage-table td:nth-child(7) { width: 6%; }
   #manage-view tr.section td { color: var(--cyan); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; font-size: 10px; padding-top: 10px; border-bottom: 1px solid var(--border); }
   .val-default { color: var(--muted); }
   .val-env { color: var(--amber); }
@@ -177,6 +186,171 @@
   #status-line.degraded .s { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
   #status-line.critical .s { background: var(--red); box-shadow: 0 0 5px var(--red); }
   #status-line.off .s { background: var(--muted); }
+
+  /* ---------- overview ---------- */
+  body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+  .logo, .live, .hdr-item, .btn, .mode-switch button, .panel h2, .pill, .badge, .section-kicker, .metric-label, .tab-url { font-family: var(--mono); }
+  #app { max-width: 1440px; padding: 18px; }
+  header { padding: 12px 14px; gap: 16px; border-radius: 8px; margin-bottom: 14px; }
+  .logo { font-size: 14px; }
+  .btn, .mode-switch { border-radius: 5px; }
+  .btn { padding: 7px 10px; }
+  .overview { display: grid; grid-template-columns: minmax(260px, 1.45fr) minmax(380px, 2fr); gap: 12px; margin-bottom: 12px; }
+  .welcome { padding: 20px; min-height: 158px; display: flex; flex-direction: column; justify-content: space-between; }
+  .section-kicker { color: var(--cyan); font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+  .welcome h1 { margin: 7px 0; color: #f1f5f9; font-size: 24px; line-height: 1.15; letter-spacing: -0.6px; }
+  .welcome p { color: var(--muted); max-width: 520px; line-height: 1.5; }
+  .health-line { display: flex; align-items: center; gap: 8px; color: var(--green); font-weight: 700; }
+  .health-line.degraded { color: var(--amber); }
+  .health-line.critical { color: var(--red); }
+  .health-ring { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 9px currentColor; }
+  .metrics { display: grid; grid-template-columns: repeat(5, minmax(95px, 1fr)); gap: 8px; }
+  .metric { padding: 18px 14px; border: 1px solid var(--border); background: var(--panel); border-radius: 8px; min-height: 158px; display: flex; flex-direction: column; justify-content: space-between; }
+  .metric-value { color: #f8fafc; font-family: var(--mono); font-size: 27px; font-weight: 700; letter-spacing: -1px; }
+  .metric-label { color: var(--muted); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; line-height: 1.4; }
+  .metric-note { color: var(--cyan); font-size: 11px; }
+  .content-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .panel { border-radius: 8px; padding: 16px; }
+  .panel h2 { display: flex; justify-content: space-between; align-items: center; color: #dbeafe; font-size: 11px; margin-bottom: 14px; }
+  .panel h2 .sub { font-size: 10px; }
+  .panel-wide { grid-column: span 2; }
+  .list { display: grid; gap: 7px; }
+  .item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; background: var(--panel-2); border: 1px solid var(--border-dim); border-radius: 5px; }
+  .item-main { min-width: 0; flex: 1; }
+  .item-title { color: #e2e8f0; font-weight: 600; }
+  .item-detail { color: var(--muted); font-family: var(--mono); font-size: 11px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.off { background: var(--muted); box-shadow: none; }
+  .status-dot.warn { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .status-dot.err { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .engine-summary { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; margin: -4px 0 12px; }
+  .engine-summary b { color: var(--text); }
+  .engine-grid { display: grid; gap: 7px; }
+  .engine { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--border-dim); border-radius: 5px; background: var(--panel-2); }
+  .engine-row { align-items: flex-start; }
+  .engine-main { min-width: 0; flex: 1; }
+  .engine-stats { color: var(--muted); font: 10px/1.45 var(--mono); text-align: right; }
+  .engine-stats b { color: var(--text); }
+  .engine-insight { margin: 0 0 10px; padding: 8px 10px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--border-dim); border-radius: 5px; font-size: 11px; }
+  .engine-insight b { color: var(--text); }
+  @media (max-width: 720px) { .engine-row { flex-wrap: wrap; } .engine-stats { width: 100%; margin-left: 18px; text-align: left; } }
+  .engine-name { color: var(--text); font-family: var(--mono); font-size: 11px; font-weight: 700; }
+  .engine-meta { color: var(--muted); font-family: var(--mono); font-size: 10px; margin-top: 2px; }
+  .attention { display: none; min-width: 0; max-width: 100%; margin-bottom: 12px; padding: 12px 14px; border-radius: 8px; border: 1px solid #704317; background: #24190d; overflow: hidden; }
+  .attention.show { display: block; }
+  .attention strong { color: #fcd34d; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+  .attention-list { color: #fde68a; min-width: 0; margin-top: 6px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
+  .attention.critical { border-color: #7f1d1d; background: #260e12; }
+  .attention.critical strong, .attention.critical .attention-list { color: #fecaca; }
+  .empty { padding: 16px; color: var(--muted); text-align: center; border: 1px dashed var(--border); border-radius: 5px; }
+  .trend { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: var(--muted); font-size: 11px; }
+  .trend svg { flex: 1; height: 28px; min-width: 80px; }
+  .logs { max-height: 260px; overflow: auto; }
+  .log-entry { padding: 8px 0; border-bottom: 1px dashed var(--border-dim); }
+  .log-entry:last-child { border-bottom: 0; }
+  .log-entry b { color: var(--amber); }
+  .log-entry span { color: var(--muted); font-family: var(--mono); font-size: 10px; }
+  .manage-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .manage-message { color: var(--muted); margin-left: auto; }
+  .manage-message.ok { color: var(--green); }
+  .manage-message.err { color: var(--red); }
+  .config-input { width: 100%; min-width: 100px; background: var(--bg-deep); border: 1px solid var(--border); color: var(--text); border-radius: 3px; padding: 5px 6px; font: inherit; font-size: 11px; }
+  .config-input.changed { border-color: var(--amber); box-shadow: 0 0 0 1px rgba(245, 166, 35, .18); }
+  .table-action { white-space: nowrap; }
+  .btn.small { padding: 4px 7px; font-size: 9px; }
+  #vnc-wrap { margin-top: 12px; }
+  #vnc-bar { border-radius: 8px; }
+  @media (max-width: 1050px) { .overview { grid-template-columns: 1fr; } .metrics { grid-template-columns: repeat(5, 1fr); } }
+  @media (max-width: 720px) { #app { padding: 10px; } header { align-items: flex-start; } .spacer { display: none; } .metrics { grid-template-columns: repeat(2, 1fr); } .metric { min-height: 105px; } .content-grid { grid-template-columns: 1fr; } .panel-wide { grid-column: auto; } .welcome h1 { font-size: 21px; } .hdr-item { display: none; } }
+
+  /* ---------- neutral console theme ---------- */
+  :root {
+    --bg: #f3f4f6;
+    --bg-deep: #f8f9fa;
+    --panel: #ffffff;
+    --panel-2: #f8f9fa;
+    --border: #d6d9de;
+    --border-dim: #e7e9ec;
+    --cyan: #2563eb;
+    --cyan-dim: #bfdbfe;
+    --green: #166534;
+    --green-dim: #dcfce7;
+    --amber: #92400e;
+    --red: #b91c1c;
+    --text: #202124;
+    --muted: #68707c;
+    --dim: #9aa1ab;
+  }
+  body { background: var(--bg); color: var(--text); background-image: none; }
+  #app { max-width: 1500px; padding: 16px; }
+  header { background: var(--panel); border-color: var(--border); border-radius: 5px; padding: 10px 12px; margin-bottom: 10px; }
+  .logo { color: var(--text); }
+  .logo span { color: var(--muted); }
+  .live { color: var(--green); }
+  .live .dot { background: var(--green); box-shadow: none; }
+  .btn { background: var(--panel); color: var(--cyan); border-color: var(--border); border-radius: 4px; }
+  .btn:hover:not(:disabled) { background: #eff6ff; color: #1d4ed8; }
+  .mode-switch { border-color: var(--border); }
+  .mode-switch button { background: var(--panel); color: var(--muted); }
+  .mode-switch button.active { background: #eff6ff; color: #1d4ed8; }
+  .overview, .content-grid { gap: 10px; margin-bottom: 10px; }
+  .panel, .metric { min-width: 0; background: var(--panel); border-color: var(--border); border-radius: 5px; overflow-wrap: anywhere; }
+  .panel { padding: 14px; }
+  .panel h2 { color: var(--text); }
+  .panel h2 .sub { color: var(--muted); }
+  .welcome h1 { color: var(--text); }
+  .welcome p, .metric-note, .engine-meta, .item-detail, .manage-message { color: var(--muted); }
+  .metric-value { color: var(--text); }
+  .item, .engine { background: var(--panel-2); border-color: var(--border-dim); }
+  .item-title, .engine-name { color: var(--text); }
+  .section-kicker, .engine-summary b { color: var(--cyan); }
+  .status-dot { box-shadow: none; }
+  .status-dot.off { background: var(--dim); }
+  .pill.ok { background: var(--green-dim); color: var(--green); }
+  .pill.warn { background: #fef3c7; color: var(--amber); }
+  .pill.err { background: #fee2e2; color: var(--red); }
+  .pill.info { background: #dbeafe; color: #1d4ed8; }
+  .pill.off { background: #eef0f2; color: var(--muted); }
+  #attention { border-color: #f5d58a; background: #fffbeb; }
+  #attention strong, #attention .attention-list { color: var(--amber); }
+  .empty { border-color: var(--border); color: var(--muted); }
+  #manage-view th { background: var(--panel); color: var(--muted); border-color: var(--border); }
+  #manage-view td { border-color: var(--border-dim); }
+  .config-input { background: var(--panel); color: var(--text); border-color: var(--border); }
+  .config-input.changed { border-color: #f59e0b; box-shadow: 0 0 0 1px rgba(245, 158, 11, .15); }
+  .val-default { color: var(--muted); }
+  .val-env { color: var(--amber); }
+  .val-eff { color: var(--green); }
+  #vnc-bar { background: var(--panel); border-color: var(--border); }
+  #vnc-bar .label { color: var(--cyan); }
+  #tools-view { display: none; }
+  #tools-view.show { display: block; }
+  #tools-frame { width: 100%; height: calc(100vh - 108px); min-height: 620px; border: 0; background: var(--panel); }
+  @media (max-width: 720px) { #tools-frame { height: calc(100vh - 120px); min-height: 760px; } }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #181a1f;
+    --bg-deep: #202329;
+    --panel: #23262d;
+    --panel-2: #1d2026;
+    --border: #3a404b;
+    --border-dim: #30353e;
+    --cyan: #93c5fd;
+    --cyan-dim: #365d91;
+    --green: #86efac;
+    --green-dim: #1f3b2a;
+    --amber: #fcd34d;
+    --red: #fca5a5;
+    --text: #f3f4f6;
+    --muted: #aeb6c2;
+    --dim: #737b88;
+  }
+  html[data-theme="dark"] body { background: var(--bg); color: var(--text); }
+  html[data-theme="dark"] .btn, html[data-theme="dark"] .mode-switch button { background: var(--panel); color: var(--text); }
+  html[data-theme="dark"] .btn:hover:not(:disabled), html[data-theme="dark"] .mode-switch button.active { background: #263b59; color: #bfdbfe; }
+  html[data-theme="dark"] .item, html[data-theme="dark"] .engine, html[data-theme="dark"] .config-input { background: var(--panel-2); }
+  html[data-theme="dark"] #attention { border-color: #6b5520; background: #30270f; }
+  html[data-theme="dark"] #attention strong, html[data-theme="dark"] #attention .attention-list { color: #fde68a; }
 </style>
 </head>
 <body>
@@ -191,29 +365,46 @@
     <div class="mode-switch">
       <button id="mode-status" class="active">Status</button>
       <button id="mode-manage">Manage</button>
+       <button id="mode-tools">Web Tools</button>
+       <button id="mode-keys" onclick="location.href='/console/keys'">API Keys</button>
     </div>
+    <button id="btn-theme" class="btn" title="Toggle dark mode">Dark</button>
     <button id="btn-pause" class="btn" title="Pause live polling">[⏸]</button>
     <button id="btn-vnc" class="btn" disabled title="VNC not available">Enable VNC</button>
     <button id="btn-vnc-open" class="btn" disabled>Open VNC</button>
   </header>
 
-  <div id="banner"></div>
+    <div id="status-view">
+      <section class="overview">
+        <div class="panel welcome">
+          <div>
+            <div class="section-kicker">Live operational overview</div>
+            <h1 id="overview-title">Checking Navigator</h1>
+            <p id="overview-copy">Connecting to the server and collecting its current state.</p>
+          </div>
+          <div id="health-line" class="health-line"><span class="health-ring"></span><span>Waiting for health data</span></div>
+        </div>
+        <div class="metrics">
+          <div class="metric"><span class="metric-label">Drivers online</span><strong class="metric-value" id="metric-drivers">-</strong><span class="metric-note" id="metric-drivers-note">checking</span></div>
+          <div class="metric"><span class="metric-label">Engines ready</span><strong class="metric-value" id="metric-engines">-</strong><span class="metric-note" id="metric-engines-note">checking</span></div>
+          <div class="metric"><span class="metric-label">Open tabs</span><strong class="metric-value" id="metric-tabs">-</strong><span class="metric-note" id="metric-tabs-note">across drivers</span></div>
+          <div class="metric"><span class="metric-label">Pages in use</span><strong class="metric-value" id="metric-pages">-</strong><span class="metric-note" id="metric-pages-note">checking</span></div>
+          <div class="metric"><span class="metric-label">Searches run</span><strong class="metric-value" id="metric-searches">-</strong><span class="metric-note" id="metric-searches-note">since start</span></div>
+        </div>
+      </section>
 
-  <div id="status-view">
-    <div class="grid">
-      <div class="panel" id="p-drivers"><h2>[ DRIVERS ]</h2><div id="drivers"></div></div>
-      <div class="panel" id="p-engines"><h2>[ ENGINES ]</h2><div id="engines"></div></div>
-      <div class="panel" id="p-runtime"><h2>[ RUNTIME ]</h2><div id="runtime"></div></div>
-    </div>
+      <div id="attention" class="attention"></div>
 
-    <div class="grid two">
-      <div class="panel" id="p-stats"><h2>[ SEARCH STATS ]</h2><div id="stats"></div></div>
-      <div class="panel" id="p-alerts"><h2>[ ALERTS ]</h2><div id="alerts"></div></div>
-    </div>
+      <div class="content-grid">
+        <section class="panel" id="p-runtime"><h2>Current activity <span class="sub">what the server is doing now</span></h2><div id="runtime"></div></section>
+        <section class="panel" id="p-drivers"><h2>Browser drivers <span class="sub">processes and tabs</span></h2><div id="drivers"></div></section>
+        <section class="panel panel-wide" id="p-engines"><h2>Search engines <span class="sub">routes available for the next search</span></h2><div id="engines"></div></section>
+        <section class="panel" id="p-tabs"><h2>Open tabs <span class="sub">live browser pages</span></h2><div id="tabs"></div></section>
+        <section class="panel" id="p-stats"><h2>Work completed <span class="sub">since server start</span></h2><div id="stats"></div></section>
+        <section class="panel panel-wide" id="p-logs"><h2>Recent errors <span class="sub">latest tool failures</span></h2><div id="logs"></div></section>
+      </div>
 
-    <div class="panel" id="p-config"><h2>[ CONFIG — as parsed from env ] <span class="sub">read-only in Phase 1 · Manage tab to edit</span></h2><div id="config"></div></div>
-
-    <div id="vnc-wrap">
+      <div id="vnc-wrap">
       <div id="vnc-bar">
         <span class="label">VNC ▸ live browser screen</span>
         <span id="vnc-state" class="state">not running</span>
@@ -225,11 +416,18 @@
   <div id="manage-view">
     <div class="panel">
       <h2>[ MANAGE — environment configuration ] <span class="sub" id="manage-envpath"></span></h2>
-      <div style="color:var(--muted); margin-bottom:8px;">Phase 1: read-only view of defaults / env / effective values. Editing ships in Phase 3.</div>
+      <div class="manage-toolbar">
+        <button id="btn-save-config" class="btn">Save changes</button>
+        <button id="btn-revert-config" class="btn">Revert last save</button>
+        <span id="manage-message" class="manage-message">Changes persist to .env. Green fields apply now; amber fields need a container recreate.</span>
+      </div>
       <table id="manage-table"><thead><tr>
-        <th>Variable</th><th>Default</th><th>Env (.env)</th><th>Effective (live)</th><th>Applies</th><th>Description</th>
+        <th>Variable</th><th>Default</th><th>Value to save</th><th>Effective (live)</th><th>Applies</th><th>Description</th><th></th>
       </tr></thead><tbody></tbody></table>
     </div>
+  </div>
+  <div id="tools-view">
+    <iframe id="tools-frame" title="Navigator Web Tools" src="/console/api?embedded=1"></iframe>
   </div>
 </div>
 
@@ -240,9 +438,24 @@
   const $ = (sel) => document.querySelector(sel);
   const POLL_MS = 2000;
 
+  function applyTheme(theme) {
+    const dark = theme === "dark";
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    localStorage.setItem("navigator-theme", dark ? "dark" : "light");
+    $("#btn-theme").textContent = dark ? "Light" : "Dark";
+    const frame = $("#tools-frame");
+    try { frame?.contentDocument?.documentElement && (frame.contentDocument.documentElement.dataset.theme = dark ? "dark" : "light"); } catch { /* frame not ready */ }
+  }
+  applyTheme(localStorage.getItem("navigator-theme") || "light");
+  $("#btn-theme").addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+  $("#tools-frame")?.addEventListener("load", () => applyTheme(document.documentElement.dataset.theme || "light"));
+
   let snapshot = { health: null, stats: null, config: null, ok: false };
   let paused = false;
   let configLoaded = false;
+  let manageDirty = false;
+  let logsLoadedAt = 0;
+  const history = { memory: [], slots: [], requests: [] };
 
   const CATEGORIES = {
     backend: "Backend",
@@ -251,6 +464,17 @@
     console: "HTTP / Console",
     vnc: "VNC"
   };
+  const WEB_TOOLS = new Set(["web_search", "web_fetch", "web_page_screenshot", "http:/search", "http:/extract", "http:/screenshot"]);
+  const DEVTOOLS_PREFIXES = ["Target.", "Page.", "Runtime.", "DOM.", "Input."];
+  const EXPECTED_INPUT_ERROR = /No link found in memory|Invalid input:|Provide one of:|Missing q|Unknown targetId|No target found|selector matched nothing|requires a targetId|ref_id/i;
+
+  function classifyError(entry) {
+    const tool = String(entry?.tool || "");
+    const error = String(entry?.error || entry?.message || "");
+    const expected = EXPECTED_INPUT_ERROR.test(error);
+    const family = WEB_TOOLS.has(tool) ? "Web Browsing" : DEVTOOLS_PREFIXES.some((prefix) => tool.startsWith(prefix)) ? "DevTools" : "System";
+    return { family, expected, critical: !expected && family === "System" };
+  }
 
   function fmtBytes(n) {
     if (n == null || !Number.isFinite(n)) return "–";
@@ -272,6 +496,29 @@
   function row(k, v, cls) {
     return `<div class="row"><span class="k">${esc(k)}</span><span class="v ${cls || ""}">${esc(v)}</span></div>`;
   }
+  function rowHtml(k, vHtml, cls) {
+    return `<div class="row"><span class="k">${esc(k)}</span><span class="v ${cls || ""}">${vHtml}</span></div>`;
+  }
+  function valueForInput(entry, env, effective) {
+    const value = env[entry.key] ?? effective[entry.key.toLowerCase()] ?? entry.fallback ?? "";
+    return Array.isArray(value) ? value.join(",") : String(value);
+  }
+  function spark(values, color) {
+    if (values.length < 2) return "";
+    const max = Math.max(...values, 1), min = Math.min(...values);
+    const range = Math.max(max - min, 1);
+    const points = values.map((value, index) => `${(index / (values.length - 1)) * 100},${26 - ((value - min) / range) * 22}`).join(" ");
+    return `<svg viewBox="0 0 100 28" preserveAspectRatio="none" aria-label="recent trend"><polyline fill="none" stroke="${color}" stroke-width="2" points="${points}" /></svg>`;
+  }
+  function pushHistory(h, s) {
+    const limiter = h && h.pageLimiter || {};
+    const p5 = s && s.requests && s.requests.byPeriod && s.requests.byPeriod["5m"];
+    const samples = { memory: s?.memory?.rss || 0, slots: limiter.inUse || 0, requests: p5?.total || 0 };
+    for (const [key, value] of Object.entries(samples)) {
+      history[key].push(value);
+      if (history[key].length > 60) history[key].shift();
+    }
+  }
 
   /* ---------- status computation (Phase 1 minimal set) ---------- */
   function computeStatus(h, s) {
@@ -280,15 +527,15 @@
     const mark = (lvl, text) => { issues.push({ lvl, text }); const order = { ok: 0, degraded: 1, critical: 2 }; if (order[lvl] > order[level]) level = lvl; };
 
     if (h) {
-      if (h.headless === undefined || h.browserConnected === undefined) mark("critical", "health payload incomplete");
-      if (h.browserConnected === false) mark("critical", `${h.backend || "browser"} disconnected`);
+      if (h.headless === undefined || h.browserConnected === undefined) mark("degraded", "health payload incomplete");
+      const defaultConnected = {
+        chromium: h.browserConnected,
+        lightpanda: h.lightpandaConnected,
+        cloakbrowser: h.cloakbrowserConnected
+      }[h.backend];
+      const defaultInstance = (s?.instances || []).find((instance) => instance.backend === h.backend);
+      if (defaultConnected === false && (defaultInstance?.pid || defaultInstance?.spawns > 0)) mark("degraded", `${h.backend || "browser"} disconnected`);
       if (h.lightpandaConnected === false && h.lightpandaConnected !== undefined && !h.cloakbrowserConnected && !h.browserConnected) { /* n/a */ }
-      if (Array.isArray(h.searchRouteCircuitBreakers)) {
-        for (const c of h.searchRouteCircuitBreakers) {
-          if (c.remainingMs > 0) mark("critical", `circuit open: ${c.route} (${Math.ceil(c.remainingMs / 1000)}s)${c.lastError ? " — " + c.lastError : ""}`);
-          else if (c.state === "half_open") mark("degraded", `circuit half-open: ${c.route}`);
-        }
-      }
       if (h.pageLimiter) {
         const p = h.pageLimiter;
         if (p.maxConcurrentPageOps && p.inUse >= p.maxConcurrentPageOps) mark("degraded", `page ops saturated (${p.inUse}/${p.maxConcurrentPageOps}${p.queued ? ", " + p.queued + " queued" : ""})`);
@@ -297,8 +544,11 @@
       if (h.vnc && !h.vnc.running && h.vnc.enabled) mark("degraded", "VNC enabled but noVNC unreachable");
     }
     if (s) {
-      if (s.recentErrors && s.recentErrors.length) mark("critical", `${s.recentErrors.length} recent error(s)`);
-      if (s.requests && s.requests.err > 0 && s.requests.total > 0 && s.requests.err / s.requests.total > 0.5) mark("degraded", "request fail-rate > 50%");
+      const appRequests = Object.entries(s.requests?.byTool || {}).filter(([tool]) => WEB_TOOLS.has(tool)).reduce((sum, [, value]) => ({ total: sum.total + value.total, err: sum.err + value.err }), { total: 0, err: 0 });
+      const appErrors = (s.requests?.recentErrors || []).filter((entry) => WEB_TOOLS.has(entry.tool));
+      const operationalErrors = appErrors.filter((entry) => !classifyError(entry).expected);
+      if (operationalErrors.length) mark("degraded", `${operationalErrors.length} recent web browsing error(s)`);
+      if (appRequests.err > 0 && appRequests.total > 0 && appRequests.err / appRequests.total > 0.5 && operationalErrors.length > 0) mark("degraded", "web browsing fail-rate > 50%");
     }
     if (!snapshot.ok) mark("critical", "server unreachable");
     return { level, issues };
@@ -318,36 +568,63 @@
     const el = $("#drivers");
     if (!h) { el.innerHTML = row("", "no data"); return; }
     const instances = (s && s.instances) || [];
-    let html = row("default →", h.backend || "–", "cyan");
-    html += row("devtools →", h.devtoolsBackend || "–");
-    html += row("headless", h.headless === true ? "yes" : h.headless === false ? "no" : "–", h.headless === true ? "" : "amber");
-    for (const inst of instances) {
-      const state = inst.connected ? `<span class="pill ok">● ${inst.tabs}t</span>` : `<span class="pill err">✗</span>`;
-      html += row(inst.backend, `${state} pid ${inst.pid ?? "–"} · spawns ${inst.spawns ?? 0}`);
-    }
-    el.innerHTML = html;
+    const byBackend = new Map(instances.map((inst) => [inst.backend, inst]));
+    const backends = ["cloakbrowser", "lightpanda", "chromium"];
+    el.innerHTML = `<div class="list">${backends.map((backend) => {
+      const inst = byBackend.get(backend);
+      const connected = Boolean(inst && inst.connected);
+      const isDefault = backend === h.backend;
+      const detail = connected
+        ? `${inst.tabs} open ${inst.tabs === 1 ? "tab" : "tabs"} · pid ${inst.pid ?? "-"} · ${inst.spawns ?? 0} spawn${inst.spawns === 1 ? "" : "s"}`
+        : isDefault ? "Default driver is not connected" : "Not started";
+      return `<div class="item"><span class="status-dot ${connected ? "" : isDefault ? "err" : "off"}"></span><div class="item-main"><div class="item-title">${esc(backend)}${isDefault ? " <span class=\"pill info\">default</span>" : ""}</div><div class="item-detail">${esc(detail)}</div></div><span class="pill ${connected ? "ok" : isDefault ? "err" : "off"}">${connected ? "online" : isDefault ? "offline" : "idle"}</span></div>`;
+    }).join("")}</div>`;
   }
 
-  function renderEngines(cfg, h) {
+  function renderEngines(cfg, h, s) {
     const el = $("#engines");
     const engines = (cfg && cfg.engines) || [];
-    if (!engines.length) { el.innerHTML = '<div class="row"><span class="k">no engine registry</span></div>'; return; }
+    if (!engines.length) { el.innerHTML = '<div class="empty">No engine registry is available yet.</div>'; return; }
     const warmup = new Set((cfg && cfg.config && cfg.config.searchRouteWarmupEngines) || []);
     const fallback = new Set((cfg && cfg.config && cfg.config.searchFallback) || []);
     const circuits = new Map((h && h.searchRouteCircuitBreakers || []).map((c) => [c.route, c]));
-    let html = `<table class="engines"><tr><th>id</th><th>drv</th><th>role</th><th>state</th></tr>`;
-    for (const e of engines) {
-      const c = circuits.get(e.id);
-      let state;
-      if (c && c.remainingMs > 0) state = `<span class="pill err">✗ ${Math.ceil(c.remainingMs / 1000)}s</span>`;
-      else if (c && c.state === "half_open") state = `<span class="pill warn">half-open</span>`;
-      else if (e.exposedInMcp) state = `<span class="pill ok">✓</span>`;
-      else state = `<span class="pill off">hidden</span>`;
-      const role = warmup.has(e.id) ? `<span class="pill info">★ warmup</span>` : fallback.has(e.id) ? `<span class="pill info">fallback</span>` : `<span class="pill off">–</span>`;
-      html += `<tr><td>${esc(e.id)}</td><td>${esc(e.backend)}</td><td>${role}</td><td>${state}</td></tr>`;
-    }
-    html += "</table>";
-    el.innerHTML = html;
+    const attempts = s?.engineAttempts?.byEngine || {};
+    const priority = new Map([...fallback].map((engine, index) => [engine, index]));
+    const orderedEngines = [...engines].sort((a, b) => {
+      const aCircuitOpen = circuits.get(`${a.id}/${a.backend}`)?.remainingMs > 0;
+      const bCircuitOpen = circuits.get(`${b.id}/${b.backend}`)?.remainingMs > 0;
+      const aGroup = !a.exposedInMcp ? 2 : aCircuitOpen ? 1 : 0;
+      const bGroup = !b.exposedInMcp ? 2 : bCircuitOpen ? 1 : 0;
+      if (aGroup !== bGroup) return aGroup - bGroup;
+      return (priority.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (priority.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id);
+    });
+    const analysis = orderedEngines.filter((engine) => engine.exposedInMcp).map((engine) => {
+      const stat = attempts[engine.id] || { ok: 0, fail: 0, results: 0 };
+      const attempted = stat.ok + stat.fail;
+      return { id: engine.id, stat, attempted, rate: attempted ? stat.ok / attempted : null };
+    }).filter((entry) => entry.attempted > 0);
+    const best = analysis.slice().sort((a, b) => b.rate - a.rate || b.stat.results - a.stat.results)[0];
+    const poorest = analysis.slice().sort((a, b) => a.rate - b.rate || a.stat.results - b.stat.results)[0];
+    let healthy = 0, recovering = 0, unavailable = 0;
+    const rows = orderedEngines.map((engine) => {
+      const circuit = circuits.get(`${engine.id}/${engine.backend}`);
+      const poolKey = engine.pool === "shared" ? "_shared" : engine.id;
+      const pool = h?.searchWindows?.byEngine?.[poolKey];
+      const stat = attempts[engine.id] || { ok: 0, fail: 0, skip: 0, results: 0 };
+      const attempted = stat.ok + stat.fail;
+      const rate = attempted ? `${Math.round((stat.ok / attempted) * 100)}% success` : "no completed searches";
+      let state = "ok", routeState = "closed";
+      if (circuit?.remainingMs > 0) { state = "err"; routeState = `open · retry ${Math.ceil(circuit.remainingMs / 1000)}s`; unavailable += 1; }
+      else if (circuit?.state === "half_open") { state = "warn"; routeState = "recovering"; recovering += 1; }
+      else if (!engine.exposedInMcp) { state = "off"; routeState = "internal"; }
+      else healthy += 1;
+      const role = warmup.has(engine.id) ? "primary" : fallback.has(engine.id) ? "fallback" : "available";
+      const windows = pool ? `${pool.inUse}/${pool.total} windows${pool.pending ? ` · ${pool.pending} opening` : ""}` : "no window";
+      const reason = circuit?.lastError ? ` · ${String(circuit.lastError).slice(0, 120)}` : "";
+      return `<div class="engine engine-row" title="${esc(circuit?.lastError || "")}"><span class="status-dot ${state === "ok" ? "" : state}"></span><div class="engine-main"><div class="engine-name">${esc(engine.id)} <span class="pill ${state === "err" ? "err" : state === "warn" ? "warn" : state === "off" ? "off" : "ok"}">${esc(routeState)}</span></div><div class="engine-meta">${esc(engine.backend)} · ${role} · ${windows}${esc(reason)}</div></div><div class="engine-stats"><b>${stat.results || 0}</b> results collected · ${stat.ok || 0} ok · ${stat.fail || 0} failed · ${stat.skip || 0} skipped · ${rate}</div></div>`;
+    }).join("");
+    const insight = !analysis.length ? "Run searches to collect engine performance data." : analysis.length === 1 ? `Only engine with completed searches: <b>${esc(best.id)}</b> (${Math.round(best.rate * 100)}% success, ${best.stat.results} results collected).` : `Best: <b>${esc(best.id)}</b> (${Math.round(best.rate * 100)}% success, ${best.stat.results} results collected) · Poorest: <b>${esc(poorest.id)}</b> (${Math.round(poorest.rate * 100)}% success, ${poorest.stat.results} results collected)`;
+    el.innerHTML = `<div class="engine-summary"><b>${healthy}</b> ready · <b>${recovering}</b> recovering · <b>${unavailable}</b> unavailable</div><div class="engine-insight">${insight}</div><div class="engine-grid">${rows}</div>`;
   }
 
   function renderRuntime(h, s) {
@@ -359,13 +636,14 @@
     const cache = s.cache || { total: 0 };
     const cacheHits = s.counters && s.counters.cacheHits, cacheMisses = s.counters && s.counters.cacheMisses;
     const hitRate = (cacheHits + cacheMisses) > 0 ? Math.round((cacheHits / (cacheHits + cacheMisses)) * 100) : null;
-    let html = row("windows", windows.total + " open");
-    html += row("page slots", `${limiter.inUse ?? 0}/${limiter.maxConcurrentPageOps ?? "?"}${limiter.queued ? ` · ${limiter.queued} wait` : ""}`, limiter.queued ? "amber" : "");
-    html += row("memory", fmtBytes(mem));
-    html += row("cache", `${cache.total} entries${hitRate !== null ? ` · ${hitRate}% hits` : ""}`, hitRate !== null && hitRate < 30 ? "amber" : "");
-    html += row("sessions", s.sessions ?? "–");
-    const blocks = s.counters && s.counters.botBlocks;
-    if (blocks) html += row("bot blocks", blocks, blocks > 0 ? "amber" : "");
+    let html = `<div class="list">`;
+    html += `<div class="item"><span class="status-dot ${limiter.queued ? "warn" : ""}"></span><div class="item-main"><div class="item-title">Page capacity</div><div class="item-detail">${limiter.inUse ?? 0} of ${limiter.maxConcurrentPageOps ?? "?"} slots active${limiter.queued ? ` · ${limiter.queued} waiting` : ""}</div></div></div>`;
+    html += `<div class="item"><span class="status-dot"></span><div class="item-main"><div class="item-title">Search windows</div><div class="item-detail">${windows.total} open across active search routes</div></div></div>`;
+    html += `<div class="item"><span class="status-dot"></span><div class="item-main"><div class="item-title">Cache</div><div class="item-detail">${cache.total} entries${hitRate !== null ? ` · ${hitRate}% hit rate` : " · no requests cached yet"}</div></div></div>`;
+    html += `<div class="item"><span class="status-dot"></span><div class="item-main"><div class="item-title">Server</div><div class="item-detail">${fmtBytes(mem)} memory · ${s.sessions ?? 0} MCP client${s.sessions === 1 ? "" : "s"}</div></div></div>`;
+    html += `</div>`;
+    html += `<div class="trend"><span>Memory</span>${spark(history.memory, "#2dd4bf") || "<span>collecting trend…</span>"}</div>`;
+    html += `<div class="trend"><span>Page slots</span>${spark(history.slots, "#35e07a") || "<span>collecting trend…</span>"}</div>`;
     el.innerHTML = html;
   }
 
@@ -375,13 +653,11 @@
     const c = s.counters || {};
     const r = s.requests || {};
     const e = s.engineAttempts || {};
-    let html = "";
+    let html = `<div class="list">`;
     const p5 = r.byPeriod && r.byPeriod["5m"];
-    html += row("searches", c.searches ?? 0);
-    html += row("fetches", c.fetches ?? 0);
-    html += row("screenshots", c.screenshots ?? 0);
-    html += row("5m requests", p5 ? `${p5.ok} ok / ${p5.err} err` : "–", p5 && p5.err > 0 ? "amber" : "");
-    html += row("attempts", `${e.total ?? 0} total · ${e.ok ?? 0} ok · ${e.fail ?? 0} fail`, e.fail > 0 ? "amber" : "");
+    html += `<div class="item"><div class="item-main"><div class="item-title">${c.searches ?? 0} searches · ${c.fetches ?? 0} fetches · ${c.screenshots ?? 0} screenshots</div><div class="item-detail">Completed since this server started</div></div></div>`;
+    html += `<div class="item"><span class="status-dot ${p5 && p5.err ? "warn" : ""}"></span><div class="item-main"><div class="item-title">Last 5 minutes: ${p5 ? `${p5.ok} successful / ${p5.err} failed` : "no requests"}</div><div class="item-detail">${e.total ?? 0} engine attempts · ${e.ok ?? 0} succeeded · ${e.fail ?? 0} failed</div></div></div>`;
+    html += `</div>`;
     el.innerHTML = html;
   }
 
@@ -416,7 +692,7 @@
 
   function renderManage(cfg) {
     const tbody = document.querySelector("#manage-table tbody");
-    if (!cfg || !cfg.schema || !cfg.config) { tbody.innerHTML = '<tr><td colspan="6">no schema</td></tr>'; return; }
+    if (!cfg || !cfg.schema || !cfg.config) { tbody.innerHTML = '<tr><td colspan="7">no schema</td></tr>'; return; }
     const env = cfg.env || {};
     const eff = cfg.config;
     let html = "";
@@ -425,7 +701,7 @@
       const key = entry.key;
       if (entry.category !== lastCat) {
         lastCat = entry.category;
-        html += `<tr class="section"><td colspan="6">${esc(CATEGORIES[entry.category] || entry.category)}</td></tr>`;
+        html += `<tr class="section"><td colspan="7">${esc(CATEGORIES[entry.category] || entry.category)}</td></tr>`;
       }
       const def = Array.isArray(entry.fallback) ? entry.fallback.join(",") : entry.fallback;
       const envVal = env[key];
@@ -436,14 +712,25 @@
       html += `<tr>
         <td>${esc(key)}</td>
         <td class="val-default">${esc(def)}</td>
-        <td class="val-env">${envVal === undefined ? '<span style="color:var(--dim)">(unset)</span>' : esc(envVal)}</td>
+        <td><input class="config-input" data-config-key="${esc(key)}" value="${esc(valueForInput(entry, env, eff))}" aria-label="${esc(key)} value"></td>
         <td class="val-eff">${esc(Array.isArray(effVal) ? effVal.join(",") : typeof effVal === "boolean" ? (effVal ? "true" : "false") : effVal)}</td>
         <td>${badge}</td>
         <td style="color:var(--muted);font-size:10px;">${esc(entry.description || "")}</td>
+        <td class="table-action"><button class="btn small" data-reset-key="${esc(key)}">Reset</button></td>
       </tr>`;
     }
     tbody.innerHTML = html;
     $("#manage-envpath").textContent = cfg.envPath ? `writes → ${cfg.envPath}` : "";
+  }
+
+  function renderLogs() {
+    const el = $("#logs");
+    const entries = snapshot.logs || [];
+    if (!entries.length) { el.innerHTML = '<div class="empty">No tool errors have been recorded.</div>'; return; }
+    const groups = { "Web Browsing": [], DevTools: [], System: [] };
+    for (const entry of entries) groups[classifyError(entry).family].push(entry);
+    const renderGroup = (name, group) => !group.length ? "" : `<div class="log-group"><div class="section-kicker">${name}</div>${group.map((entry) => { const info = classifyError(entry); const label = info.expected ? "expected input" : info.critical ? "critical" : "diagnostic"; return `<div class="log-entry"><b>${esc(entry.tool || entry.level || "error")}</b> <span>${esc(entry.ts || "")}</span> <span class="pill ${info.critical ? "err" : "info"}">${label}</span><div class="item-detail">${esc(entry.error || entry.message || "Unknown error")}</div></div>`; }).join("")}</div>`;
+    el.innerHTML = `<div class="logs">${renderGroup("Web Browsing", groups["Web Browsing"])}${renderGroup("DevTools", groups.DevTools)}${renderGroup("System", groups.System)}</div>`;
   }
 
   function renderVnc(h) {
@@ -456,11 +743,9 @@
     const vncUrl = `http://${location.hostname}:${port}/vnc.html`;
     btn.disabled = false;
     if (v.running) {
-      btn.textContent = "VNC LIVE";
+      btn.textContent = "Disable VNC";
       btn.classList.add("vnc-on");
       openBtn.disabled = false;
-      openBtn.href = vncUrl;
-      openBtn.target = "_blank";
       stateEl.textContent = `running · ${v.headed ? "headed" : "headless browser"} · :${port}`;
       stateEl.className = "state live";
     } else {
@@ -482,26 +767,90 @@
     $("#hdr-sessions").textContent = s && s.sessions != null ? s.sessions : "–";
   }
 
+  function renderOverview(h, s, cfg, st) {
+    const instances = (s && s.instances) || [];
+    const engines = (cfg && cfg.engines) || [];
+    const circuits = (h && h.searchRouteCircuitBreakers) || [];
+    const connected = instances.filter((inst) => inst.connected).length;
+    const exposed = engines.filter((engine) => engine.exposedInMcp);
+    const unavailable = circuits.filter((circuit) => circuit.remainingMs > 0).length;
+    const tabs = instances.reduce((sum, inst) => sum + (inst.tabs || 0), 0);
+    const limiter = (h && h.pageLimiter) || {};
+    const counters = (s && s.counters) || {};
+    const statusText = st.level === "ok" ? "Navigator is ready" : st.level === "degraded" ? "Navigator needs attention" : "Navigator has a blocking issue";
+    $("#overview-title").textContent = statusText;
+    $("#overview-copy").textContent = h
+      ? `Default browser: ${h.backend}. This screen refreshes every ${POLL_MS / 1000} seconds so you can see capacity, routes, and browser state without reading raw logs.`
+      : "The console cannot reach the Navigator server right now.";
+    const healthLine = $("#health-line");
+    healthLine.className = `health-line ${st.level}`;
+    healthLine.innerHTML = `<span class="health-ring"></span><span>${st.level === "ok" ? "All monitored systems are healthy" : `${st.issues.length} item${st.issues.length === 1 ? "" : "s"} need attention`}</span>`;
+    $("#metric-drivers").textContent = `${connected}/${instances.length || 3}`;
+    $("#metric-drivers-note").textContent = "browser drivers online";
+    $("#metric-engines").textContent = `${Math.max(0, exposed.length - unavailable)}/${exposed.length}`;
+    $("#metric-engines-note").textContent = unavailable ? `${unavailable} route${unavailable === 1 ? "" : "s"} unavailable` : "search routes ready";
+    $("#metric-tabs").textContent = tabs;
+    $("#metric-tabs-note").textContent = tabs ? "across connected drivers" : "no browser pages open";
+    $("#metric-pages").textContent = `${limiter.inUse ?? 0}/${limiter.maxConcurrentPageOps ?? "-"}`;
+    $("#metric-pages-note").textContent = limiter.queued ? `${limiter.queued} waiting` : "page slots active";
+    $("#metric-searches").textContent = counters.searches ?? 0;
+    $("#metric-searches-note").textContent = `${counters.fetches ?? 0} fetches · ${counters.screenshots ?? 0} shots`;
+
+    const attention = $("#attention");
+    if (st.level === "ok") {
+      attention.className = "attention";
+      attention.innerHTML = "";
+    } else {
+      attention.className = `attention show ${st.level === "critical" ? "critical" : ""}`;
+      attention.innerHTML = `<strong>${st.level === "critical" ? "Action needed" : "Heads up"}</strong><div class="attention-list">${st.issues.slice(0, 4).map((issue) => esc(issue.text)).join(" · ")}</div>`;
+    }
+  }
+
+  function renderTabs(s) {
+    const el = $("#tabs");
+    const tabs = ((s && s.instances) || []).flatMap((instance) =>
+      (instance.openTabs || []).map((tab) => ({ ...tab, backend: instance.backend }))
+    );
+    if (!tabs.length) {
+      el.innerHTML = '<div class="empty">No open pages. Tabs appear here as Navigator launches browser work.</div>';
+      return;
+    }
+    el.innerHTML = `<div class="list">${tabs.map((tab) => `<div class="item"><span class="status-dot"></span><div class="item-main"><div class="item-title">${esc(tab.title || "Untitled page")} <span class="pill info">${esc(tab.backend)}</span></div><div class="item-detail tab-url" title="${esc(tab.url || "")}">${esc(tab.url || "about:blank")}</div></div></div>`).join("")}</div>`;
+  }
+
   function renderAll() {
     const h = snapshot.health, s = snapshot.stats, cfg = snapshot.config;
     const st = computeStatus(h, s);
     renderHeader(s, paused);
-    renderBanner(st);
+    renderOverview(h, s, cfg, st);
     renderDrivers(h, s);
-    renderEngines(cfg, h);
+    renderEngines(cfg, h, s);
     renderRuntime(h, s);
     renderStats(s);
-    renderAlerts(s);
-    renderConfig(cfg);
-    renderManage(cfg);
+    renderTabs(s);
+    if (!manageDirty) renderManage(cfg);
+    renderLogs();
     renderVnc(h);
   }
 
   /* ---------- data fetching ---------- */
   async function fetchJson(url) {
-    const res = await fetch(url, { cache: "no-store" });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    let res;
+    try {
+      res = await fetch(url, { cache: "no-store", signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return res.json();
+  }
+  async function sendJson(url, body) {
+    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) throw new Error(payload.error || `${res.status} ${res.statusText}`);
+    return payload;
   }
 
   async function loadConfig() {
@@ -515,16 +864,22 @@
   }
 
   async function poll() {
-    if (paused) return;
-    try {
-      const [h, s] = await Promise.all([fetchJson("/health"), fetchJson("/stats")]);
-      snapshot.health = h;
-      snapshot.stats = s;
-      snapshot.ok = true;
-    } catch (err) {
-      snapshot.ok = false;
-      snapshot.health = null;
-      snapshot.stats = null;
+    if (paused || document.hidden) return;
+    const [healthResult, statsResult] = await Promise.allSettled([fetchJson("/health"), fetchJson("/stats")]);
+    const h = healthResult.status === "fulfilled" ? healthResult.value : null;
+    const s = statsResult.status === "fulfilled" ? statsResult.value : null;
+    snapshot.health = h;
+    snapshot.stats = s;
+    snapshot.ok = !!h;
+    if (h || s) pushHistory(h, s);
+    if (h) {
+      if (Date.now() - logsLoadedAt > 10_000) {
+        try {
+          const logs = await fetchJson("/console/logs?n=20");
+          snapshot.logs = logs.entries;
+          logsLoadedAt = Date.now();
+          } catch { /* logs are optional */ }
+      }
     }
     renderAll();
   }
@@ -536,34 +891,101 @@
     renderHeader(snapshot.stats, paused);
   });
 
-  const modeStatus = $("#mode-status"), modeManage = $("#mode-manage");
+  const modeStatus = $("#mode-status"), modeManage = $("#mode-manage"), modeTools = $("#mode-tools");
   function setMode(mode) {
     const status = mode === "status";
+    const manage = mode === "manage";
     $("#status-view").style.display = status ? "block" : "none";
-    $("#manage-view").classList.toggle("show", !status);
+    $("#manage-view").classList.toggle("show", manage);
+    $("#tools-view").classList.toggle("show", mode === "tools");
     modeStatus.classList.toggle("active", status);
-    modeManage.classList.toggle("active", !status);
+    modeManage.classList.toggle("active", manage);
+    modeTools.classList.toggle("active", mode === "tools");
   }
   modeStatus.addEventListener("click", () => setMode("status"));
   modeManage.addEventListener("click", () => setMode("manage"));
+  modeTools.addEventListener("click", () => setMode("tools"));
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !paused) poll();
+  });
+
+  $("#manage-table").addEventListener("input", (event) => {
+    if (event.target.matches(".config-input")) {
+      manageDirty = true;
+      event.target.classList.add("changed");
+    }
+  });
+
+  $("#manage-table").addEventListener("click", async (event) => {
+    const resetKey = event.target.dataset.resetKey;
+    if (!resetKey) return;
+    await saveConfig({ reset: [resetKey] }, `${resetKey} reset to its default`);
+  });
+
+  async function saveConfig(body, successMessage) {
+    const message = $("#manage-message");
+    message.className = "manage-message";
+    message.textContent = "Saving…";
+    try {
+      const res = await fetch("/console/config", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const result = await res.json();
+      if (!res.ok || !result.ok) throw new Error(result.error || "Could not save configuration");
+      configLoaded = false;
+      snapshot.config = await fetchJson("/console/config");
+      configLoaded = true;
+      manageDirty = false;
+      renderManage(snapshot.config);
+      message.className = "manage-message ok";
+      message.textContent = successMessage || `Saved. ${result.hotApplied.length} setting(s) applied now; ${result.restartRequired.length} need a recreate.`;
+    } catch (error) {
+      message.className = "manage-message err";
+      message.textContent = String(error.message || error);
+    }
+  }
+
+  $("#btn-save-config").addEventListener("click", () => {
+    const updates = {};
+    document.querySelectorAll(".config-input.changed").forEach((input) => { updates[input.dataset.configKey] = input.value; });
+    if (!Object.keys(updates).length) {
+      $("#manage-message").textContent = "No changes to save.";
+      return;
+    }
+    saveConfig({ updates });
+  });
+
+  $("#btn-revert-config").addEventListener("click", () => {
+    if (confirm("Restore the latest .env backup? Settings applied live will keep their current values until restart.")) saveConfig({ revert: true }, "Restored the latest backup. Restart the container to reload recreate-only settings.");
+  });
 
   $("#btn-vnc").addEventListener("click", async () => {
     if (!snapshot.health || !snapshot.health.vnc) return;
-    if (snapshot.health.vnc.running) {
-      $("#vnc-frame-wrap").classList.toggle("open");
-      if ($("#vnc-frame-wrap").classList.contains("open")) {
-        $("#vnc-frame").src = `http://${location.hostname}:${snapshot.health.vnc.novncPort || 7900}/vnc.html`;
-      } else {
+    const running = snapshot.health.vnc.running;
+    if (running) {
+      try {
+        $("#btn-vnc").disabled = true;
+        await sendJson("/console/vnc", { action: "disable" });
+        $("#vnc-frame-wrap").classList.remove("open");
         $("#vnc-frame").src = "about:blank";
-      }
-    } else {
-      const btn = $("#btn-vnc");
-      btn.disabled = true;
-      btn.textContent = "Starting…";
-      $("#vnc-state").textContent = "VNC enable ships in Phase 4 — compose ENABLE_VNC=1 to run it at boot for now";
-      $("#vnc-state").className = "state";
-      setTimeout(() => renderAll(), 2000);
+      } catch (error) {
+        $("#vnc-state").textContent = `VNC error: ${error.message || error}`;
+        $("#vnc-state").className = "state err";
+      } finally { await poll(); }
+      return;
     }
+    const btn = $("#btn-vnc");
+    btn.disabled = true;
+    btn.textContent = "Starting VNC…";
+    $("#vnc-state").textContent = "Starting display, VNC, and browser…";
+    try {
+      const result = await sendJson("/console/vnc", { action: "enable" });
+      $("#vnc-state").textContent = result.steps.map((step) => step.text).slice(-2).join(" · ") || "VNC ready";
+      $("#vnc-frame-wrap").classList.add("open");
+      $("#vnc-frame").src = `http://${location.hostname}:${snapshot.health.vnc.novncPort || 7900}/vnc.html`;
+    } catch (error) {
+      $("#vnc-state").textContent = `VNC error: ${error.message || error}`;
+      $("#vnc-state").className = "state err";
+    } finally { await poll(); }
   });
 
   $("#vnc-bar").addEventListener("click", () => {
@@ -572,6 +994,12 @@
       const open = $("#vnc-frame-wrap").classList.contains("open");
       if (open) $("#vnc-frame").src = `http://${location.hostname}:${snapshot.health.vnc.novncPort || 7900}/vnc.html`;
       else $("#vnc-frame").src = "about:blank";
+    }
+  });
+
+  $("#btn-vnc-open").addEventListener("click", () => {
+    if (snapshot.health?.vnc?.running) {
+      window.open(`http://${location.hostname}:${snapshot.health.vnc.novncPort || 7900}/vnc.html`, "_blank", "noopener");
     }
   });
 

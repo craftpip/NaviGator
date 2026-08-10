@@ -3,6 +3,8 @@ import { DEFAULT_MAX_CHARS } from "./config.js";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { performance } from "node:perf_hooks";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { findDomainHint, getDomainHints } from "./domain-hints.js";
 import { htmlToMarkdown } from "./markdown.js";
 import { getEngineDriver, getEngineMetadata, SUPPORTED_ENGINES } from "./engines/index.js";
@@ -93,6 +95,25 @@ const DEFAULT_FALLBACK = [
   "bing_lp", "google_ch", "duckduckgo_ch", "mojeek_lp"
 ];
 const routeCircuitState = new Map();
+const ROUTE_CIRCUIT_STATE_PATH = path.join(process.cwd(), ".cache", "search-circuit-breakers.json");
+
+try {
+  const saved = JSON.parse(readFileSync(ROUTE_CIRCUIT_STATE_PATH, "utf8"));
+  for (const [key, state] of Object.entries(saved || {})) {
+    if (state && Number.isFinite(state.openUntil)) routeCircuitState.set(key, state);
+  }
+} catch {
+  // No persisted circuit state on the first start.
+}
+
+function persistRouteCircuitState() {
+  try {
+    mkdirSync(path.dirname(ROUTE_CIRCUIT_STATE_PATH), { recursive: true });
+    writeFileSync(ROUTE_CIRCUIT_STATE_PATH, JSON.stringify(Object.fromEntries(routeCircuitState), null, 2));
+  } catch (error) {
+    console.error(`⚠️  Could not persist search circuit state: ${String(error?.message || error)}`);
+  }
+}
 
 const activityCounters = {
   searches: 0,
@@ -124,7 +145,7 @@ function getRouteCircuit(engine, now = Date.now()) {
 }
 
 function recordRouteSuccess(engine) {
-  routeCircuitState.delete(routeKey(engine));
+  if (routeCircuitState.delete(routeKey(engine))) persistRouteCircuitState();
 }
 
 function recordRouteFailure(engine, error, cooldownMs) {
@@ -136,6 +157,7 @@ function recordRouteFailure(engine, error, cooldownMs) {
     lastError: String(error?.message || error || "Unknown route failure"),
     lastFailureAt: new Date().toISOString()
   });
+  persistRouteCircuitState();
 
   const message = String(error?.message || error || "");
   if (/captcha|blocked by|bot|unusual traffic/i.test(message)) {
@@ -159,6 +181,7 @@ export function getSearchBackendHealth() {
 }
 
 const ENGINE_ATTEMPT_LOG_MAX = 20000;
+const ENGINE_ATTEMPT_STATE_PATH = path.join(process.cwd(), ".cache", "search-engine-attempts.json");
 const ENGINE_ATTEMPT_PERIODS = [
   { key: "5m", ms: 5 * 60 * 1000 },
   { key: "15m", ms: 15 * 60 * 1000 },
@@ -167,12 +190,28 @@ const ENGINE_ATTEMPT_PERIODS = [
   { key: "all", ms: Infinity }
 ];
 const engineAttemptLog = [];
+try {
+  const saved = JSON.parse(readFileSync(ENGINE_ATTEMPT_STATE_PATH, "utf8"));
+  if (Array.isArray(saved)) engineAttemptLog.push(...saved.filter((entry) => entry && typeof entry.engine === "string" && typeof entry.status === "string").slice(-ENGINE_ATTEMPT_LOG_MAX));
+} catch {
+  // No persisted engine telemetry on the first start.
+}
 
-export function recordEngineAttempt(engine, status, errorMsg) {
-  engineAttemptLog.push({ t: Date.now(), engine, status, err: status === "ok" ? "" : String(errorMsg || status).slice(0, 300) });
+function persistEngineAttemptLog() {
+  try {
+    mkdirSync(path.dirname(ENGINE_ATTEMPT_STATE_PATH), { recursive: true });
+    writeFileSync(ENGINE_ATTEMPT_STATE_PATH, JSON.stringify(engineAttemptLog), "utf8");
+  } catch (error) {
+    console.error(`⚠️  Could not persist engine telemetry: ${String(error?.message || error)}`);
+  }
+}
+
+export function recordEngineAttempt(engine, status, errorMsg, resultCount = 0) {
+  engineAttemptLog.push({ t: Date.now(), engine, status, results: status === "ok" ? Math.max(0, Number(resultCount) || 0) : 0, err: status === "ok" ? "" : String(errorMsg || status).slice(0, 300) });
   if (engineAttemptLog.length > ENGINE_ATTEMPT_LOG_MAX) {
     engineAttemptLog.splice(0, engineAttemptLog.length - ENGINE_ATTEMPT_LOG_MAX);
   }
+  persistEngineAttemptLog();
 }
 
 export function getEngineAttemptStats() {
@@ -189,8 +228,9 @@ export function getEngineAttemptStats() {
     else if (e.status === "skip") skip += 1;
     else fail += 1;
 
-    const bucket = (byEngine[e.engine] ||= { total: 0, ok: 0, fail: 0, skip: 0, byPeriod: {} });
+    const bucket = (byEngine[e.engine] ||= { total: 0, ok: 0, fail: 0, skip: 0, results: 0, byPeriod: {} });
     bucket.total += 1;
+    bucket.results += e.results || 0;
     if (e.status === "ok") bucket.ok += 1;
     else if (e.status === "skip") bucket.skip += 1;
     else bucket.fail += 1;
@@ -198,8 +238,9 @@ export function getEngineAttemptStats() {
     const age = now - e.t;
     for (const p of ENGINE_ATTEMPT_PERIODS) {
       if (age <= p.ms) {
-        const window = (bucket.byPeriod[p.key] ||= { total: 0, ok: 0, fail: 0, skip: 0 });
+        const window = (bucket.byPeriod[p.key] ||= { total: 0, ok: 0, fail: 0, skip: 0, results: 0 });
         window.total += 1;
+        window.results += e.results || 0;
         if (e.status === "ok") window.ok += 1;
         else if (e.status === "skip") window.skip += 1;
         else window.fail += 1;
@@ -1282,7 +1323,7 @@ async function runSearchRoute({ manager, query, engine, config, explicit }) {
       value = await execute();
     }
     recordRouteSuccess(engine);
-    recordEngineAttempt(engine, "ok");
+    recordEngineAttempt(engine, "ok", "", value.results?.length || 0);
     return value;
   } catch (error) {
     recordRouteFailure(engine, error, config.searchRouteCircuitOpenMs);

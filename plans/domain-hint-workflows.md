@@ -1,5 +1,21 @@
 # Domain Hint Workflows - Sequential Interactive Extraction Plan
 
+## Plan Status
+
+**Status: NOT STARTED** — verified 2026-08-10. No `workflow` support exists anywhere in the codebase (no `workflow` in `src/search.js`, `src/domain-hints.js`, `src/mcp-server.js`; no workflow tests).
+
+### Checklist
+
+- [ ] 1. Workflow hint validation (`src/domain-hints.js` + `tests/domain-hints.test.js`): max 8 steps, allowed properties per action, valid selectors, timeout range, extract/click ordering.
+- [ ] 2. Page-state capture helpers (`capturePageState`, `extractHintStage`, `renderExtractedStage`, `mergeExtractedStages`) reusing `extractTextFromHtml` / `insertTablesInline` / `extractLinksFromHtml`.
+- [ ] 3. Workflow execution in the page lifecycle: sequential extract/click, exactly-one visible click element, post-click `waitForSelector`, re-stabilize after click, final-state SEO/URL/title.
+- [ ] 4. Hard bounds: 8 steps, 4 clicks, 20s click wait, 45s total; bot-challenge abort after each click.
+- [ ] 5. Output semantics: stage headings in order, tables stay with their stage, links deduplicated, `maxChars` on merged text, step-failure returns an explicit error.
+- [ ] 6. Unit tests (`tests/search.test.js`): no-workflow path unchanged, extract→click→extract order, click waits, post-click DOM, stage tables/links, click failures, workflow validation rejections, URL/title on navigating click, bot abort.
+- [ ] 7. Live validation (`tests/domain-hints-live.test.js`, behind `LIVE_DOMAIN_HINTS=1`).
+- [ ] 8. Documentation in `AGENTS.md` (workflow field, two actions, interactive-page browser-inspection routine).
+- [ ] 9. Rollout: first production workflow hint after browser inspection confirms selectors/DOM states.
+
 ## Goal
 
 Domain hints already tell `web_fetch` which parts of a page are useful. They select stable content containers, wait for dynamic page content, and extract those sections instead of relying only on generic Readability.

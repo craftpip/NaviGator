@@ -1,5 +1,22 @@
 # Navigator CLI — Management Script
 
+## Plan Status
+
+**Status: COMPLETE — ABSORBED** (verified + absorbed 2026-08-10). `navigator.js` (statistics + monitoring), `GET /stats`, spawn/tab/activity counters, request + per-engine failure telemetry all built, tested, and committed (`f76cf1e feat: add navigator monitoring CLI` and follow-ups). Durable knowledge folded into `AGENTS.md` → [Navigator CLI and Stats](#navigator-cli-and-stats); this file archived to `plans/archive/` for history. One optional nicety remains (see checklist).
+
+### Checklist
+
+- [x] `navigator.js` CLI — `statistics` / `monitoring`, `--url` / `--interval` / `--json` / `--help`, boxed tables, exit 1 on unreachable server.
+- [x] `GET /stats` endpoint (uptime, memory, sessions, cache, instances, counters).
+- [x] `BrowserManager.getInstanceStats()` + `instanceSpawns` counters (`src/browser.js`).
+- [x] Activity counters (`searches`/`fetches`/`screenshots`/`botBlocks`) + `getActivityCounters()` (`src/search.js`).
+- [x] Devtools counters (`targetsCreated`/`targetsClosed`/`targetsInactivityClosed`) + `targetsById` leak fix (`src/devtools.js`).
+- [x] Request failure rates (`requestLog` ring buffer, `getRequestStats()`, exposed in `/stats`).
+- [x] Per-engine failure rates (`engineAttemptLog`, `getEngineAttemptStats()`, exposed in `/stats`).
+- [x] De-boxed output (user request) — stable redraw layout.
+- [x] Tests — `/stats` shape, devtools counter deltas, `getInstanceStats()`, engine attempt stats. Suite 347 passed / 24 skipped, ESLint clean.
+- [ ] Optional: `package.json` `bin` / `cli` script for `npm run cli` (not added).
+
 ## Goal
 
 Give the user a small command-line management script — `navigator.js` — that talks to the live MCP server and answers "what is going on right now?" without digging through docker logs.
@@ -249,5 +266,5 @@ _Last updated: 2026-08-02 — CLI built, deployed to the container, verified liv
 
 ### Next
 
-- [ ] Commit (all changes this session are uncommitted: navigator.js, plans, src/browser.js, src/search.js, src/mcp-server.js, src/devtools.js, eslint.config.js, AGENTS.md, 3 test files).
+- [x] Commit — done: `f76cf1e` (CLI), `c57fdd8` region follow-ups, `48f95a6`, `28b9510`, `880574e` (later sessions).
 - [ ] Optional: `package.json` `bin`/`cli` script for `npm run cli`.

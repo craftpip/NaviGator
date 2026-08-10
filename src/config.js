@@ -27,12 +27,12 @@ const STABILIZE_STRATEGY_VALUES = new Set([
   "none"
 ]);
 
-function parseStabilizeStrategy(value, fallback) {
+export function parseStabilizeStrategy(value, fallback) {
   if (value && STABILIZE_STRATEGY_VALUES.has(value)) return value;
   return fallback;
 }
 
-function parseBoolean(value, fallback) {
+export function parseBoolean(value, fallback) {
   if (value === undefined || value === null || value === "") return fallback;
   const normalized = String(value).trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
@@ -40,19 +40,19 @@ function parseBoolean(value, fallback) {
   return fallback;
 }
 
-function parseNumber(value, fallback) {
+export function parseNumber(value, fallback) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
 }
 
-function parseInteger(value, fallback) {
+export function parseInteger(value, fallback) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.floor(parsed);
 }
 
-function parseEngines(value, fallback) {
+export function parseEngines(value, fallback) {
   if (!value || typeof value !== "string") return fallback;
   const parsed = value
     .split(",")
@@ -62,13 +62,21 @@ function parseEngines(value, fallback) {
   return parsed.length ? [...new Set(parsed)] : fallback;
 }
 
-function parseToolList(value) {
+export function parseToolList(value) {
   if (!value || typeof value !== "string") return [];
   const parsed = value
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
   return [...new Set(parsed)];
+}
+
+export function parseApiKeys(value) {
+  if (!value || typeof value !== "string") return [];
+  return [...new Set(value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean))];
 }
 
 export function parseBrowserBackend(value, fallback = "cloakbrowser") {
@@ -262,6 +270,8 @@ export async function loadConfig() {
     mcpApiHost: process.env.MCP_API_HOST || "http://localhost",
     enableHttpHealth: parseBoolean(process.env.ENABLE_HTTP_HEALTH, false),
     enableHttpMcp: parseBoolean(process.env.ENABLE_HTTP_MCP, false),
+    mcpApiKeys: parseApiKeys(process.env.MCP_API_KEYS),
+    mcpAllowUnauthenticated: parseBoolean(process.env.MCP_ALLOW_UNAUTHENTICATED, true),
     enableStdioMcp: parseBoolean(process.env.ENABLE_STDIO_MCP, true),
     enableDevtoolsMcp: parseBoolean(process.env.ENABLE_DEVTOOLS_MCP, false),
     enableScreenshotDownloadLink: parseBoolean(process.env.ENABLE_SCREENSHOT_DOWNLOAD_LINK, false),

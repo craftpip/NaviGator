@@ -1,5 +1,59 @@
 # Open Source Preparation Plan
 
+## Plan Status
+
+**Status: IN PROGRESS** — verified 2026-08-10. Most CI, tooling, docs, and content-pruning items are done; the pre-launch audit and launch phases remain, plus Docker hardening and multi-arch.
+
+### Checklist
+
+**Phase 0 — Identity**
+- [x] Repo renamed to `craftpip/navigator`; README clone URL + badge links point there.
+- [x] `package.json` name is `navigator-mcp` (v1.0.1) — confirmed present; verify description/repo/bugs/homepage fields point at `craftpip/navigator`.
+- [ ] Verify AGENTS.md docker exec / compose references post-rename.
+
+**Phase 1 — First-Run Experience**
+- [x] `.env.example` trimmed to essentials; full reference moved to `.env.example.full`.
+- [x] Docker Compose is the recommended path; fresh `docker compose up -d` works with no `.env`.
+- [ ] Re-verify build from a clean clone on a fresh machine (timing <5min, no prompts).
+
+**Phase 2 — CI & Automation**
+- [x] Test workflow (`.github/workflows/test.yml` — lint + vitest, matrix node 20/22).
+- [x] Docker image publish workflow (GHCR, semver + latest tags).
+- [x] Release workflow, stale bot, PR labeler.
+- [x] Dependabot (npm + github-actions).
+- [ ] Docker build check job in CI (Dockerfile breakage detection on PRs) — not present.
+- [ ] npm publish workflow (2.6).
+- [ ] Semantic PR title check (2.9).
+
+**Phase 3 — Content Pruning & Tooling**
+- [x] `.editorconfig`, ESLint (`eslint.config.js` + `npm run lint`, wired into CI), `CHANGELOG.md`.
+- [x] `docs/` directory created (ASCII screenshot.md, domain-hints.md, web-fetch-docs.md).
+- [x] Issue templates (bug_report, feature_request) + PR template.
+- [ ] `AGENTS.md` → `ARCHITECTURE.md` rename (3.2) — not done, AGENTS.md still at root.
+- [ ] Remove `SKILL.md` from root (maintainer tooling, not user-facing).
+- [ ] Review/remove `comparison/` competitive-analysis dir and `notes/`; audit `websites/` for public suitability.
+
+**Phase 4 — README Rewrite**
+- [x] Badges (CI, GHCR, License) + streamlined structure + `examples/` (web-search/web-fetch/web-screenshot) + FAQ.
+- [ ] Public roadmap (`ROADMAP.md` or README section), versioning policy, logo/banner/asciicast.
+
+**Phase 5 — Pre-Launch Audit**
+- [x] `FUNDING.yml` (GitHub Sponsors, `craftpip`).
+- [x] `.gitignore` covers `*.log`, `dist/`, `doc/`.
+- [ ] Secrets sweep over git history + working tree.
+- [ ] Dependency license compatibility check (incl. `cloakbrowser`).
+- [ ] `npm audit` + document findings.
+- [ ] Docker hardening — container still runs as root (no `USER` in `Dockerfile`).
+- [ ] Multi-arch Docker builds — `docker-publish.yml` has no `platforms` (amd64 only).
+- [ ] Container security scanning job (Trivy / docker scout) — optional.
+
+**Phase 6 — Launch**
+- [ ] GitHub settings: branch protection on `main`, squash merge, auto-delete head branches, topics/description, Discussions.
+- [ ] Dry-run CI on a private branch, clean-clone test on a second machine, README review by an outsider, flip to public, first release.
+
+**Phase 7 — Post-Launch**
+- [ ] Issue label taxonomy, `good-first-issue` seeding, Dependabot cadence, release cadence, 48h response.
+
 ## Current State
 
 The repo (`craftpip/browser-search-mcp`) is being renamed to `craftpip/navigator`. Most open-source boilerplate already exists — license, CoC, security policy, contributing guide.

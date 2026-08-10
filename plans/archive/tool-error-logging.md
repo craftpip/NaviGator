@@ -1,5 +1,21 @@
 # Tool error logging (LOG_TOOL_ERRORS, default on)
 
+## Plan Status
+
+**Status: COMPLETE — ABSORBED** (verified + absorbed 2026-08-10). Implemented and committed (`880574e feat: add LOG_TOOL_ERRORS for persistent tool error logging`). Durable knowledge folded into `AGENTS.md` → [Navigator CLI and Stats](#navigator-cli-and-stats) → Tool error logging; this file archived to `plans/archive/` for history.
+
+### Checklist
+
+- [x] Config: `logToolErrors` (`src/config.js:272`), default `true`, independent of `DEBUG`.
+- [x] `logToolError()` helper (`src/mcp-server.js`, exported) — JSON line, redacted args, stack, transport/session/ms context.
+- [x] Wired into the SDK catch path (`CallToolRequestSchema` handler) — stdio + session HTTP.
+- [x] Stateless POST gap closed (`handleStatelessMcpPost` `tools/call` wrapped in try/catch).
+- [x] `redactArgs` (secrets + `insertText` typed text → char count only).
+- [x] File output `logs/tool-errors.log`, auto-mkdir, ~5MB rotation to `.1`; `*.log` gitignored.
+- [x] Tests (6) in `tests/mcp-server.test.js`: disabled writes nothing, enabled writes line, default-on, redaction, rotation.
+- [x] Live verification: failing `web_fetch` writes `logs/tool-errors.log` on host bind mount.
+- [x] Consumed by web console `/console/logs` handler (`src/mcp-server.js:2416`).
+
 ## Goal
 
 Keep a persistent, greppable log of every tool call that errors, so when a

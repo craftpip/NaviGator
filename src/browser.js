@@ -975,24 +975,56 @@ export class BrowserManager {
   }
 
   async getInstanceStats() {
-    return Promise.all([
-      this._instanceStat("chromium", this.browser),
-      this._instanceStat("lightpanda", this.lightpandaBrowser),
-      this._instanceStat("cloakbrowser", this.cloakbrowserBrowser)
-    ]);
+    const instances = [
+      ["chromium", this.browser],
+      ["lightpanda", this.lightpandaBrowser],
+      ["cloakbrowser", this.cloakbrowserBrowser]
+    ];
+    return Promise.all(instances.map(([backend, instance]) => this._instanceStatWithTimeout(backend, instance)));
+  }
+
+  async _instanceStatWithTimeout(backend, instance) {
+    let timeout;
+    try {
+      return await Promise.race([
+        this._instanceStat(backend, instance),
+        new Promise((resolve) => {
+          timeout = setTimeout(() => resolve({
+            backend,
+            connected: Boolean(instance?.connected),
+            tabs: 0,
+            openTabs: [],
+            pid: null,
+            spawns: this.instanceSpawns[backend] || 0,
+            timedOut: true
+          }), 750);
+          timeout.unref?.();
+        })
+      ]);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async _instanceStat(backend, instance) {
     const connected = Boolean(instance?.connected);
     let tabs = 0;
+    let openTabs = [];
     let pid = null;
 
     if (connected) {
       try {
         const pages = await instance.pages();
-        tabs = pages.filter((page) => !page.isClosed()).length;
+        const activePages = pages.filter((page) => !page.isClosed());
+        tabs = activePages.length;
+        openTabs = await Promise.all(activePages.map(async (page) => {
+          let title = "Untitled page";
+          try { title = await page.title() || title; } catch {}
+          return { title, url: page.url() };
+        }));
       } catch {
         tabs = 0;
+        openTabs = [];
       }
 
       if (backend === "lightpanda") {
@@ -1010,6 +1042,7 @@ export class BrowserManager {
       backend,
       connected,
       tabs,
+      openTabs,
       pid,
       spawns: this.instanceSpawns[backend] || 0
     };
@@ -1068,6 +1101,44 @@ export class BrowserManager {
     const browser = await this.getBrowser();
     await this.ensureKeepAlivePage(browser);
     logBrowserEvent("chromium.prelaunch.ready", { reason: "screenshot_backend" });
+  }
+
+  async relaunchDefaultBackend(headless) {
+    const backend = this.config.defaultBackend;
+    const previousHeadless = this.config.headless;
+    this.config.headless = Boolean(headless);
+
+    if (backend === "lightpanda") {
+      logBrowserEvent("relaunch.skip", { backend, reason: "cdp_only" });
+      return { ok: true, backend, relaunched: false, headless: this.config.headless, note: "lightpanda is CDP-only (no GUI)" };
+    }
+
+    try {
+      if (backend === "chromium" && this.browser) {
+        await this.browser.close();
+      } else if (backend === "cloakbrowser" && this.cloakbrowserBrowser) {
+        await this.cloakbrowserBrowser.close();
+      }
+    } catch (error) {
+      logBrowserEvent("relaunch.close_failed", { error: String(error?.message || error) });
+    }
+
+    this.browser = null;
+    this.launching = null;
+    this.cloakbrowserBrowser = null;
+    this.cloakbrowserLaunching = null;
+    this.engineWorkingWindows.clear();
+    this.keepAlivePage = null;
+    this.prelaunchPromise = null;
+
+    const relaunched =
+      backend === "chromium" ? await this.getBrowser() : await this.getCloakbrowserBrowser();
+    logBrowserEvent("relaunch.ready", {
+      backend,
+      headless: this.config.headless,
+      previousHeadless
+    });
+    return { ok: true, backend, relaunched: Boolean(relaunched), headless: this.config.headless };
   }
 
   async shutdown() {

@@ -1,5 +1,22 @@
 # Search Engines As Drivers
 
+## Plan Status
+
+**Status: COMPLETE — ABSORBED** (verified + absorbed 2026-08-10). Core refactor done, deployed, and live-verified; `brave_api` route removed per user request (2026-08-01). Registry confirmed at `src/engines/index.js` (`SUPPORTED_ENGINES` = 10, `MCP_SEARCH_ENGINES` = 8 exposed). Durable knowledge folded into `AGENTS.md` → [Search Engine Drivers](#search-engine-drivers); this file archived to `plans/archive/` for history.
+
+### Checklist
+
+- [x] Driver hierarchy (`src/engines/driver.js`, `api-driver.js`, `browser-driver.js`, `util.js`, `index.js`).
+- [x] Concrete drivers: duckduckgo-api/browser/cb/ch, google-driver/cb/ch/lp, bing-driver/cb/lp, brave-cb, mojeek-lp.
+- [x] Dependency-free registry: `SUPPORTED_ENGINES`, `MCP_SEARCH_ENGINES`, `getEngineDriver`, `getEngineMetadata` (null-safe), `getBrowserWarmupEngines`, load-time validation.
+- [x] `src/search.js` orchestrator refactor (routing, circuit breakers, fallback, dedup, timing preserved).
+- [x] `src/browser.js` registry-driven backend dispatch + shared Lightpanda pool + warmup via `getBrowserWarmupEngines`/`homeUrl`.
+- [x] `src/config.js` `SEARCH_ENGINE_VALUES` from `SUPPORTED_ENGINES`; `src/mcp-server.js` enums from `MCP_SEARCH_ENGINES`.
+- [x] `brave_api` route removed (driver, registry entries, fallback list, tests, MCP enum) — 10 routes, 8 exposed.
+- [x] Tests: registry contract, fixture-based extraction for all families, block detection, MCP enum. Full suite 330 passed / 24 skipped (post-`brave_api`).
+- [x] Deployed (`docker compose build && down && up -d`); live `/search` checks for api + browser backends, CAPTCHA/Mojeek block handling.
+- [x] Syntax + ESLint clean on changed files (only pre-existing `NodeFilter` errors in `src/devtools.js` remain).
+
 ## Execution Progress
 
 _Last updated: 2026-08-01 (after brave_api removal). Update this section after each batch of work._
