@@ -896,8 +896,95 @@ function validateEntryValue(entry, value, engineIds) {
       return { ok: true };
   }
 }
-function ValueControl({ entry, value, changed, engineIds, onChange }) {
+function EngineMultiSelect({ engines, value, changed, ok, message, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const triggerRef = useRef(null);
+  const panelRef = useRef(null);
+  const selected = value
+    ? value
+        .split(",")
+        .map((token) => token.trim())
+        .filter(Boolean)
+    : [];
+  const toggle = (id) => {
+    const next = selected.includes(id)
+      ? selected.filter((item) => item !== id)
+      : [...selected, id];
+    onChange(next.join(","));
+  };
+  useEffect(() => {
+    if (!open) return;
+    const position = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (rect) {
+        const gap = 4;
+        const below = window.innerHeight - rect.bottom - gap - 8;
+        const above = rect.top - gap - 8;
+        const flip = below < 200 && above > below;
+        const maxHeight = Math.max(120, Math.min(260, flip ? above : below));
+        setPos({
+          left: rect.left,
+          top: flip ? rect.top - gap - maxHeight : rect.bottom + gap,
+          width: Math.max(rect.width, 240),
+          maxHeight,
+        });
+      }
+    };
+    position();
+    const onDoc = (event) => {
+      if (triggerRef.current && triggerRef.current.contains(event.target)) return;
+      if (panelRef.current && panelRef.current.contains(event.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("scroll", position, true);
+    window.addEventListener("resize", position);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("scroll", position, true);
+      window.removeEventListener("resize", position);
+    };
+  }, [open]);
+  return (
+    <>
+      <button
+        type="button"
+        ref={triggerRef}
+        className={`config-input engine-trigger ${changed ? "changed" : ""} ${ok ? "" : "invalid"}`}
+        aria-label="engines value"
+        onClick={() => setOpen(!open)}
+      >
+        <span className="engine-selected">
+          {selected.length ? selected.join(", ") : "Select engines…"}
+        </span>
+        <span className="engine-caret">{open ? "▴" : "▾"}</span>
+      </button>
+      {open && pos && (
+        <div
+          ref={panelRef}
+          className="engine-panel"
+          style={{ left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight }}
+        >
+          {engines.map((engine) => (
+            <label key={engine.id} className="engine-option">
+              <input
+                type="checkbox"
+                checked={selected.includes(engine.id)}
+                onChange={() => toggle(engine.id)}
+              />
+              <span>{engine.id}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      {!ok && <div className="field-error">{message}</div>}
+    </>
+  );
+}
+function ValueControl({ entry, value, changed, engines, onChange }) {
   const type = entry.type || "string";
+  const engineIds = new Set((engines || []).map((engine) => engine.id));
   const { ok, message } = validateEntryValue(entry, value, engineIds);
   const cls = `config-input ${changed ? "changed" : ""} ${ok ? "" : "invalid"}`;
   const shared = {
@@ -906,6 +993,18 @@ function ValueControl({ entry, value, changed, engineIds, onChange }) {
     value,
     onChange: (event) => onChange(event.target.value),
   };
+  if (type === "engines") {
+    return (
+      <EngineMultiSelect
+        engines={engines || []}
+        value={value}
+        changed={changed}
+        ok={ok}
+        message={message}
+        onChange={onChange}
+      />
+    );
+  }
   const selectOptions =
     type === "boolean"
       ? ["true", "false"]
@@ -941,6 +1040,19 @@ function normalizeDraftValue(entry, value) {
     return String(value);
   }
   return Array.isArray(value) ? value.join(",") : String(value ?? "");
+}
+function compareDraftValue(entry, a, b) {
+  if (entry.type === "engines") {
+    const tokens = (value) =>
+      (value || "")
+        .split(",")
+        .map((token) => token.trim())
+        .filter(Boolean)
+        .sort()
+        .join(",");
+    return tokens(a) === tokens(b);
+  }
+  return a === b;
 }
 function Manage({ config, reload }) {
   const [draft, setDraft] = useState({});
@@ -989,7 +1101,12 @@ function Manage({ config, reload }) {
     }
   };
   const changed = (config.schema || []).filter(
-    (entry) => draft[entry.key] !== normalizeDraftValue(entry, rawFor(entry)),
+    (entry) =>
+      !compareDraftValue(
+        entry,
+        draft[entry.key],
+        normalizeDraftValue(entry, rawFor(entry)),
+      ),
   );
   let group = "";
   const engineIds = new Set((config.engines || []).map((engine) => engine.id));
@@ -1089,7 +1206,7 @@ function Manage({ config, reload }) {
                 effective={effective}
                 value={draft[entry.key] ?? ""}
                 changed={changed.some((item) => item.key === entry.key)}
-                engineIds={engineIds}
+                engines={config.engines || []}
                 onChange={(value) => setDraft({ ...draft, [entry.key]: value })}
                 reset={() =>
                   save(
@@ -1119,7 +1236,7 @@ function FragmentRows({
   effective,
   value,
   changed,
-  engineIds,
+  engines,
   onChange,
   reset,
 }) {
@@ -1138,7 +1255,7 @@ function FragmentRows({
             entry={entry}
             value={value}
             changed={changed}
-            engineIds={engineIds}
+            engines={engines}
             onChange={onChange}
           />
         </td>

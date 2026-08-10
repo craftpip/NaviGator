@@ -1,4 +1,4 @@
-import { parseApiKeys, parseBoolean, parseNumber, parseInteger, parseEngines, parseToolList, parseStabilizeStrategy } from "./config.js";
+import { parseApiKeys, parseBoolean, parseEngines, parseToolList, parseStabilizeStrategy } from "./config.js";
 
 const WAIT_UNTIL_VALUES = new Set(["load", "domcontentloaded", "networkidle0", "networkidle2"]);
 
@@ -16,12 +16,14 @@ function parseWithType(type, entry, raw) {
       return { valid: value !== undefined, value };
     }
     case "number": {
-      const value = parseNumber(raw, undefined);
-      return { valid: Number.isFinite(value), value };
+      const parsed = Number(raw);
+      const value = Number.isFinite(parsed) ? parsed : undefined;
+      return { valid: value !== undefined && value >= (entry.min ?? 1), value };
     }
     case "integer": {
-      const value = parseInteger(raw, undefined);
-      return { valid: Number.isFinite(value), value };
+      const parsed = Number(raw);
+      const value = Number.isFinite(parsed) ? Math.floor(parsed) : undefined;
+      return { valid: value !== undefined && value >= (entry.min ?? 1), value };
     }
     case "engines": {
       const value = parseEngines(String(raw), null);

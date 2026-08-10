@@ -15,11 +15,11 @@ export const CONFIG_SCHEMA = [
   { key: "SEARCH_ROUTE_WARMUP_ENGINES", category: "search", type: "engines", fallback: ["duckduckgo_api", "google_cb", "google_lp", "bing_lp", "duckduckgo_cb", "bing_cb"], applies: "hot", description: "Search routes prewarmed on start (star = primary)." },
   { key: "SEARCH_FALLBACK", category: "search", type: "engines", fallback: null, applies: "hot", description: "Fallback engine order when primary routes fail." },
   { key: "SEARCH_ROUTE_CIRCUIT_OPEN_MS", category: "search", type: "number", fallback: 300000, applies: "hot", description: "Route cooldown after failure (ms)." },
-  { key: "SEARCH_KEEP_MIN_WORKING_WINDOWS", category: "search", type: "integer", fallback: 2, applies: "hot", description: "Min warm windows kept open per engine." },
+  { key: "SEARCH_KEEP_MIN_WORKING_WINDOWS", category: "search", type: "integer", min: 0, fallback: 2, applies: "hot", description: "Min warm windows kept open per engine." },
   { key: "SEARCH_MAX_WORKING_WINDOWS", category: "search", type: "integer", fallback: 10, applies: "hot", description: "Max concurrent windows per engine." },
   { key: "OPEN_PAGE_MAX_PARALLEL", category: "search", type: "integer", fallback: 6, applies: "hot", description: "Max parallel open_page operations." },
   { key: "MAX_CONCURRENT_PAGE_OPS", category: "search", type: "integer", fallback: 30, applies: "hot", description: "Global max concurrent page operations." },
-  { key: "HUMAN_TYPING_DELAY", category: "search", type: "integer", fallback: 15, applies: "hot", description: "Delay per character typed (ms)." },
+  { key: "HUMAN_TYPING_DELAY", category: "search", type: "integer", min: 0, fallback: 15, applies: "hot", description: "Delay per character typed (ms)." },
   { key: "STABILIZE_STRATEGY", category: "search", type: "enum", values: ["network_idle", "content_idle", "mutation", "none"], fallback: "network_idle", applies: "hot", description: "Page stabilization strategy." },
 
   { key: "BROWSER_OP_TIMEOUT_MS", category: "ops", type: "number", fallback: 60000, applies: "hot", description: "Timeout for browser operations (ms)." },
