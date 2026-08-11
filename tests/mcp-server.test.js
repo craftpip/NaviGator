@@ -288,6 +288,7 @@ describe("mcp-server HTTP endpoints", () => {
       const body = await res.json();
       expect(body.config).toMatchObject({ enableWebConsole: true, novncPort: 7900 });
       expect(body.engines.length).toBeGreaterThan(0);
+      expect(body.availableEngines.length).toBeGreaterThanOrEqual(body.engines.length);
       const ddgApi = body.engines.find((e) => e.id === "duckduckgo_api");
       expect(ddgApi).toMatchObject({ backend: "api", isBrowser: false });
       expect(body.tools).toContain("web_search");

@@ -384,6 +384,7 @@ async function getConsoleConfigPayload(manager) {
     env: getConfigEnvSubset(),
     envFile: { path: envPath, changedOnDisk: envFileState.changed, backup: backupPath },
     engines: enabledEngines.map((id) => CONSOLE_ENGINE_BY_ID.get(id)).filter(Boolean),
+    availableEngines: CONSOLE_ENGINE_REGISTRY,
     tools: [...new Set([...WEB_TOOL_NAMES, ...devtoolsToolDefinitions.map((tool) => tool.name)])].sort(),
     package: { name: PACKAGE_JSON.name, version: PACKAGE_JSON.version },
     schema: CONFIG_SCHEMA,

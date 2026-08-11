@@ -1205,7 +1205,8 @@ function Manage({ config, reload }) {
         normalizeDraftValue(entry, rawFor(entry)),
       ),
   );
-  const engineIds = new Set((config.engines || []).map((engine) => engine.id));
+  const availableEngines = config.availableEngines || config.engines || [];
+  const engineIds = new Set(availableEngines.map((engine) => engine.id));
   const invalidCount = (config.schema || []).filter(
     (entry) => !validateEntryValue(entry, draft[entry.key] ?? "", engineIds).ok,
   ).length;
@@ -1306,7 +1307,7 @@ function Manage({ config, reload }) {
                 fallback={fallback}
                 value={draft[entry.key] ?? ""}
                 changed={changed.some((item) => item.key === entry.key)}
-                engines={config.engines || []}
+                engines={availableEngines}
                 tools={config.tools || []}
                 onChange={(value) => setDraft({ ...draft, [entry.key]: value })}
                 reset={() =>
