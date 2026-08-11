@@ -13,11 +13,11 @@ read paths are `getDomainHints()` (load) and `findDomainHint()` (match). There i
 
 - [ ] 1. Add `validateHintRule()` + `saveDomainHints()` to `src/domain-hints.js` (port validation from `tests/domain-hints.test.js`).
 - [ ] 2. Add `hint` override param to `GET /extract` (test-before-save) and thread it through `openTargetsParallel()` → `browserOpenAndExtract()`.
-- [ ] 3. Add `/console/hints` CRUD + validate + match + reorder endpoints in `src/mcp-server.js`, gated by `enableWebConsole`.
-- [ ] 4. Add `hints` mode to the console: nav button, `HintsView` list, `HintEditor` form with live validate + test + save.
+- [ ] 3. Add `/console/hints` GET list + validate + create + update endpoints in `src/mcp-server.js`, gated by `enableWebConsole`.
+- [ ] 4. Add `hints` mode to the console: nav button, `HintsView` list, `HintEditor` (Form+JSON), `HintTestPanel` (live browser test).
 - [ ] 5. Rebuild console (`npm run console:build`), lint, run tests.
 - [ ] 6. Update `AGENTS.md` Domain Hints Workflow, `docs/domain-hints.md`, README.
-- [ ] 7. Live verification against the container (add → validate → test-before-save → save → extract without restart → reorder → delete).
+- [ ] 7. Live verification against the container (create → validate → test-before-save → save → extract without restart → update → cleanup).
 
 ---
 
@@ -26,6 +26,7 @@ read paths are `getDomainHints()` (load) and `findDomainHint()` (match). There i
 | # | Date | Request | Status |
 |---|------|---------|--------|
 | 1 | 2026-08-12 | Add a panel for domain hints in the web console where the user can add, create and update domains and test them. | planned |
+| 2 | 2026-08-12 | Decisions: Form + JSON tabs editor; edit the static `domain-hints.json` (no overlay store); minimal list (no reorder / match-checker / delete); keep plan-only for now. | decided |
 
 ---
 
@@ -35,11 +36,10 @@ A new **Domain Hints** view in the web console (`/console/hints`) that replaces 
 hand-editing workflow (`edit domain-hints.json` → `docker cp` → `docker restart` →
 `curl /extract`). From the panel an operator can:
 
-- **List** all hints with their match fields, comments, test URLs, and validation state.
-- **Create / edit / delete** hints, including reorder (first-match-wins makes order significant).
-- **Validate** a hint before saving (same checks the test suite runs).
-- **Test** a hint against a real URL **before saving** — no restart, no docker cp.
-- **Check** which rule currently applies to a given URL (`findDomainHint`).
+- **List** all hints with their match fields, comments, and test URLs.
+- **Create / edit** hints (Form + JSON tabs), validated against the schema before saving.
+- **Test** a hint in a dedicated **testing panel** — run it against the real browser on a
+  real URL and see the extracted output (text + optional screenshot) live, before saving.
 
 Saving is atomic, backed up, and immediately live via `clearDomainHintCache()` — the
 server picks up edits without a restart.
@@ -57,10 +57,9 @@ The current hint workflow is slow and restart-bound:
 4. `curl "http://localhost:3000/extract?url=..."` to see the result, then repeat.
 
 There is no way to test a rule against a real page **before** committing it, no
-validation feedback in the authoring loop, no visibility into which rule a URL
-currently resolves to, and no guard against duplicate `domain|pathPattern` entries
-(the test suite at `tests/domain-hints.test.js:104-107` rejects those, but only after
-the fact).
+validation feedback in the authoring loop, and no guard against duplicate
+`domain|pathPattern` entries (the test suite at `tests/domain-hints.test.js:104-107`
+rejects those, but only after the fact).
 
 The console already has a write-from-UI precedent: the **Manage** panel PUTs `.env`
 through `applyConfigUpdates()` (`src/mcp-server.js:531-633`, validate → backup →
@@ -98,8 +97,8 @@ tool (that stays owned by `plans/llm-managed-domain-hints.md`).
 - The `web_fetch` / `/extract` tool cache keys on `{ url, maxChars, ... }` only, so an
   edit that changes which rule matches a URL would serve stale output for that URL
   until `bypassCache`. The panel's **Test** action always calls `/extract?bypassCache=1`
-  (the endpoint must accept it) so previews are never stale. A future step could
-  invalidate matching cache keys on save (see §10).
+  (the endpoint must accept it) so previews are never stale. Full cache invalidation on
+  save is a follow-up (see §12).
 
 ---
 
@@ -107,18 +106,15 @@ tool (that stays owned by `plans/llm-managed-domain-hints.md`).
 
 Hints are an ordered array with no ids, so **array index** is the stable reference
 (the duplicate `domain|pathPattern` invariant from the tests guarantees keys are
-unique). All mutation endpoints validate, then `saveDomainHints()`, then return the
-fresh list (or a result object).
+unique). Create/update endpoints validate, then `saveDomainHints()`, then return the
+fresh result.
 
 | Method & Path | Body / Params | Response |
 |---|---|---|
-| `GET /console/hints` | — | `{ ok, hintsPath, count, hints: [...], duplicates: [{index, key, collisionIndex}], errorsByIndex: {i: [{field, message}]} }` — list + duplicate/validation summary so the UI can badge broken entries |
+| `GET /console/hints` | — | `{ ok, hintsPath, count, hints: [...] }` — the full ordered list |
 | `POST /console/hints/validate` | `{ hint }` | `{ ok, valid, errors: [{field, message}], warnings: [] }` — pure validation, no write, no navigation |
-| `POST /console/hints` | `{ hint, position? }` | validate → duplicate check → insert (default append) → save → `{ ok, index, hint, hintsPath }` |
+| `POST /console/hints` | `{ hint }` | validate → duplicate check → append → save → `{ ok, index, hint, hintsPath }` |
 | `PUT /console/hints/:index` | `{ hint }` | validate → duplicate check excluding self → replace → save → `{ ok, index, hint, hintsPath }` |
-| `DELETE /console/hints/:index` | — | range check → splice → save → `{ ok, index, count }` |
-| `POST /console/hints/reorder` | `{ from, to }` | move (array order = match order) → save → `{ ok, hints }` |
-| `POST /console/hints/match` | `{ url }` | `{ ok, url, match: { index, hint } \| null }` via `findDomainHint()` — "which rule applies here" |
 | `GET /extract` | existing + `hint=<urlencoded-json>` + `bypassCache=1` | unchanged markdown response; candidate hint applied for this request only |
 
 Gating: same guard used by `/console/config`, `/console/api-keys`, `/console/logs`
@@ -129,10 +125,14 @@ readiness — they just need the HTTP server, which the console already implies.
 ### 5.1 Duplicate & validation errors
 
 - `validateHintRule()` (below) is the single source of truth, shared by endpoints and tests.
-- Duplicate check: normalized key `domain|pathPattern`. Creating/updating one that
-  collides with another index → 400 with `{ field: "pathPattern", message: "collides with hint #N (github.com / */*)" }`.
+- Duplicate check on save: normalized key `domain|pathPattern`. Creating/updating one
+  that collides with another index → 400 with `{ field: "pathPattern", message: "collides with hint #N (github.com / */*)" }`.
 - `domain` must match `/^[a-z0-9.-]+$/` and `pathPattern` must start with `/`
   (per `tests/domain-hints.test.js:59-60`).
+
+**Deliberately out of scope for v1** (kept minimal per requirements): delete, reorder
+(first-match order stays file order; new hints append), and a "which rule applies"
+checker. All are cheap additions later if wanted.
 
 ---
 
@@ -197,8 +197,9 @@ reusable, runtime-safe functions (jsdom is a runtime dependency, see `package.js
 
 Note: `getDomainHints()` filters out entries without a `string` domain at load
 (`src/domain-hints.js:72`) — a broken entry written by a future non-panel process
-would silently vanish. The panel's `GET /console/hints` surfaces those as validation
-errors instead (compare raw loaded list, not the filtered cache), so nothing hides.
+would silently vanish from matching. The panel's `GET /console/hints` reads the **raw**
+loaded file (not the filtered cache) so broken entries still appear in the list and can
+be opened and fixed in the editor, instead of hiding them.
 
 ---
 
@@ -216,31 +217,50 @@ errors instead (compare raw loaded list, not the filtered cache), so nothing hid
 
 ```
 ┌─ DOMAIN HINTS ─────────────────────────────────────────────────────────┐
-│ path: /app/domain-hints.json   ·   50 hints   ·   0 duplicates          │
+│ path: /app/domain-hints.json   ·   50 hints                            │
 │ [ + New hint ]   [ 🔍 Search: repo            ]                         │
 │                                                                        │
 │  #  DOMAIN          PAGE TYPE   PATH          COMMENT        TEST  ACTS │
-│  1  github.com      profile     /*            User profile  1 url [T][E][↑][↓][✕] │
-│  2  github.com      repo        /*/*          Repo landing   3 urls     │
-│  ⚠  en.wikipedia.org article    /wiki/**      [bad selector] 2 urls     │
-│                                                                        │
-│ ── WHICH RULE APPLIES? ──────────────────────────────────────────────   │
-│  URL [ https://github.com/craftpip/navigator ]  [ Check ]              │
-│  → hint #2 · github.com · /*/* · "Repo landing"                        │
+│  1  github.com      profile     /*            User profile  1 url [T][E]│
+│  2  github.com      repo        /*/*          Repo landing   3 urls [T][E]│
+│  3  en.wikipedia.org article    /wiki/**      Article body   2 urls [T][E]│
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 - Rows from `GET /console/hints`: index, domain, pageType, pathPattern (mono), comment,
-  testUrls count, duplicate warning icon, per-hint validation errors (`errorsByIndex`).
-- Row actions: **Test** (uses first testUrl, or an inline URL field) → opens editor in
-  test/preview mode; **Edit**; **↑/↓** (reorder, POST `/console/hints/reorder`);
-  **✕** (delete, confirm dialog). Duplicates banner across the top with collision pairs.
-- "Which rule applies" box → `POST /console/hints/match`.
+  testUrls count.
+- Row actions: **Test** (opens the editor with the testing panel for the *saved* hint);
+  **Edit** (opens the editor pre-filled with the hint). Header: **+ New hint** and a
+  search/filter box.
+- No reorder, no delete, no match-checker in v1 (kept minimal — see §5.1).
 
-### 8.3 `HintEditor` (create / edit / test)
+### 8.3 `HintEditor` (create / edit) + `HintTestPanel` (test)
 
-Two tabs: **Form** and **JSON**.
+The editor and testing panel are a **two-pane layout** — the testing panel is a
+first-class, always-present pane beside the editor, not a hidden action. Editing on the
+left, live browser output on the right.
 
+```
+┌─ EDIT — github.com / */* ──────────────────┬─ TEST ON PAGE ─────────────────────┐
+│ [Form | JSON]  backend: cloakbrowser       │ URL [ https://github.com/craftpip ] │
+│                                            │ [▶ Run test]   auto-re-run: [x]     │
+│ Domain      [github.com                ]   │─────────────────────────────────────│
+│ Path        [/*/*                      ]   │ ● running… waitForSelector 312ms     │
+│ Page type   [repo                      ]   │   stabilize 1.1s · extract 92ms     │
+│ Comment     [Repo landing: readme etc  ]   │   ✓ 1,842 chars · 2 tables          │
+│ Test URLs   [https://github.com/craftpip ] │─────────────────────────────────────│
+│             [+ add]                       │ [Text ▾]  README                     │
+│ Wait for    [article.markdown-body    ]   │          # navigator …               │
+│ Prefer Rdbl [on]  Stabilize [network ▾]   │          ## Table 1 …                │
+│ Sections (2) [+ add]                     │          [Screenshot]  [Raw]          │
+│  1 [article.markdown-body] "README" high │─────────────────────────────────────│
+│  2 [nav.file-tree]          "Files" low  │ ⚠ article.markdown-body: 0 matches    │
+│ Flags: [ ] auth [ ] visual [ ] bot [ ]   │ → try "main" or a data-testid         │
+│ [ ▼ Validate ]  [ 💾 Save ]  [ ✕ Cancel ] │                                      │
+└───────────────────────────────────────────┴──────────────────────────────────────┘
+```
+
+**Left pane — `HintEditor`:** two tabs, **Form** and **JSON** (same as before):
 - **Form** — guided fields for the full schema:
   - Identity: `domain`, `pathPattern` (with `/`-prefix hint), `pageType`, `comment`,
     `testUrls` (add/remove rows, each validated as https).
@@ -253,21 +273,50 @@ Two tabs: **Form** and **JSON**.
   - Flags: 4 checkboxes (`authWall`, `visualOnly`, `botProtected`, `requiresChromium`).
 - **JSON** — raw textarea of the current hint (`JSON.stringify(hint, null, 2)`),
   round-trips with the Form tab; switching tabs re-parses and re-validates.
-- **Actions bar:**
-  - **Validate** → `POST /console/hints/validate`, inline field-level errors.
-  - **Test on page** → URL input (defaults to `testUrls[0]`) + candidate →
-    `GET /extract?url=…&maxChars=8000&bypassCache=1&hint=<encodeURIComponent(JSON)>`;
-    renders the markdown result in a scrollable preview below (with a raw/rendered toggle).
-  - **Save** → `POST /console/hints` (new) or `PUT /console/hints/:index` (edit) →
-    refresh list, close editor. Blocked while validation errors exist.
-- **Test mode from the list row** opens the editor read-only-ish (only testUrl
-  adjustable) for the *saved* hint — useful for iterating on existing rules.
+- **Actions:** **Validate** → `POST /console/hints/validate`, inline field-level errors
+  (Save is blocked while errors exist). **Save** → `POST /console/hints` (new) or
+  `PUT /console/hints/:index` (edit) → refresh list, close. **Cancel** → discard.
+
+**Right pane — `HintTestPanel`:** a dedicated component that runs the current
+candidate hint (form state, not the saved file) against the real browser:
+- **URL input** — defaults to `testUrls[0]`; editable. Missing/empty URL → Run disabled
+  with a hint to add a test URL.
+- **Run test** → `GET /extract?url=…&maxChars=8000&bypassCache=1&hint=<encodeURIComponent(JSON)>`.
+  The candidate is validated server-side first; a validation error renders in the pane
+  without navigation.
+- **Auto re-run** checkbox (default on, 800ms debounce) — every edit to the form
+  re-triggers the test so the operator iterates live while typing selectors. Manual
+  **▶ Run test** always available.
+- **Status bar** — spinner while running; on completion shows the client-measured
+  round-trip time, char count, table count (parsed from the response), and the hint
+  source (`override` vs `static`). A structured `format=json` response for `/extract`
+  (per `AGENTS.md`'s web-fetch-json note) is a possible future enhancement that would
+  let the status bar show per-step timings — out of scope here, the markdown response
+  is sufficient for iterating on selectors.
+- **Output tabs** — **Text** (rendered markdown of the `/extract` response, scrollable)
+  and **Raw** (verbatim response). A **Screenshot** toggle shows the page beside the
+  text via the existing `GET /screenshot?url=…` endpoint (hint only affects extraction,
+  not the visual — seeing both lets the operator verify the selectors target the right
+  regions of the page).
+- **Zero-match / error feedback** — `0 matches` warnings for section selectors are
+  surfaced prominently with a suggested next step, instead of burying them in the
+  markdown (e.g. "article.markdown-body: 0 matches — try main or a data-testid").
+- **Backend note** — runs on the same `BROWSER_BACKEND` the MCP server uses for
+  `web_fetch`, so the test result is exactly what a real `web_fetch` would produce.
+
+**Entry points into the two-pane editor:**
+- **+ New hint** → empty editor + empty test panel (user adds a test URL before running).
+- **Edit** from a list row → editor pre-filled; test panel defaults to `testUrls[0]`.
+- **Test** from a list row → same, but for the *saved* hint (no candidate overrides)
+  — useful for iterating on existing rules and comparing against the current behavior.
 
 ### 8.4 Styling
 
 Reuse existing CSS vars and classes (`.panel`, `.card`, `.button`, `.input`,
-`.mono`, `--gold`/`--red` for badges). New styles only for section/fields repeaters and
-the test preview panel. Dark theme inherits via `data-theme` vars automatically.
+`.mono`, `--gold`/`--red` for badges). New styles: the two-pane editor/test layout
+(responsive grid — panes stack on narrow screens), section/fields repeaters, and the
+test status bar + zero-match warning block. Dark theme inherits via `data-theme` vars
+automatically.
 
 ---
 
@@ -276,26 +325,28 @@ the test preview panel. Dark theme inherits via `data-theme` vars automatically.
 ### Server
 1. `src/domain-hints.js`: add `validateHintRule`, `validateSelector`, `saveDomainHints`
    (§7). Keep exports backward-compatible; `getDomainHints`/`findDomainHint` unchanged.
-2. `src/search.js`: add `hintOverride` to `browserOpenAndExtract` (§6.3), debug log.
+2. `src/search.js`: add `hintOverride` to `browserOpenAndExtract` (§6 server threading
+   step 3), debug log.
 3. `src/mcp-server.js`:
    - `openTargetsParallel(..., opts)` — forward `hintOverride`, honor `bypassCache`.
    - `/extract` handler — parse + validate `hint`, pass through (§6.1).
-   - New `/console/hints*` routes (§5) with `enableWebConsole` gating.
-   - `getHintListForConsole()` helper: raw list + duplicate detection + per-index
-     `validateHintRule` errors (uses `loadDomainHints`, not the filtered cache).
+   - New `/console/hints` routes (§5): GET list, POST validate, POST create, PUT update —
+     with `enableWebConsole` gating and save-time duplicate check.
 
 ### Console
 4. `modeFromPath`/`pathForMode` + nav button (§8.1).
-5. `HintsView` list + match tester (§8.2).
-6. `HintEditor` form/JSON + validate + test + save (§8.3).
-7. `style.css` additions (§8.4).
+5. `HintsView` list + search + New/Edit/Test entry points (§8.2).
+6. `HintEditor` form/JSON + validate + save (§8.3 left pane).
+7. `HintTestPanel` — run/debounce/status/timing/output tabs/screenshot/zero-match
+   feedback (§8.3 right pane).
+8. `style.css` additions (§8.4).
 
 ### Verify
-8. `npm run console:build` (host, needs dev deps) → confirm `web-console/dist`
+9. `npm run console:build` (host, needs dev deps) → confirm `web-console/dist`
    references the new hashed bundle.
-9. `docker compose exec navigator npm install --include=dev` then
-   `npx vitest run tests/domain-hints.test.js tests/domain-hints-api.test.js` and
-   `npm run lint`.
+10. `docker compose exec navigator npm install --include=dev` then
+    `npx vitest run tests/domain-hints.test.js tests/domain-hints-api.test.js` and
+    `npm run lint`.
 
 ---
 
@@ -310,11 +361,10 @@ the test preview panel. Dark theme inherits via `data-theme` vars automatically.
    cache (subsequent `getDomainHints` re-reads), and errors cleanly on `/dev/null`.
 
 ### HTTP API tests (`tests/domain-hints-api.test.js`, temp hints file)
-4. `GET /console/hints` returns list + duplicate/validation summary; 403 when console disabled.
-5. Create → append; duplicate key → 400 naming the collision; invalid selector → 400.
-6. Update replaces in place; delete range-checked; reorder persists order.
-7. `match` returns the right rule for a URL and `null` when none.
-8. `/extract?hint=` returns validation 400 for a bad candidate and applies a good
+4. `GET /console/hints` returns the ordered list; 403 when console disabled.
+5. Create → appended at end; duplicate key → 400 naming the collision; invalid selector → 400.
+6. Update replaces in place; out-of-range index → 400.
+7. `/extract?hint=` returns validation 400 for a bad candidate and applies a good
    candidate without touching the saved file; `bypassCache=1` bypasses the tool cache.
 
 ### Console
@@ -322,12 +372,16 @@ the test preview panel. Dark theme inherits via `data-theme` vars automatically.
 
 ### Live verification
 1. Open `/console/hints`; confirm list matches `domain-hints.json`.
-2. Create a hint for `example.com` with `waitForSelector: "p"` — duplicate/validation clean.
-3. **Test on page** `https://example.com` before saving → preview shows extraction.
+2. Create a hint for `example.com` with `waitForSelector: "p"` — validation clean,
+   duplicate-free, appended to the file.
+3. In the two-pane editor, **Run test** against `https://example.com` before saving →
+   status bar + Text/Raw output appear; edit a selector and confirm auto re-run refreshes
+   the output; toggle Screenshot and confirm the page renders beside the text.
 4. Save → run `curl /extract?url=https://example.com` **without restart** → hint applies.
 5. `docker compose restart navigator` → hint still there (persisted file).
-6. Reorder two GitHub hints; verify `POST /console/hints/match` reflects the new order.
-7. Delete the test hint; confirm it's gone from the file and extraction falls back.
+6. Edit the test hint's selector and verify the update replaces the original entry.
+7. Clean up: the test hint is removed manually from the file (no delete in v1) and
+   extraction falls back.
 
 ---
 
@@ -355,6 +409,8 @@ the test preview panel. Dark theme inherits via `data-theme` vars automatically.
 - **Selector auto-detection / page inspection** — stays with the devtools browser
   tools and the AGENTS.md exploration routine; embedding those in the console is a
   possible future step, not this one.
+- **Delete, reorder, and "which rule applies"** — deliberately excluded from v1 to keep
+  the list minimal (per requirements); cheap to add later (§5.1).
 - **Multi-file / multi-env hint management**, migration, or import/export.
 - **Adding a `domainHint` param to the MCP `web_fetch` tool** — owned by the
   llm-managed plan; the `hint` param here is console-HTTP only.

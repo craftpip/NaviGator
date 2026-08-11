@@ -19,8 +19,8 @@
   --series-web-fail: #dc2626;
   --series-devtools-ok: #2563eb;
   --series-devtools-fail: #9333ea;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --mono: Consolas, ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
   font-family: var(--sans);
@@ -74,7 +74,7 @@ header,
   border-radius: 5px;
 }
 
-/* Header — standardized, stable at all widths */
+/* Header — logo/stats on the left, mode + option buttons in one right-aligned group */
 header {
   display: flex;
   align-items: center;
@@ -82,6 +82,23 @@ header {
   padding: 10px 12px;
   margin-bottom: 10px;
   flex-wrap: wrap;
+}
+.hdr-left {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.hdr-spacer {
+  flex: 1;
+}
+.hdr-right {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .logo {
   display: flex;
@@ -132,6 +149,24 @@ p,
 .live.off {
   color: var(--muted);
 }
+.button.live-toggle {
+  gap: 6px;
+  color: var(--green);
+  font: 600 11px var(--sans);
+}
+.button.live-toggle i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+.button.live-toggle.paused {
+  color: var(--amber);
+}
+.button.live-toggle.off {
+  color: var(--muted);
+}
 .hdr-item {
   display: inline-flex;
   align-items: center;
@@ -142,9 +177,6 @@ p,
 }
 .hdr-item b {
   color: var(--text);
-}
-.spacer {
-  flex: 1;
 }
 .button,
 .button-like {
@@ -594,7 +626,7 @@ p,
 .engine-activity > .panel:last-child .feed {
   flex: 1;
   min-height: 0;
-  max-height: none;
+  max-height: 720px;
 }
 .list {
   display: flex;
@@ -1796,6 +1828,20 @@ select.config-input option {
   gap: 10px;
 }
 
+@media (max-width: 720px) {
+  .hdr-right .mode-switch button {
+    padding: 0 8px;
+  }
+}
+@media (max-width: 560px) {
+  .hdr-left .hdr-item {
+    display: none;
+  }
+  .hdr-right .mode-switch button {
+    font-size: 10px;
+  }
+}
+
 @media (max-width: 1050px) {
   .metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1807,6 +1853,11 @@ select.config-input option {
 @media (max-width: 760px) {
   .engine-activity {
     grid-template-columns: 1fr;
+  }
+  .engine-activity > .panel:last-child .feed {
+    flex: none;
+    height: 420px;
+    max-height: 420px;
   }
 }
 @media (max-width: 800px) {

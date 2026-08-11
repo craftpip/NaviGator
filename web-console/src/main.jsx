@@ -111,6 +111,21 @@ function pathForMode(mode) {
   return "/console";
 }
 
+function useNarrow(breakpoint = 720) {
+  const query = `(max-width: ${breakpoint}px)`;
+  const [narrow, setNarrow] = useState(
+    () => window.matchMedia(query).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const update = (event) => setNarrow(event.matches);
+    mq.addEventListener("change", update);
+    setNarrow(mq.matches);
+    return () => mq.removeEventListener("change", update);
+  }, [query]);
+  return narrow;
+}
+
 function Layout({
   children,
   mode,
@@ -131,107 +146,107 @@ function Layout({
     localStorage.setItem("navigator-theme", dark ? "dark" : "light");
   }, [dark]);
   const status = telemetry.ok ? "ok" : "off";
+  const narrow = useNarrow(720);
   return (
     <main className="app">
       <header>
-        <a className="logo" href="/console">
-          <img className="logo-img" src={logo} alt="Navigator logo" />
-          NAVIGATOR <span>{title}</span>
-        </a>
-        {title === "CONSOLE" && (
-          <>
-            <div className={`live ${paused ? "paused" : status}`}>
-              <i />
-              {paused ? "PAUSED" : telemetry.ok ? "LIVE 2s" : "OFFLINE"}
-            </div>
-            <div className="hdr-item">
-              uptime <b>{formatUptime(telemetry.stats?.uptimeSeconds)}</b>
-            </div>
-            <div className="hdr-item">
-              mem <b>{formatBytes(telemetry.stats?.memory?.rss)}</b>
-            </div>
-            <div className="hdr-item">
-              sessions <b>{telemetry.stats?.sessions ?? "-"}</b>
-            </div>
-          </>
-        )}
-        <span className="spacer" />
-        {setMode ? (
-          <div className="mode-switch">
-            <button
-              className={mode === "status" ? "active" : ""}
-              onClick={() => setMode("status")}
-            >
-              Status
-            </button>
-            <button
-              className={mode === "manage" ? "active" : ""}
-              onClick={() => setMode("manage")}
-            >
-              Manage
-            </button>
-            <button
-              className={mode === "tools" ? "active" : ""}
-              onClick={() => setMode("tools")}
-            >
-              Web tools
-            </button>
-            <button
-              className={mode === "keys" ? "active" : ""}
-              onClick={() => setMode("keys")}
-            >
-              API keys
-            </button>
-          </div>
-        ) : (
-          <a className="button" href="/console">
-            Back to console
+        <div className="hdr-left">
+          <a className="logo" href="/console">
+            <img className="logo-img" src={logo} alt="Navigator logo" />
+            NAVIGATOR <span>{title}</span>
           </a>
-        )}
-        <button className="button" onClick={() => setDark(!dark)}>
-          {dark ? "Light" : "Dark"}
-        </button>
-        {setPaused && (
-          <button
-            className="button"
-            onClick={() => setPaused(!paused)}
-            title="Pause live polling"
-          >
-            {paused ? "[▶]" : "[⏸]"}
-          </button>
-        )}
-        {toggleVnc && (
-          vncBusy ? (
-            <button
-              className="button"
-              disabled
-            >
-              Working...
-            </button>
-          ) : vnc?.running ? (
-            <div className="remote-desktop-actions" role="group" aria-label="Remote Desktop">
+          {title === "CONSOLE" && (
+            <>
+              <div className="hdr-item">
+                uptime <b>{formatUptime(telemetry.stats?.uptimeSeconds)}</b>
+              </div>
+              <div className="hdr-item">
+                mem <b>{formatBytes(telemetry.stats?.memory?.rss)}</b>
+              </div>
+              <div className="hdr-item">
+                sessions <b>{telemetry.stats?.sessions ?? "-"}</b>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="hdr-spacer" />
+        <div className="hdr-right">
+          {setMode ? (
+            <div className="mode-switch">
               <button
-                className="button"
-                onClick={() =>
-                  window.open(
-                    `http://${location.hostname}:${vnc.novncPort}/vnc.html`,
-                    "_blank",
-                    "noopener",
-                  )
-                }
+                className={mode === "status" ? "active" : ""}
+                onClick={() => setMode("status")}
               >
-                Open Remote Desktop
+                Status
               </button>
-              <button className="button danger" onClick={toggleVnc}>
-                Close Remote Desktop
+              <button
+                className={mode === "manage" ? "active" : ""}
+                onClick={() => setMode("manage")}
+              >
+                Manage
+              </button>
+              <button
+                className={mode === "tools" ? "active" : ""}
+                onClick={() => setMode("tools")}
+              >
+                Web tools
+              </button>
+              <button
+                className={mode === "keys" ? "active" : ""}
+                onClick={() => setMode("keys")}
+              >
+                API keys
               </button>
             </div>
           ) : (
-            <button className="button" onClick={toggleVnc}>
-              Enable Remote Desktop
+            <a className="button" href="/console">
+              Back to console
+            </a>
+          )}
+          <button className="button" onClick={() => setDark(!dark)}>
+            {dark ? "Light" : "Dark"}
+          </button>
+          {toggleVnc && (
+            vncBusy ? (
+              <button className="button" disabled>
+                Working...
+              </button>
+            ) : vnc?.running ? (
+              <div className="remote-desktop-actions" role="group" aria-label="Remote Desktop">
+                <button
+                  className="button"
+                  onClick={() =>
+                    window.open(
+                      `http://${location.hostname}:${vnc.novncPort}/vnc.html`,
+                      "_blank",
+                      "noopener",
+                    )
+                  }
+                >
+                  {narrow ? "Open" : "Open Remote Desktop"}
+                </button>
+                <button className="button danger" onClick={toggleVnc}>
+                  {narrow ? "Close" : "Close Remote Desktop"}
+                </button>
+              </div>
+            ) : (
+              <button className="button" onClick={toggleVnc}>
+                {narrow ? "VNC" : "Enable Remote Desktop"}
+              </button>
+            )
+          )}
+          {title === "CONSOLE" && setPaused && (
+            <button
+              className={`button live-toggle ${paused ? "paused" : status}`}
+              onClick={() => setPaused(!paused)}
+              title="Pause live polling"
+            >
+              <i />
+              {paused ? "PAUSED" : telemetry.ok ? "LIVE 2s" : "OFFLINE"}
+              {paused ? "[▶]" : "[⏸]"}
             </button>
-          )
-        )}
+          )}
+        </div>
       </header>
       {children}
     </main>
