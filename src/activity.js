@@ -4,6 +4,12 @@ import { getDb, initDb, isDbReady, pruneActivity } from "./db.js";
 export const searchContext = new AsyncLocalStorage();
 
 const RETENTION_STATS_MS = 24 * 60 * 60 * 1000;
+export const ACTIVITY_TREND_RANGES = Object.freeze({
+  minutes: { bucketMs: 60 * 1000, points: 15 },
+  hour: { bucketMs: 5 * 60 * 1000, points: 12 },
+  day: { bucketMs: 60 * 60 * 1000, points: 24 },
+  week: { bucketMs: 6 * 60 * 60 * 1000, points: 28 }
+});
 
 function searchIdFromContext() {
   return searchContext.getStore()?.searchId ?? null;
@@ -91,6 +97,14 @@ export function recordPageOp({ tool, url, backend, durationMs = 0, responseChars
   });
 }
 
+export function recordActivityEvent({ tool, category, ok = true, error = "" }) {
+  runExclusive(() => {
+    getDb()
+      .prepare("INSERT INTO activity_events (ts, tool, category, ok, error) VALUES (?, ?, ?, ?, ?)")
+      .run(Date.now(), String(tool || "unknown"), category === "devtools" ? "devtools" : "web", ok ? 1 : 0, ok ? "" : String(error || "error").slice(0, 300));
+  });
+}
+
 export function getRecentActivity({ sinceId = 0, sinceOpId = 0, limit = 100, includePageOps = false } = {}) {
   const db = getDb();
   const recentCutoff = Date.now() - 60_000;
@@ -139,4 +153,80 @@ export function getEngineSuccessStats({ sinceMs = Date.now() - RETENTION_STATS_M
   const fail = list.reduce((sum, entry) => sum + entry.fail, 0);
   const skip = list.reduce((sum, entry) => sum + entry.skip, 0);
   return { sinceMs, total, ok, fail, skip, byEngine: list };
+}
+
+export function getActivityTrend({ range = "hour", engine = "all", now = Date.now() } = {}) {
+  const config = ACTIVITY_TREND_RANGES[range];
+  if (!config) throw new Error(`Unsupported activity trend range: ${range}`);
+
+  const database = getDb();
+  const latestBucket = Math.floor(now / config.bucketMs) * config.bucketMs;
+  const sinceMs = latestBucket - (config.points - 1) * config.bucketMs;
+  const buckets = Array.from({ length: config.points }, (_, index) => ({
+    ts: sinceMs + index * config.bucketMs,
+    web: { ok: 0, fail: 0 },
+    devtools: { ok: 0, fail: 0 },
+    total: 0,
+    engine: { ok: 0, fail: 0, skip: 0 }
+  }));
+  const bucketsByTs = new Map(buckets.map((bucket) => [bucket.ts, bucket]));
+  const eventRows = database
+    .prepare(`SELECT CAST(ts / ? AS INTEGER) * ? AS bucket_ts, category, ok, COUNT(*) AS count FROM activity_events WHERE ts >= ? AND ts <= ? GROUP BY bucket_ts, category, ok`)
+    .all(config.bucketMs, config.bucketMs, sinceMs, now);
+  for (const row of eventRows) {
+    const bucket = bucketsByTs.get(Number(row.bucket_ts));
+    if (!bucket) continue;
+    const category = row.category === "devtools" ? "devtools" : "web";
+    const status = row.ok ? "ok" : "fail";
+    const count = Number(row.count) || 0;
+    bucket[category][status] += count;
+    bucket.total += count;
+  }
+
+  const engineWhere = engine === "all" ? "" : "AND engine = ?";
+  const attemptRows = database
+    .prepare(`SELECT CAST(ts / ? AS INTEGER) * ? AS bucket_ts, engine, status, COUNT(*) AS count FROM engine_attempts WHERE ts >= ? AND ts <= ? ${engineWhere} GROUP BY bucket_ts, engine, status`)
+    .all(config.bucketMs, config.bucketMs, sinceMs, now, ...(engine === "all" ? [] : [engine]));
+  const engineBuckets = new Map();
+  for (const row of attemptRows) {
+    const bucket = bucketsByTs.get(Number(row.bucket_ts));
+    if (!bucket) continue;
+    const status = row.status === "ok" ? "ok" : row.status === "skip" ? "skip" : "fail";
+    const count = Number(row.count) || 0;
+    bucket.engine[status] += count;
+    let series = engineBuckets.get(row.engine);
+    if (!series) {
+      series = buckets.map((item) => ({ ts: item.ts, ok: 0, fail: 0, skip: 0 }));
+      engineBuckets.set(row.engine, series);
+    }
+    const seriesBucket = series.find((item) => item.ts === bucket.ts);
+    seriesBucket[status] += count;
+  }
+
+  const summary = { total: 0, ok: 0, fail: 0, web: { ok: 0, fail: 0 }, devtools: { ok: 0, fail: 0 } };
+  const engineSummary = { total: 0, ok: 0, fail: 0, skip: 0 };
+  for (const bucket of buckets) {
+    summary.total += bucket.total;
+    for (const category of ["web", "devtools"]) {
+      summary[category].ok += bucket[category].ok;
+      summary[category].fail += bucket[category].fail;
+      summary.ok += bucket[category].ok;
+      summary.fail += bucket[category].fail;
+    }
+    for (const status of ["ok", "fail", "skip"]) {
+      engineSummary[status] += bucket.engine[status];
+      engineSummary.total += bucket.engine[status];
+    }
+  }
+  return {
+    range,
+    bucketMs: config.bucketMs,
+    sinceMs,
+    untilMs: now,
+    engine,
+    summary,
+    engineSummary,
+    buckets,
+    engineSeries: [...engineBuckets].map(([id, series]) => ({ id, buckets: series }))
+  };
 }

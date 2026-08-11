@@ -16,6 +16,7 @@ import { findDomainHint, getDomainHints } from "./domain-hints.js";
 import { htmlToMarkdown } from "./markdown.js";
 import { getEngineDriver, getEngineMetadata, SUPPORTED_ENGINES } from "./engines/index.js";
 import { EngineScheduler } from "./engine-scheduler.js";
+import { incrementUsageTotal } from "./db.js";
 import {
   buildLlmText,
   cleanAndTruncateText,
@@ -131,6 +132,7 @@ function persistRouteCircuitState() {
 
 const activityCounters = {
   searches: 0,
+  searchResults: 0,
   fetches: 0,
   screenshots: 0,
   botBlocks: 0
@@ -1516,6 +1518,7 @@ function buildQueryResult({ query, settled, limit, fallbackAttempted }) {
 export async function browserSearch({ query, queries, limit = 5, engines }) {
   const manager = await getBrowserManager();
   activityCounters.searches += 1;
+  incrementUsageTotal("searches");
   const tSearchStart = performance.now();
   const requestedEngineIds = (Array.isArray(engines) ? engines : [engines])
     .filter((engine) => engine !== undefined && engine !== null)
@@ -1569,6 +1572,8 @@ export async function browserSearch({ query, queries, limit = 5, engines }) {
     });
 
     if (result.length === 1) {
+      activityCounters.searchResults += result[0].resultCount;
+      incrementUsageTotal("resultsServed", result[0].resultCount);
       recordSearchEnd(searchId, {
         ok: true,
         resultCount: result[0].resultCount,
@@ -1612,16 +1617,19 @@ export async function browserSearch({ query, queries, limit = 5, engines }) {
       }
     }
 
+    const totalResultCount = [...combinedByUrl.values()].length;
+    activityCounters.searchResults += totalResultCount;
+    incrementUsageTotal("resultsServed", totalResultCount);
     recordSearchEnd(searchId, {
       ok: true,
-      resultCount: [...combinedByUrl.values()].length,
+      resultCount: totalResultCount,
       durationMs: performance.now() - tSearchStart
     });
 
     return {
       queries: uniqueQueries,
       queryCount: uniqueQueries.length,
-      totalResultCount: [...combinedByUrl.values()].length,
+      totalResultCount,
       results: [...combinedByUrl.values()].slice(0, Math.max(1, limit || 1)),
       totalDirectAnswerCount: dedupeDirectAnswers(combinedDirectAnswers).length,
       directAnswers: dedupeDirectAnswers(combinedDirectAnswers),
@@ -1760,6 +1768,7 @@ function extractLinksFromHtml({ html, url }) {
 export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, includeSeoAnalysis = true }) {
   const tOverall = performance.now();
   activityCounters.fetches += 1;
+  incrementUsageTotal("fetches");
   const manager = await getBrowserManager();
   const maxChars = requestedMaxChars ?? manager.config.maxChars ?? DEFAULT_MAX_CHARS;
   const debug = manager.config.debug === true;
@@ -1974,6 +1983,7 @@ export async function browserCaptureScreenshot({
   quality
 }) {
   activityCounters.screenshots += 1;
+  incrementUsageTotal("screenshots");
   const manager = await getBrowserManager();
   const tShotStart = performance.now();
   const normalizedFormat = format === "jpeg" ? "jpeg" : "png";

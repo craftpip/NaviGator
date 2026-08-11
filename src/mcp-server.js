@@ -20,8 +20,8 @@ import { validateConfigValue, hotApplyConfig } from "./config-manager.js";
 import { getEnvFilePath, readEnvFile, writeEnvFile, upsertEnvText, removeEnvKeysText, backupEnvFile, revertEnvFile, recordEnvChange, getEnvChangeHistory, latestBackupPath } from "./env-file.js";
 import { vncManager } from "./vnc-manager.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats, getEngineProfiles } from "./search.js";
-import { getRecentActivity, recordPageOp } from "./activity.js";
-import { createMcpApiKey, initDb, initializeMcpApiKeys, listMcpApiKeys, revokeMcpApiKey, setMcpApiKeyTools } from "./db.js";
+import { getActivityTrend, getRecentActivity, recordActivityEvent, recordPageOp } from "./activity.js";
+import { createMcpApiKey, getUsageTotals, incrementUsageTotal, initDb, initializeMcpApiKeys, listMcpApiKeys, revokeMcpApiKey, setMcpApiKeyTools } from "./db.js";
 import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters } from "./devtools.js";
 import { transform as asciiTransform } from "./ascii.js";
 import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
@@ -86,27 +86,36 @@ const REQUEST_PERIODS = [
   { key: "all", ms: Infinity }
 ];
 const requestLog = [];
+const requestCounters = { total: 0, ok: 0, err: 0 };
 
 function recordRequest(tool, ok, errorMsg) {
+  requestCounters.total += 1;
+  if (ok) requestCounters.ok += 1;
+  else requestCounters.err += 1;
   requestLog.push({ t: Date.now(), tool, ok, err: ok ? "" : String(errorMsg || "error").slice(0, 300) });
   if (requestLog.length > REQUEST_LOG_MAX) {
     requestLog.splice(0, requestLog.length - REQUEST_LOG_MAX);
   }
 }
 
+function activityCategoryForTool(name) {
+  return ["Target.", "Page.", "Runtime.", "DOM.", "Input."].some((prefix) => String(name).startsWith(prefix))
+    ? "devtools"
+    : "web";
+}
+
+function recordActivityRequest(tool, ok, errorMsg) {
+  incrementUsageTotal("toolCalls");
+  recordRequest(tool, ok, errorMsg);
+  recordActivityEvent({ tool, category: activityCategoryForTool(tool), ok, error: errorMsg });
+}
+
 function getRequestStats() {
   const now = Date.now();
   const byPeriod = {};
   const byTool = {};
-  let total = 0;
-  let ok = 0;
-  let err = 0;
 
   for (const e of requestLog) {
-    total += 1;
-    if (e.ok) ok += 1;
-    else err += 1;
-
     const tool = (byTool[e.tool] ||= { total: 0, ok: 0, err: 0 });
     tool.total += 1;
     if (e.ok) tool.ok += 1;
@@ -135,7 +144,7 @@ function getRequestStats() {
     }
   }
 
-  return { total, ok, err, byPeriod, byTool, recentErrors };
+  return { ...requestCounters, byPeriod, byTool, recentErrors };
 }
 
 function stableStringify(value) {
@@ -1675,10 +1684,10 @@ async function handleToolCall(name, args = {}, allowedTools = null) {
       throw new Error(`Tool "${name}" is not permitted for this API key`);
     }
     const result = await handleToolCallInner(name, args);
-    recordRequest(name, true);
+    recordActivityRequest(name, true);
     return result;
   } catch (error) {
-    recordRequest(name, false, error?.message || String(error));
+    recordActivityRequest(name, false, error?.message || String(error));
     throw error;
   }
 }
@@ -2545,6 +2554,7 @@ async function maybeStartHttpServer(managerOverride) {
             cacheHits: cacheCounters.hits,
             cacheMisses: cacheCounters.misses
           },
+          usage: getUsageTotals(),
           requests: getRequestStats(),
           engineAttempts: getEngineAttemptStats(),
           engineProfiles: getEngineProfiles(),
@@ -2565,6 +2575,21 @@ async function maybeStartHttpServer(managerOverride) {
           ok: true,
           ...getRecentActivity({ sinceId, sinceOpId, limit, includePageOps })
         });
+        return;
+      }
+
+      if (url.pathname === "/stats/activity-trend") {
+        const range = String(url.searchParams.get("range") || "hour").toLowerCase();
+        const engine = String(url.searchParams.get("engine") || "all").toLowerCase();
+        if (engine !== "all" && !SUPPORTED_ENGINES.includes(engine)) {
+          sendJson(res, 400, { ok: false, error: `Unknown search engine: ${engine}` });
+          return;
+        }
+        try {
+          sendJson(res, 200, { ok: true, ...getActivityTrend({ range, engine }) });
+        } catch (error) {
+          sendJson(res, 400, { ok: false, error: String(error?.message || error) });
+        }
         return;
       }
 
@@ -2709,7 +2734,7 @@ async function maybeStartHttpServer(managerOverride) {
         const queries = [...new Set([...multiQ, ...queriesParam])];
 
         if (!query.trim() && !queries.length) {
-          recordRequest("http:/search", false, "Missing q or queries parameter");
+          recordActivityRequest("http:/search", false, "Missing q or queries parameter");
           sendJson(res, 400, { ok: false, error: "Missing q or queries parameter" });
           return;
         }
@@ -2733,7 +2758,7 @@ async function maybeStartHttpServer(managerOverride) {
             await runWithHangGuard("http:/search", () => browserSearch({ query, queries, limit, ...(engines.length ? { engines } : {}) }))
           );
         } catch (error) {
-          recordRequest("http:/search", false, error?.message || String(error));
+          recordActivityRequest("http:/search", false, error?.message || String(error));
           throw error;
         }
         mark = timer.step("browser_search", mark);
@@ -2741,7 +2766,7 @@ async function maybeStartHttpServer(managerOverride) {
         timer.step("format_response", mark);
         timer.end({ status: "ok" });
         logEvent("http.response", { method, path: url.pathname, result: payload });
-        recordRequest("http:/search", true);
+        recordActivityRequest("http:/search", true);
         sendMarkdown(res, 200, markdown);
         return;
       }
@@ -2762,7 +2787,7 @@ async function maybeStartHttpServer(managerOverride) {
         try {
           targetUrls = parseHttpExtractTargets(url.searchParams);
         } catch (error) {
-          recordRequest("http:/extract", false, error?.message || String(error));
+          recordActivityRequest("http:/extract", false, error?.message || String(error));
           logEvent("http.error", {
             method,
             path: url.pathname,
@@ -2782,7 +2807,7 @@ async function maybeStartHttpServer(managerOverride) {
             openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug)
           );
         } catch (error) {
-          recordRequest("http:/extract", false, error?.message || String(error));
+          recordActivityRequest("http:/extract", false, error?.message || String(error));
           throw error;
         }
         mark = timer.step("open_targets", mark);
@@ -2791,7 +2816,7 @@ async function maybeStartHttpServer(managerOverride) {
         timer.step("format_response", mark);
         timer.end({ status: "ok" });
         logEvent("http.response", { method, path: url.pathname, result: payload });
-        recordRequest("http:/extract", true);
+        recordActivityRequest("http:/extract", true);
         sendMarkdown(res, 200, markdown);
         return;
       }
@@ -2812,7 +2837,7 @@ async function maybeStartHttpServer(managerOverride) {
         try {
           targetUrls = parseHttpExtractTargets(url.searchParams);
         } catch (error) {
-          recordRequest("http:/screenshot", false, error?.message || String(error));
+          recordActivityRequest("http:/screenshot", false, error?.message || String(error));
           logEvent("http.error", {
             method,
             path: url.pathname,
@@ -2858,7 +2883,7 @@ async function maybeStartHttpServer(managerOverride) {
             )
           );
         } catch (error) {
-          recordRequest("http:/screenshot", false, error?.message || String(error));
+          recordActivityRequest("http:/screenshot", false, error?.message || String(error));
           throw error;
         }
         mark = timer.step("capture_screenshots", mark);
@@ -2868,7 +2893,7 @@ async function maybeStartHttpServer(managerOverride) {
         timer.step("format_response", mark);
         timer.end({ status: "ok" });
         logEvent("http.response", { method, path: url.pathname, result: payload });
-        recordRequest("http:/screenshot", true);
+        recordActivityRequest("http:/screenshot", true);
         sendMarkdown(res, 200, markdown);
         return;
       }

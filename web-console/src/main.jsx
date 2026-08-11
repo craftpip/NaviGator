@@ -289,6 +289,89 @@ function Trend({ label, values, color }) {
   );
 }
 
+const REQUEST_SERIES = [
+  { key: "web-ok", label: "Web succeeded", color: "var(--green)" },
+  { key: "web-fail", label: "Web failed", color: "var(--red)" },
+  { key: "devtools-ok", label: "DevTools succeeded", color: "var(--blue)" },
+  { key: "devtools-fail", label: "DevTools failed", color: "var(--gold)" },
+];
+function requestValue(bucket, key) {
+  const [category, status] = key.split("-");
+  return bucket[category]?.[status] || 0;
+}
+function formatTrendLabel(ts, range) {
+  const date = new Date(ts);
+  return range === "week" || range === "day"
+    ? date.toLocaleString([], { weekday: range === "week" ? "short" : undefined, hour: "2-digit", minute: "2-digit", hour12: false })
+    : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+function ActivityBarChart({ buckets, range }) {
+  const [selected, setSelected] = useState(null);
+  const max = Math.max(1, ...buckets.flatMap((bucket) => REQUEST_SERIES.map((series) => requestValue(bucket, series.key))));
+  const width = 800;
+  const height = 260;
+  const left = 38;
+  const right = 10;
+  const top = 8;
+  const bottom = 32;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const bucket = selected === null ? null : buckets[selected];
+  return <>
+    <div className="request-trend-key" aria-label="Request outcome legend">
+      {REQUEST_SERIES.map((series) => <span key={series.key}><i style={{ "--series": series.color }} />{series.label}</span>)}
+    </div>
+    <div className="request-trend-chart" role="img" aria-label="Web and DevTools request bar graph">
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
+        {[0, 0.5, 1].map((ratio) => {
+          const y = top + plotHeight - ratio * plotHeight;
+          return <g key={ratio}><line className="request-trend-grid" x1={left} x2={width - right} y1={y} y2={y} /><text x={left - 5} y={y + 4} textAnchor="end">{Math.round(max * ratio)}</text></g>;
+        })}
+        {buckets.map((item, index) => {
+          const groupWidth = plotWidth / buckets.length;
+          const barGap = Math.max(1, groupWidth * 0.05);
+          const barWidth = Math.max(1, (groupWidth - barGap * 5) / REQUEST_SERIES.length);
+          const x = left + index * groupWidth;
+          const every = Math.max(1, Math.ceil(buckets.length / 4));
+          return <g key={item.ts} onMouseEnter={() => setSelected(index)} onFocus={() => setSelected(index)} onClick={() => setSelected(index)} tabIndex="0"><title>{formatTrendLabel(item.ts, range)}</title>{REQUEST_SERIES.map((series, seriesIndex) => {
+            const value = requestValue(item, series.key);
+            const barHeight = (value / max) * plotHeight;
+            return <rect className="request-trend-bar" key={series.key} x={x + barGap + seriesIndex * (barWidth + barGap)} y={top + plotHeight - barHeight} width={barWidth} height={barHeight} style={{ "--series": series.color }} />;
+          })}{(index === 0 || index === buckets.length - 1 || index % every === 0) && <text className="request-trend-label" x={x + groupWidth / 2} y={height - 8} textAnchor="middle">{formatTrendLabel(item.ts, range)}</text>}</g>;
+        })}
+      </svg>
+    </div>
+    <div className="request-trend-detail" aria-live="polite">{bucket ? `${formatTrendLabel(bucket.ts, range)}: Web ${bucket.web.ok} succeeded / ${bucket.web.fail} failed; DevTools ${bucket.devtools.ok} succeeded / ${bucket.devtools.fail} failed.` : "Hover or select a time point for exact counts."}</div>
+  </>;
+}
+function RequestActivityTrend({ trend, range, error, setRange }) {
+  const buckets = trend?.buckets || [];
+  return (
+    <section className="panel request-trend">
+      <div className="request-trend-heading">
+        <div>
+          <h2>Request activity <span className="sub">incoming requests and engine attempts</span></h2>
+          <div className="request-trend-summary">
+            <b>{trend?.summary?.total || 0} total</b>
+            <span>{trend?.summary?.ok || 0} succeeded</span>
+            <span className={trend?.summary?.fail ? "request-trend-fail" : ""}>{trend?.summary?.fail || 0} failed</span>
+          </div>
+        </div>
+        <div className="request-trend-controls" aria-label="Request activity filters">
+          {["minutes", "hour", "day", "week"].map((item) => (
+            <button key={item} className={range === item ? "active" : ""} aria-pressed={range === item} onClick={() => setRange(item)}>
+              {item === "minutes" ? "Minutes" : item[0].toUpperCase() + item.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+      {error ? <Empty>Could not load activity trend: {error}</Empty> : !buckets.length ? <Empty>Loading activity trend…</Empty> : (
+        <ActivityBarChart buckets={buckets} range={range} />
+      )}
+    </section>
+  );
+}
+
 function computeStatus(health, stats, ok) {
   const issues = [];
   let level = "ok";
@@ -321,20 +404,12 @@ function computeStatus(health, stats, ok) {
   return { level, issues };
 }
 
-function StatusView({ snapshot, history, toggleVnc, vncBusy, feed }) {
+function StatusView({ snapshot, history, toggleVnc, vncBusy, feed, trend, trendRange, trendError, setTrendRange }) {
   const { health = {}, stats = {}, config = {}, logs = [], ok } = snapshot;
   const instances = stats.instances || [];
   const engines = config.engines || [];
-  const circuits = health.searchRouteCircuitBreakers || [];
   const state = computeStatus(health, stats, ok);
-  const enabledEngineIds = new Set(engines.map((engine) => engine.id));
-  const unavailable = circuits.filter(
-    (item) =>
-      item.remainingMs > 0 && enabledEngineIds.has(item.route?.split("/")[0]),
-  ).length;
-  const tabs = instances.reduce((sum, item) => sum + (item.tabs || 0), 0);
-  const limiter = health.pageLimiter || {};
-  const period = stats.requests?.byPeriod?.["5m"] || {};
+  const usage = stats.usage || {};
   return (
     <>
       <section className="overview">
@@ -358,33 +433,33 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy, feed }) {
         </section>
         <section className="metrics">
           <Metric
-            label="Engines ready"
-            value={`${Math.max(0, engines.length - unavailable)}/${engines.length}`}
-            note={
-              unavailable
-                ? `${unavailable} route${unavailable === 1 ? "" : "s"} unavailable`
-                : "search routes ready"
-            }
+            label="Total searches"
+            value={(usage.searches || 0).toLocaleString()}
           />
           <Metric
-            label="Open tabs"
-            value={tabs}
-            note={tabs ? "across connected drivers" : "no browser pages open"}
+            label="Total web fetches"
+            value={(usage.fetches || 0).toLocaleString()}
           />
           <Metric
-            label="Pages in use"
-            value={`${limiter.inUse ?? 0}/${limiter.maxConcurrentPageOps ?? "-"}`}
-            note={
-              limiter.queued ? `${limiter.queued} waiting` : "page slots active"
-            }
+            label="Total screenshots"
+            value={(usage.screenshots || 0).toLocaleString()}
           />
           <Metric
-            label="Requests 5m"
-            value={`${period.ok || 0} ok`}
-            note={period.err ? `${period.err} failed` : "no failures"}
+            label="Total results served"
+            value={(usage.resultsServed || 0).toLocaleString()}
+          />
+          <Metric
+            label="Total tool calls"
+            value={(usage.toolCalls || 0).toLocaleString()}
           />
         </section>
       </section>
+      <RequestActivityTrend
+        trend={trend}
+        range={trendRange}
+        error={trendError}
+        setRange={setTrendRange}
+      />
       {state.level !== "ok" && (
         <section
           className={`attention show ${state.level === "critical" ? "critical" : ""}`}
@@ -407,7 +482,6 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy, feed }) {
         </div>
         <Drivers health={health} instances={instances} />
         <Runtime health={health} stats={stats} history={history} />
-        <Work stats={stats} />
         <Logs logs={logs} />
       </section>
     </>
@@ -418,7 +492,7 @@ function Metric({ label, value, note }) {
     <div className="metric">
       <span className="metric-label">{label}</span>
       <strong className="metric-value">{value}</strong>
-      <span className="metric-note">{note}</span>
+      {note && <span className="metric-note">{note}</span>}
     </div>
   );
 }
@@ -1922,6 +1996,12 @@ function Keys() {
 
 function App() {
   const [mode, setMode] = useState(() => modeFromPath(location.pathname));
+  const [trendRange, setTrendRange] = useState(() => {
+    const range = new URLSearchParams(location.search).get("range");
+    return ["minutes", "hour", "day", "week"].includes(range) ? range : "hour";
+  });
+  const [trend, setTrend] = useState(null);
+  const [trendError, setTrendError] = useState("");
   const [snapshot, setSnapshot] = useState({});
   const [paused, setPaused] = useState(false);
   const [feed, setFeed] = useState([]);
@@ -1937,6 +2017,16 @@ function App() {
     const path = pathForMode(next);
     if (location.pathname !== path) window.history.pushState({}, "", path);
     setMode(next);
+  };
+  const updateTrendQuery = (nextRange) => {
+    const params = new URLSearchParams(location.search);
+    params.set("range", nextRange);
+    params.delete("engine");
+    window.history.replaceState({}, "", `${location.pathname}?${params}`);
+  };
+  const changeTrendRange = (nextRange) => {
+    setTrendRange(nextRange);
+    updateTrendQuery(nextRange);
   };
   const load = async () => {
     try {
@@ -1992,6 +2082,29 @@ function App() {
     return () => clearInterval(interval);
   }, [paused]);
   useEffect(() => {
+    if (mode !== "status" || paused) return undefined;
+    let cancelled = false;
+    const loadTrend = async () => {
+      try {
+        const payload = await request(`/stats/activity-trend?range=${encodeURIComponent(trendRange)}`);
+        if (!cancelled) {
+          setTrend(payload);
+          setTrendError("");
+        }
+      } catch (error) {
+        if (!cancelled) setTrendError(error.message || "Request failed");
+      }
+    };
+    loadTrend();
+    const interval = setInterval(() => {
+      if (!document.hidden) loadTrend();
+    }, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [mode, paused, trendRange]);
+  useEffect(() => {
     const onPop = () => setMode(modeFromPath(location.pathname));
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -2029,6 +2142,10 @@ function App() {
           toggleVnc={toggleVnc}
           vncBusy={vncBusy}
           feed={feed}
+          trend={trend}
+          trendRange={trendRange}
+          trendError={trendError}
+          setTrendRange={changeTrendRange}
         />
       ) : mode === "manage" ? (
         <Manage config={snapshot.config || {}} reload={load} />
@@ -2043,6 +2160,10 @@ function App() {
           toggleVnc={toggleVnc}
           vncBusy={vncBusy}
           feed={feed}
+          trend={trend}
+          trendRange={trendRange}
+          trendError={trendError}
+          setTrendRange={changeTrendRange}
         />
       )}
     </Layout>

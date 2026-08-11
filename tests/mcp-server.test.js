@@ -22,7 +22,7 @@ vi.mock("../src/search.js", () => ({
   browserOpenAndExtract: vi.fn(),
   browserCaptureScreenshot: vi.fn(),
   getSearchBackendHealth: vi.fn().mockReturnValue([]),
-  getActivityCounters: vi.fn().mockReturnValue({ searches: 0, fetches: 0, screenshots: 0, botBlocks: 0 }),
+  getActivityCounters: vi.fn().mockReturnValue({ searches: 0, searchResults: 0, fetches: 0, screenshots: 0, botBlocks: 0 }),
   getEngineAttemptStats: vi.fn().mockReturnValue({ total: 0, ok: 0, fail: 0, skip: 0, byEngine: {}, recentFailures: [] }),
   getEngineProfiles: vi.fn().mockReturnValue([]),
 }));
@@ -208,7 +208,7 @@ describe("mcp-server HTTP endpoints", () => {
     it("includes activity and devtools counters", async () => {
       const searchMod = await import("../src/search.js");
       searchMod.getActivityCounters.mockReturnValue({
-        searches: 5, fetches: 3, screenshots: 1, botBlocks: 2,
+        searches: 5, searchResults: 19, fetches: 3, screenshots: 1, botBlocks: 2,
       });
       const devtoolsMod = await import("../src/devtools.js");
       devtoolsMod.getDevtoolsCounters.mockReturnValue({
@@ -218,7 +218,7 @@ describe("mcp-server HTTP endpoints", () => {
       const res = await fetch(`${MCP_BASE}/stats`);
       const body = await res.json();
       expect(body.counters).toMatchObject({
-        searches: 5, fetches: 3, screenshots: 1, botBlocks: 2,
+        searches: 5, searchResults: 19, fetches: 3, screenshots: 1, botBlocks: 2,
         targetsCreated: 7, targetsClosed: 4, targetsInactivityClosed: 1,
       });
       expect(body.counters).toHaveProperty("cacheHits");

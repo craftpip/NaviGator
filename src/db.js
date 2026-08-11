@@ -68,7 +68,36 @@ const MIGRATIONS = [
      id INTEGER PRIMARY KEY AUTOINCREMENT,
      url TEXT NOT NULL UNIQUE,
      created_at INTEGER NOT NULL
-   );`
+   );`,
+   `CREATE TABLE IF NOT EXISTS activity_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      tool TEXT NOT NULL,
+      category TEXT NOT NULL,
+      ok INTEGER NOT NULL,
+      error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_activity_events_ts ON activity_events(ts);
+     CREATE INDEX IF NOT EXISTS idx_activity_events_category_ts ON activity_events(category, ts);`,
+  `CREATE TABLE IF NOT EXISTS usage_totals (
+     key TEXT PRIMARY KEY,
+     value INTEGER NOT NULL DEFAULT 0
+   );`,
+  `INSERT INTO usage_totals (key, value)
+     VALUES ('searches', (SELECT COUNT(*) FROM searches))
+     ON CONFLICT(key) DO UPDATE SET value = CASE WHEN usage_totals.value > excluded.value THEN usage_totals.value ELSE excluded.value END;
+   INSERT INTO usage_totals (key, value)
+     VALUES ('fetches', (SELECT COUNT(*) FROM page_ops WHERE tool = 'web_fetch'))
+     ON CONFLICT(key) DO UPDATE SET value = CASE WHEN usage_totals.value > excluded.value THEN usage_totals.value ELSE excluded.value END;
+   INSERT INTO usage_totals (key, value)
+     VALUES ('screenshots', (SELECT COUNT(*) FROM page_ops WHERE tool = 'web_page_screenshot'))
+     ON CONFLICT(key) DO UPDATE SET value = CASE WHEN usage_totals.value > excluded.value THEN usage_totals.value ELSE excluded.value END;
+   INSERT INTO usage_totals (key, value)
+     VALUES ('resultsServed', (SELECT COALESCE(SUM(result_count), 0) FROM searches))
+     ON CONFLICT(key) DO UPDATE SET value = CASE WHEN usage_totals.value > excluded.value THEN usage_totals.value ELSE excluded.value END;
+   INSERT INTO usage_totals (key, value)
+     VALUES ('toolCalls', (SELECT COUNT(*) FROM activity_events))
+     ON CONFLICT(key) DO UPDATE SET value = CASE WHEN usage_totals.value > excluded.value THEN usage_totals.value ELSE excluded.value END;`
 ];
 
 export function initDb(dataDir = path.join(process.cwd(), "data")) {
@@ -97,6 +126,21 @@ export function getDb() {
 
 export function isDbReady() {
   return Boolean(db);
+}
+
+export function incrementUsageTotal(key, amount = 1) {
+  if (!db) return;
+  getDb()
+    .prepare("INSERT INTO usage_totals (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = value + excluded.value")
+    .run(key, Math.max(0, Number(amount) || 0));
+}
+
+export function getUsageTotals() {
+  const totals = { searches: 0, fetches: 0, screenshots: 0, resultsServed: 0, toolCalls: 0 };
+  for (const row of getDb().prepare("SELECT key, value FROM usage_totals").all()) {
+    if (row.key in totals) totals[row.key] = Number(row.value) || 0;
+  }
+  return totals;
 }
 
 export function rememberRefLink(url) {
@@ -169,6 +213,7 @@ export function pruneActivity(force = false) {
     const cutoff = now - RETENTION_DAYS * 86400_000;
     db.prepare("DELETE FROM searches WHERE ts < ?").run(cutoff);
     db.prepare("DELETE FROM page_ops WHERE ts < ?").run(cutoff);
+    db.prepare("DELETE FROM activity_events WHERE ts < ?").run(cutoff);
     db.prepare("DELETE FROM engine_attempts WHERE search_id IS NULL AND ts < ?").run(cutoff);
   } catch (error) {
     console.error(`⚠️  Activity prune failed: ${String(error?.message || error)}`);
