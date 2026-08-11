@@ -1920,7 +1920,7 @@ export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS,
       debugLog("close_page", t);
     }
     });
-    recordPageOp({ tool: "web_fetch", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tOverall, ok: true });
+    recordPageOp({ tool: "web_fetch", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tOverall, responseChars: result.text?.length, ok: true });
     return result;
   } catch (error) {
     recordPageOp({ tool: "web_fetch", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tOverall, ok: false, error: String(error?.message || error) });
@@ -2010,7 +2010,7 @@ export async function browserCaptureScreenshot({
       }
     }
     });
-    recordPageOp({ tool: "web_page_screenshot", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tShotStart, ok: true });
+    recordPageOp({ tool: "web_page_screenshot", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tShotStart, responseChars: result.screenshotBase64?.length, ok: true });
     return result;
   } catch (error) {
     recordPageOp({ tool: "web_page_screenshot", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tShotStart, ok: false, error: String(error?.message || error) });

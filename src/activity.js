@@ -73,16 +73,17 @@ export function recordDbEngineAttempt({ engine, backend, status, resultCount = 0
   });
 }
 
-export function recordPageOp({ tool, url, backend, durationMs = 0, ok = true, error = "", source = "mcp" }) {
+export function recordPageOp({ tool, url, backend, durationMs = 0, responseChars = 0, ok = true, error = "", source = "mcp" }) {
   runExclusive(() => {
     getDb()
-      .prepare("INSERT INTO page_ops (ts, tool, url, backend, duration_ms, ok, error, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .prepare("INSERT INTO page_ops (ts, tool, url, backend, duration_ms, response_chars, ok, error, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .run(
         Date.now(),
         String(tool),
         String(url || "").slice(0, 2000),
         backend || null,
         Math.max(0, Math.round(durationMs) || 0),
+        Math.max(0, Math.round(responseChars) || 0),
         ok ? 1 : 0,
         ok ? "" : String(error || "").slice(0, 300),
         source

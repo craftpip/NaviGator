@@ -20,7 +20,7 @@ import { validateConfigValue, hotApplyConfig } from "./config-manager.js";
 import { getEnvFilePath, readEnvFile, writeEnvFile, upsertEnvText, removeEnvKeysText, backupEnvFile, revertEnvFile, recordEnvChange, getEnvChangeHistory, latestBackupPath } from "./env-file.js";
 import { vncManager } from "./vnc-manager.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats } from "./search.js";
-import { getRecentActivity } from "./activity.js";
+import { getRecentActivity, recordPageOp } from "./activity.js";
 import { initDb } from "./db.js";
 import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters } from "./devtools.js";
 import { transform as asciiTransform } from "./ascii.js";
@@ -1722,6 +1722,7 @@ async function handleToolCallInner(name, args = {}) {
   }
 
   if (name === "web_page_screenshot") {
+    const screenshotStartedAt = performance.now();
     const hasTargetId = args && typeof args.targetId === "string" && args.targetId.trim();
     const formatRaw = typeof args.format === "string" ? args.format.trim().toLowerCase() : "png";
     const format = formatRaw === "jpeg" ? "jpeg" : "png";
@@ -1764,7 +1765,20 @@ async function handleToolCallInner(name, args = {}) {
             ...(quality ? { quality } : {})
           })
         );
+        recordPageOp({
+          tool: name,
+          url: result.url || args.targetId.trim(),
+          durationMs: performance.now() - screenshotStartedAt,
+          responseChars: result.screenshotBase64?.length
+        });
       } catch (error) {
+        recordPageOp({
+          tool: name,
+          url: args.targetId.trim(),
+          durationMs: performance.now() - screenshotStartedAt,
+          ok: false,
+          error: String(error?.message || error)
+        });
         console.error(`📸  screenshot failed [targetId]: ${JSON.stringify(screenshotCtx)}`);
         console.error(`📸  error: ${String(error?.message || error)}`);
         if (error?.stack) console.error(`📸  stack: ${truncateStr(error.stack, 500)}`);
@@ -2115,10 +2129,30 @@ async function handleToolCallInner(name, args = {}) {
   }
 
   if (manager.config.enableDevtoolsMcp && devtoolsToolDefinitions.some((tool) => tool.name === name)) {
-    const result = await runWithHangGuard(`mcp:${name}`, () => handleDevtoolsToolCall(name, args));
-    timer.step("developer_browser_tool", mark);
-    timer.end({ status: "ok" });
-    return formatDevtoolsToolResponse(name, result);
+    const startedAt = performance.now();
+    try {
+      const result = await runWithHangGuard(`mcp:${name}`, () => handleDevtoolsToolCall(name, args));
+      recordPageOp({
+        tool: name,
+        url: args.url || args.targetId || "",
+        durationMs: performance.now() - startedAt,
+        responseChars: JSON.stringify(result).length,
+        source: "devtools"
+      });
+      timer.step("developer_browser_tool", mark);
+      timer.end({ status: "ok" });
+      return formatDevtoolsToolResponse(name, result);
+    } catch (error) {
+      recordPageOp({
+        tool: name,
+        url: args.url || args.targetId || "",
+        durationMs: performance.now() - startedAt,
+        ok: false,
+        error: String(error?.message || error),
+        source: "devtools"
+      });
+      throw error;
+    }
   }
 
   timer.step("unknown_tool", mark);

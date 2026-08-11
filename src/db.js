@@ -50,8 +50,9 @@ const MIGRATIONS = [
     error TEXT,
     source TEXT NOT NULL DEFAULT 'mcp'
   );
-  CREATE INDEX IF NOT EXISTS idx_page_ops_ts ON page_ops(ts);
-  CREATE INDEX IF NOT EXISTS idx_page_ops_tool ON page_ops(tool);`
+   CREATE INDEX IF NOT EXISTS idx_page_ops_ts ON page_ops(ts);
+   CREATE INDEX IF NOT EXISTS idx_page_ops_tool ON page_ops(tool);`,
+  `ALTER TABLE page_ops ADD COLUMN response_chars INTEGER NOT NULL DEFAULT 0;`
 ];
 
 export function initDb(dataDir = path.join(process.cwd(), "data")) {

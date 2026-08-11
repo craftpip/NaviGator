@@ -413,11 +413,13 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy, feed }) {
         </section>
       )}
       <section className="content-grid">
-        <Engines config={config} health={health} stats={stats} />
+        <div className="engine-activity">
+          <Engines config={config} health={health} stats={stats} />
+          <LiveFeed feed={feed} />
+        </div>
         <Drivers health={health} instances={instances} />
         <Runtime health={health} stats={stats} history={history} />
         <Work stats={stats} />
-        <LiveFeed feed={feed} />
         <Logs logs={logs} />
       </section>
     </>
@@ -550,7 +552,7 @@ function Engines({ config, health, stats }) {
   });
   if (!engines.length)
     return (
-      <Panel title="Search engines" wide>
+      <Panel title="Search engines">
         <Empty>No engine registry is available yet.</Empty>
       </Panel>
     );
@@ -567,7 +569,6 @@ function Engines({ config, health, stats }) {
     <Panel
       title="Search engines"
       sub="routes for the next search — best working first"
-      wide
     >
       <div className="engine-summary">
         <b>{engines.filter((item) => item.exposedInMcp).length}</b> configured
@@ -685,7 +686,29 @@ function formatTime(ts) {
   if (Number.isNaN(date.getTime())) return String(ts);
   return date.toLocaleTimeString([], { hour12: false });
 }
+function formatRelativeTime(ts) {
+  const ms = typeof ts === "number" && ts < 1e12 ? ts * 1000 : Number(ts);
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  const seconds = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (seconds < 5) return "now";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
 function buildFeed(entries, pageOps) {
+  const preview = (value) => String(value || "").slice(0, 80);
+  const requestTarget = (value) => {
+    try {
+      const url = new URL(value);
+      return preview(`${url.host}${url.pathname}${url.search}`);
+    } catch {
+      return preview(value);
+    }
+  };
   const rows = [];
   for (const search of entries || []) {
     rows.push({
@@ -693,15 +716,13 @@ function buildFeed(entries, pageOps) {
       ts: search.ts,
       kind: "search",
       status: search.status || "",
-      label: String(search.query || "").slice(0, 80),
-      note: [
-        search.requested_engine || "select_best",
-        search.result_count != null ? `${search.result_count} results` : "",
-        search.duration_ms != null ? formatMs(search.duration_ms) : "",
-        search.error ? "error" : "",
-      ]
-        .filter(Boolean)
-        .join(" · "),
+      category: "Web",
+      tool: "web_search",
+      request: preview(search.query),
+      response:
+        search.error ? "error" : search.result_count != null ? `${search.result_count} results` : search.status || "running",
+      duration: search.duration_ms != null ? formatMs(search.duration_ms) : "",
+      error: search.error || "",
     });
     for (const attempt of search.attempts || []) {
       rows.push({
@@ -709,13 +730,13 @@ function buildFeed(entries, pageOps) {
         ts: attempt.ts,
         kind: "attempt",
         status: attempt.status || "",
-        label: `${attempt.engine}${attempt.backend ? ` (${attempt.backend})` : ""}`,
-        note: [
-          attempt.status === "ok" ? `${attempt.result_count || 0} results` : attempt.error || attempt.status,
-          attempt.duration_ms != null ? formatMs(attempt.duration_ms) : "",
-        ]
-          .filter(Boolean)
-          .join(" · "),
+        category: "Web",
+        tool: `${attempt.engine}${attempt.backend ? ` (${attempt.backend})` : ""}`,
+        request: preview(search.query),
+        response:
+          attempt.error ? "error" : attempt.status === "ok" ? `${attempt.result_count || 0} results` : attempt.status || "running",
+        duration: attempt.duration_ms != null ? formatMs(attempt.duration_ms) : "",
+        error: attempt.error || "",
       });
     }
   }
@@ -723,65 +744,83 @@ function buildFeed(entries, pageOps) {
     rows.push({
       key: `p-${op.id}`,
       ts: op.ts,
-      kind: "page_op",
+      kind: op.source === "devtools" ? "devtools" : "page_op",
       status: op.ok ? "ok" : "fail",
-      label: op.tool || "page",
-      note: [
-        String(op.url || "").slice(0, 70),
-        op.duration_ms != null ? formatMs(op.duration_ms) : "",
-        op.error || "",
-      ]
-        .filter(Boolean)
-        .join(" · "),
+      category: op.source === "devtools" ? "Dev" : "Web",
+      tool: op.tool || "page",
+      request: requestTarget(op.url),
+      response: op.error ? "error" : op.response_chars ? `${Number(op.response_chars).toLocaleString()} chars` : "- chars",
+      duration: op.duration_ms != null ? formatMs(op.duration_ms) : "",
+      error: op.error || "",
     });
   }
   return rows.sort((a, b) => Number(b.ts) - Number(a.ts));
 }
 function LiveFeed({ feed }) {
-  const [showPageOps, setShowPageOps] = useState(true);
-  const [limit, setLimit] = useState(25);
-  const rows = (feed || []).filter((entry) => showPageOps || entry.kind !== "page_op");
-  const visible = rows.slice(0, limit);
+  const [showWeb, setShowWeb] = useState(true);
+  const [showDevtools, setShowDevtools] = useState(true);
+  const rows = (feed || []).filter((entry) =>
+    entry.kind === "devtools" ? showDevtools : showWeb,
+  );
   return (
     <Panel
       title="Live activity"
       sub={
-        <label className="feed-toggle">
-          <input
-            type="checkbox"
-            checked={showPageOps}
-            onChange={(event) => setShowPageOps(event.target.checked)}
-          />
-          show page fetches
-        </label>
+        <span className="feed-filters">
+          <label className="feed-toggle">
+            <input
+              type="checkbox"
+              checked={showWeb}
+              onChange={(event) => setShowWeb(event.target.checked)}
+            />
+            Web
+          </label>
+          <label className="feed-toggle">
+            <input
+              type="checkbox"
+              checked={showDevtools}
+              onChange={(event) => setShowDevtools(event.target.checked)}
+            />
+            DevTools
+          </label>
+        </span>
       }
-      wide
     >
-      {visible.length ? (
-        <>
-          <div className="feed">
-            {visible.map((entry) => (
-              <div
-                className={`feed-row ${entry.status === "ok" ? "ok" : entry.status === "fail" || entry.status === "error" ? "fail" : ""}`}
-                key={entry.key || `${entry.kind}-${entry.ts}`}
-              >
-                <span className="feed-time">{formatTime(entry.ts)}</span>
-                <span className="feed-kind">
-                  {entry.kind === "search" ? "search" : entry.kind === "page_op" ? "page" : "engine"}
-                </span>
-                <span className="feed-label" title={entry.note}>
-                  {entry.label}
-                </span>
-                <span className="feed-note">{entry.note}</span>
-              </div>
-            ))}
-          </div>
-          {rows.length > limit && (
-            <button className="feed-more" onClick={() => setLimit((current) => current + 40)}>
-              show more
-            </button>
-          )}
-        </>
+      {rows.length ? (
+        <div className="feed">
+          <table className="activity-table">
+            <colgroup>
+              <col className="activity-time" />
+              <col className="activity-tool" />
+              <col className="activity-response" />
+              <col className="activity-duration" />
+            </colgroup>
+            <tbody>
+              {rows.map((entry) => {
+                const tone = entry.status === "ok" ? "ok" : entry.status === "fail" || entry.status === "error" ? "fail" : "";
+                return (
+                  <tr className={`activity-row ${tone}`} key={entry.key || `${entry.kind}-${entry.ts}`}>
+                    <td className="feed-time">
+                      <span className="feed-time-top">
+                        <b>{formatRelativeTime(entry.ts)}</b>
+                        <span className="feed-kind">{entry.category}</span>
+                      </span>
+                      <small>{formatTime(entry.ts)}</small>
+                    </td>
+                    <td className="activity-tool-cell">
+                      <span className="feed-tool">{entry.tool}</span>
+                      <span className="feed-request" title={entry.request}>req: {entry.request || "-"}</span>
+                    </td>
+                    <td className={`feed-response ${entry.error ? "feed-error" : ""}`} title={entry.error || entry.response}>
+                      {entry.error ? "error" : entry.response}
+                    </td>
+                    <td className="feed-duration">{entry.duration}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <Empty>
           No activity recorded yet. Searches and engine attempts will stream
