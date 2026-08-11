@@ -52,6 +52,12 @@ export function parseInteger(value, fallback) {
   return Math.floor(parsed);
 }
 
+export function parsePort(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) return fallback;
+  return parsed;
+}
+
 export function parseEngines(value, fallback) {
   if (!value || typeof value !== "string") return fallback;
   const parsed = value
@@ -253,7 +259,7 @@ export async function loadConfig() {
     chromeUserDataDir: process.env.CHROME_USER_DATA_DIR || "/data/chrome",
     chromeProfileDir: process.env.CHROME_PROFILE_DIR || "Default",
     lightpandaPath,
-    lightpandaPort: parseNumber(process.env.LIGHTPANDA_PORT, 9222),
+    lightpandaPort: parsePort(process.env.LIGHTPANDA_PORT, 9222),
     cloakbrowserPath,
     defaultBackend: parseBrowserBackend(process.env.BROWSER_BACKEND, "cloakbrowser"),
     devtoolsBackend: parseBrowserBackend(

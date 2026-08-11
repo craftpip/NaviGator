@@ -1684,7 +1684,7 @@ async function handleToolCallInner(name, args = {}) {
     const cacheKeyArgs = excludeMaxChars(getCacheArgs(args));
     const cached = bypassCache ? null : await getCachedToolResult(name, cacheKeyArgs);
     if (cached) {
-      const maxChars = parseMaxChars(args.maxChars, DEFAULT_MAX_CHARS);
+      const maxChars = parseMaxChars(args.maxChars, manager.config.maxChars || DEFAULT_MAX_CHARS);
       const truncated = truncateResultsText(cached, maxChars);
       timer.step("cache_hit", mark);
       timer.end({ cacheHit: true, status: "ok" });
@@ -1704,7 +1704,7 @@ async function handleToolCallInner(name, args = {}) {
       throw error;
     }
     mark = timer.step("resolve_targets", mark);
-    const maxChars = parseMaxChars(args.maxChars, DEFAULT_MAX_CHARS);
+    const maxChars = parseMaxChars(args.maxChars, manager.config.maxChars || DEFAULT_MAX_CHARS);
     const includeSeoAnalysis = args.includeSeoAnalysis !== false;
     const manager = await getBrowserManager();
     mark = timer.step("prepare_execution", mark);
@@ -1999,7 +1999,7 @@ async function handleToolCallInner(name, args = {}) {
 
     let asciiResult;
     try {
-      asciiResult = await runWithHangGuard(`mcp:${name}`, async () => {
+      asciiResult = await runWithHangGuard(`mcp:${name}`, () => manager.withPageSlot(async () => {
         const page = await manager.newPage({ backend: manager.config.defaultBackend });
         try {
           await page.goto(targetUrl, {
@@ -2075,7 +2075,7 @@ async function handleToolCallInner(name, args = {}) {
             await page.close();
           }
         }
-      });
+      }));
     } catch (error) {
       console.error(`🖼️  ascii failed: url=${targetUrl} error=${String(error?.message || error)}`);
       if (error?.stack) console.error(`🖼️  stack: ${truncateStr(error.stack, 500)}`);

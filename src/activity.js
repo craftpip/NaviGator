@@ -93,9 +93,10 @@ export function recordPageOp({ tool, url, backend, durationMs = 0, responseChars
 
 export function getRecentActivity({ sinceId = 0, sinceOpId = 0, limit = 100, includePageOps = false } = {}) {
   const db = getDb();
+  const recentCutoff = Date.now() - 60_000;
   const searches = db
-    .prepare("SELECT * FROM searches WHERE id > ? ORDER BY id DESC LIMIT ?")
-    .all(Number(sinceId) || 0, Math.min(500, Math.max(1, Number(limit) || 100)));
+    .prepare("SELECT * FROM searches WHERE id > ? OR ts >= ? ORDER BY id DESC LIMIT ?")
+    .all(Number(sinceId) || 0, recentCutoff, Math.min(500, Math.max(1, Number(limit) || 100)));
   const attemptStmt = db.prepare("SELECT * FROM engine_attempts WHERE search_id = ? ORDER BY id");
   const entries = searches.map((search) => ({
     ...search,

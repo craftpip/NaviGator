@@ -1719,10 +1719,11 @@ function extractLinksFromHtml({ html, url }) {
   }
 }
 
-export async function browserOpenAndExtract({ url, maxChars = DEFAULT_MAX_CHARS, includeSeoAnalysis = true }) {
+export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, includeSeoAnalysis = true }) {
   const tOverall = performance.now();
   activityCounters.fetches += 1;
   const manager = await getBrowserManager();
+  const maxChars = requestedMaxChars ?? manager.config.maxChars ?? DEFAULT_MAX_CHARS;
   const debug = manager.config.debug === true;
   const debugLog = (label, t) => {
     if (debug) console.log(`[web_fetch] [${url}] ${label}: ${Math.round(performance.now() - t)}ms`);

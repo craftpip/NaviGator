@@ -460,6 +460,16 @@ Do not remove `console.log` / `console.error` calls from `src/search.js` or othe
 
 **Unfinished:** commit is pending; plan checklist in `plans/console-redesign.md` §6 has the full log.
 
+### Browser Backend Dispatch Verification + Lightpanda Screenshot Caveat
+
+**Created:** 2026-08-11
+
+**What:** Verified the two variables that select page backend — `BROWSER_BACKEND` (env) and the engine override in `BrowserManager.newPage()` — across all four backends (`chromium`, `cloakbrowser`, `lightpanda`, `lightpanda-fork`). 6/6 test cases passed: both variables dispatch every backend correctly, and the two lightpanda variants are never silently reused for other backends.
+
+**Lightpanda screenshot caveat:** `web_page_screenshot` returns an image when the page is on lightpanda (page opened on the fork's CDP, `page.screenshot()` → `Page.captureScreenshot`; chromium is never involved). **However**, upstream Lightpanda has no graphical rendering engine (official docs + issue #507) — its CDP screenshot is a placeholder. The installed StealthPanda fork returns a 1920×1080 image; pixel analysis showed white bg + black text + Wikipedia-blue accents (real-looking), and the stakeholder confirmed the image is an acceptable test image. **Accepted as-is.** For a faithful visual render, use `BROWSER_BACKEND=chromium|cloakbrowser` or the devtools tab (chromium). Lightpanda should not be the default for screenshot-heavy use.
+
+**Verdict:** The end user wanted lightpanda as the default backend and got it; the screenshot tool returns an image on that backend. No code change needed.
+
 ### SSE Keepalive and Stream Lifecycle
 
 **Created:** 2026-07-15

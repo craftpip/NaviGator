@@ -213,6 +213,33 @@ describe("handleDevtoolsToolCall", () => {
   });
 
   it("Target.createTarget rejects unknown ref_id", async () => {
+    const newPage = vi.fn().mockResolvedValue({
+      goto: vi.fn().mockResolvedValue(undefined),
+      url: vi.fn().mockReturnValue("about:blank"),
+      title: vi.fn().mockResolvedValue(""),
+      isClosed: vi.fn().mockReturnValue(false),
+      on: vi.fn(),
+    });
+    getBrowserManager.mockResolvedValue({
+      config: {
+        enableDevtoolsMcp: true,
+        devtoolsBackend: "chromium",
+        defaultBackend: "cloakbrowser",
+        navWaitUntil: "domcontentloaded",
+        browserOpTimeoutMs: 60000,
+      },
+      newPage,
+    });
+
+    const { handleDevtoolsToolCall } = await import("../src/devtools.js");
+    await expect(handleDevtoolsToolCall("Target.createTarget", { ref_id: 999999 })).rejects.toThrow(
+      "No link found in memory for ref 999999"
+    );
+    expect(newPage).not.toHaveBeenCalled();
+  });
+
+  it("Target.createTarget closes and unregisters a page when navigation fails", async () => {
+    const close = vi.fn().mockResolvedValue(undefined);
     getBrowserManager.mockResolvedValue({
       config: {
         enableDevtoolsMcp: true,
@@ -222,18 +249,19 @@ describe("handleDevtoolsToolCall", () => {
         browserOpTimeoutMs: 60000,
       },
       newPage: vi.fn().mockResolvedValue({
-        goto: vi.fn().mockResolvedValue(undefined),
+        goto: vi.fn().mockRejectedValue(new Error("navigation failed")),
         url: vi.fn().mockReturnValue("about:blank"),
         title: vi.fn().mockResolvedValue(""),
         isClosed: vi.fn().mockReturnValue(false),
         on: vi.fn(),
+        close,
       }),
     });
 
     const { handleDevtoolsToolCall } = await import("../src/devtools.js");
-    await expect(handleDevtoolsToolCall("Target.createTarget", { ref_id: 999999 })).rejects.toThrow(
-      "No link found in memory for ref 999999"
-    );
+    await expect(handleDevtoolsToolCall("Target.createTarget", { url: "https://example.com" }))
+      .rejects.toThrow("navigation failed");
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it("routes DOM.getCompactHTML to the correct handler", async () => {

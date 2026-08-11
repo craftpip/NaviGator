@@ -48,7 +48,7 @@ function makeMockManager(configOverrides = {}) {
   };
 }
 
-function makeExtractionManager({ html, url = "https://example.com/page", hintsPath }) {
+function makeExtractionManager({ html, url = "https://example.com/page", hintsPath, configOverrides = {} }) {
   let closed = false;
   const page = {
     goto: vi.fn().mockResolvedValue(undefined),
@@ -69,7 +69,8 @@ function makeExtractionManager({ html, url = "https://example.com/page", hintsPa
   return {
     config: makeMockConfig({
       domainHintsPath: hintsPath,
-      defaultBackend: "cloakbrowser"
+      defaultBackend: "cloakbrowser",
+      ...configOverrides
     }),
     withPageSlot: vi.fn().mockImplementation((fn) => fn()),
     newPage: vi.fn().mockResolvedValue(page)
@@ -285,6 +286,7 @@ describe("browserOpenAndExtract", () => {
 
     mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
       hintsPath,
+      configOverrides: { maxChars: 120 },
       html: `<!doctype html><html><head><title>Hinted page</title></head><body>
         <section class="profile"><p>${"Profile content ".repeat(20)}</p>
           <table><caption>Metrics</caption><tr><th>Name</th><th>Value</th></tr><tr><td>Visitors</td><td>12345</td></tr><tr><td>Subscribers</td><td>67890</td></tr></table>
@@ -296,7 +298,6 @@ describe("browserOpenAndExtract", () => {
       const { browserOpenAndExtract } = await import("../src/search.js");
       const result = await browserOpenAndExtract({
         url: "https://example.com/page",
-        maxChars: 120,
         includeSeoAnalysis: false
       });
 

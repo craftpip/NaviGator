@@ -759,9 +759,23 @@ function buildFeed(entries, pageOps) {
 function LiveFeed({ feed }) {
   const [showWeb, setShowWeb] = useState(true);
   const [showDevtools, setShowDevtools] = useState(true);
+  const [newKeys, setNewKeys] = useState(() => new Set());
+  const knownKeys = useRef(null);
   const rows = (feed || []).filter((entry) =>
     entry.kind === "devtools" ? showDevtools : showWeb,
   );
+  useEffect(() => {
+    const currentKeys = new Set(rows.map((entry) => entry.key));
+    if (!knownKeys.current) {
+      if (feed?.length) knownKeys.current = currentKeys;
+      return;
+    }
+    const added = new Set([...currentKeys].filter((key) => !knownKeys.current.has(key)));
+    if (added.size) {
+      setNewKeys(added);
+    }
+    knownKeys.current = currentKeys;
+  }, [feed]);
   return (
     <Panel
       title="Live activity"
@@ -799,7 +813,10 @@ function LiveFeed({ feed }) {
               {rows.map((entry) => {
                 const tone = entry.status === "ok" ? "ok" : entry.status === "fail" || entry.status === "error" ? "fail" : "";
                 return (
-                  <tr className={`activity-row ${tone}`} key={entry.key || `${entry.kind}-${entry.ts}`}>
+                  <tr
+                    className={`activity-row ${tone} ${newKeys.has(entry.key) ? "activity-new" : ""}`}
+                    key={entry.key || `${entry.kind}-${entry.ts}`}
+                  >
                     <td className="feed-time">
                       <span className="feed-time-top">
                         <b>{formatRelativeTime(entry.ts)}</b>
@@ -1322,7 +1339,7 @@ function FragmentRows({
 function Tools() {
   const [tools, setTools] = useState([]);
   const [toolName, setToolName] = useState("");
-  const [form, setForm] = useState({});
+  const [forms, setForms] = useState({});
   const [output, setOutput] = useState("Select a tool and send a request.");
   const [status, setStatus] = useState("Response");
   const [meta, setMeta] = useState("");
@@ -1391,15 +1408,21 @@ function Tools() {
       else if (schema.type === "array") defaults[name] = [];
       else defaults[name] = "";
     }
-    setForm(defaults);
+    setForms((current) =>
+      current[tool.name] ? current : { ...current, [tool.name]: defaults },
+    );
   };
 
   const setValue = (name, value) =>
-    setForm((current) => ({ ...current, [name]: value }));
+    setForms((current) => ({
+      ...current,
+      [toolName]: { ...current[toolName], [name]: value },
+    }));
 
   const activeTool = tools.find((item) => item.name === toolName) || null;
   const schema = activeTool?.inputSchema || {};
   const props = schema.properties || {};
+  const form = forms[toolName] || {};
 
   const buildArguments = (properties) => {
     const args = {};
@@ -1485,7 +1508,13 @@ function Tools() {
           </nav>
           {activeTool && (
             <div className="workspace">
-              <aside className="request">
+              <form
+                className="request"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!running) run();
+                }}
+              >
                 <div className="pane-title">
                   <span>Request · {activeTool.name}</span>
                   <span className="method">POST /mcp</span>
@@ -1503,10 +1532,10 @@ function Tools() {
                 {!Object.keys(props).length && (
                   <p className="hint">This tool takes no arguments.</p>
                 )}
-                <button className="run" disabled={running} onClick={run}>
+                <button className="run" type="submit" disabled={running}>
                   {running ? "Running..." : "Send request"}
                 </button>
-              </aside>
+              </form>
               <section className="response">
                 <div className="response-head">
                   <span
@@ -1877,7 +1906,9 @@ function App() {
       setFeed((current) => {
         const merged = [...current];
         for (const row of buildFeed(activity.entries, activity.pageOps)) {
-          if (!merged.some((existing) => existing.key === row.key)) merged.push(row);
+          const existing = merged.findIndex((entry) => entry.key === row.key);
+          if (existing === -1) merged.push(row);
+          else merged[existing] = row;
         }
         return merged.sort((a, b) => Number(b.ts) - Number(a.ts)).slice(0, 200);
       });

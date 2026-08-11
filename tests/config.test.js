@@ -39,6 +39,16 @@ describe("parseBrowserBackend", () => {
   });
 });
 
+describe("parsePort", () => {
+  it("accepts valid TCP ports and rejects fractional or out-of-range values", async () => {
+    const { parsePort } = await import("../src/config.js");
+    expect(parsePort("9222", 3000)).toBe(9222);
+    expect(parsePort("9222.5", 3000)).toBe(3000);
+    expect(parsePort("70000", 3000)).toBe(3000);
+    expect(parsePort("0", 3000)).toBe(3000);
+  });
+});
+
 describe("formatBrowserBackendShort", () => {
   it("returns cb for cloakbrowser", async () => {
     const { formatBrowserBackendShort } = await import("../src/config.js");

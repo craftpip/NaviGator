@@ -46,6 +46,7 @@ function makeConfig(overrides = {}) {
     searchFallback: null,
     lightpandaPath: null,
     lightpandaPort: 9222,
+    cloakbrowserPath: null,
     screenshotPathPrefix: null,
     enableScreenshotDownloadLink: false,
     ...overrides,
@@ -329,6 +330,56 @@ describe("BrowserManager", () => {
     }
   });
 
+  describe("backend isolation", () => {
+    it("does not fall back to Chromium when Lightpanda is unavailable", async () => {
+      const manager = new BrowserManager(makeConfig());
+      manager.getLightpandaBrowser = vi.fn().mockResolvedValue(null);
+      manager._newChromiumPage = vi.fn();
+
+      await expect(manager._newLightpandaPage()).rejects.toThrow("Lightpanda is unavailable");
+      expect(manager._newChromiumPage).not.toHaveBeenCalled();
+    });
+
+    it("uses the validated CloakBrowser binary path for launch", async () => {
+      const manager = new BrowserManager(makeConfig({ cloakbrowserPath: "/valid/cloakbrowser" }));
+      const { launch } = await import("cloakbrowser/puppeteer");
+      const originalPath = process.env.CLOAKBROWSER_BINARY_PATH;
+      const browser = { connected: true, on: vi.fn() };
+      launch.mockResolvedValue(browser);
+
+      await expect(manager.getCloakbrowserBrowser()).resolves.toBe(browser);
+      expect(process.env.CLOAKBROWSER_BINARY_PATH).toBe("/valid/cloakbrowser");
+
+      if (originalPath === undefined) delete process.env.CLOAKBROWSER_BINARY_PATH;
+      else process.env.CLOAKBROWSER_BINARY_PATH = originalPath;
+    });
+  });
+
+  describe("prelaunch", () => {
+    it("starts only the configured default backend and warms browser routes", async () => {
+      const manager = new BrowserManager(makeConfig({
+        defaultBackend: "cloakbrowser",
+        searchRouteWarmupEngines: ["google_cb", "bing_lp"]
+      }));
+      manager.getCloakbrowserBrowser = vi.fn().mockResolvedValue({});
+      manager.getBrowser = vi.fn();
+      manager.ensureMinWorkingWindows = vi.fn().mockResolvedValue(undefined);
+
+      await manager.prelaunchIfConfigured();
+
+      expect(manager.getCloakbrowserBrowser).toHaveBeenCalledOnce();
+      expect(manager.getBrowser).not.toHaveBeenCalled();
+      expect(manager.ensureMinWorkingWindows).toHaveBeenCalledWith(
+        "google_cb",
+        expect.objectContaining({ reason: "warmup" })
+      );
+      expect(manager.ensureMinWorkingWindows).toHaveBeenCalledWith(
+        "bing_lp",
+        expect.objectContaining({ reason: "warmup" })
+      );
+    });
+  });
+
   describe("_poolMaxWindows", () => {
     it("returns 1 for shared pool with non-chromium backend", () => {
       const manager = new BrowserManager(makeConfig({ defaultBackend: "cloakbrowser", searchMaxWorkingWindows: 10 }));
@@ -376,11 +427,81 @@ describe("BrowserManager", () => {
       await manager.acquireSearchWindow("bing_lp");
 
       expect(manager.ensureMinWorkingWindows).toHaveBeenCalledWith(
-        "_shared",
-        expect.objectContaining({ browserEngine: "bing_lp" })
+        "bing_lp",
+        expect.any(Object)
       );
       expect(manager.newPage).toHaveBeenCalledWith({ engine: "bing_lp" });
       expect(manager.getEnginePool("_shared").windows[0].page).toBe(page);
+    });
+
+    it("wakes a queued search when its pooled page closes", async () => {
+      const manager = new BrowserManager(makeConfig({
+        searchKeepMinWorkingWindows: 0,
+        searchMaxWorkingWindows: 1
+      }));
+      const handlers = new Map();
+      const firstPage = {
+        isClosed: () => false,
+        on: vi.fn((event, handler) => handlers.set(event, handler))
+      };
+      const replacementPage = { isClosed: () => false, on: vi.fn() };
+      manager.newPage = vi.fn()
+        .mockResolvedValueOnce(firstPage)
+        .mockResolvedValueOnce(replacementPage);
+
+      await manager.acquireSearchWindow("google_cb");
+      const queued = manager.acquireSearchWindow("google_cb");
+      await Promise.resolve();
+      handlers.get("close")();
+
+      await expect(queued).resolves.toBe(replacementPage);
+    });
+
+    it("wakes a queued search when the first page creation fails", async () => {
+      const manager = new BrowserManager(makeConfig({
+        searchKeepMinWorkingWindows: 0,
+        searchMaxWorkingWindows: 1
+      }));
+      const replacementPage = { isClosed: () => false, on: vi.fn() };
+      manager.newPage = vi.fn()
+        .mockRejectedValueOnce(new Error("browser unavailable"))
+        .mockResolvedValueOnce(replacementPage);
+
+      const first = manager.acquireSearchWindow("google_cb");
+      const queued = manager.acquireSearchWindow("google_cb");
+
+      await expect(first).rejects.toThrow("browser unavailable");
+      await expect(queued).resolves.toBe(replacementPage);
+    });
+  });
+
+  describe("relaunchDefaultBackend", () => {
+    it("keeps pools belonging to other browser backends", async () => {
+      const manager = new BrowserManager(makeConfig({ defaultBackend: "cloakbrowser" }));
+      const lightpandaPool = manager.getEnginePool("_shared");
+      lightpandaPool.windows.push({ backend: "lightpanda", page: { isClosed: () => false } });
+      manager.cloakbrowserBrowser = { close: vi.fn().mockResolvedValue(undefined) };
+      manager.getCloakbrowserBrowser = vi.fn().mockResolvedValue({ connected: true });
+
+      await manager.relaunchDefaultBackend(false);
+
+      expect(lightpandaPool.windows).toHaveLength(1);
+    });
+  });
+
+  describe("ensureMinWorkingWindows", () => {
+    it("keeps the Lightpanda route identity while using the shared pool", async () => {
+      const manager = new BrowserManager(makeConfig({
+        defaultBackend: "lightpanda",
+        searchKeepMinWorkingWindows: 1
+      }));
+      const page = { isClosed: () => false, on: vi.fn(), goto: vi.fn() };
+      manager.newPage = vi.fn().mockResolvedValue(page);
+
+      await manager.ensureMinWorkingWindows("bing_lp");
+
+      expect(manager.newPage).toHaveBeenCalledWith({ engine: "bing_lp" });
+      expect(manager.getEnginePool("_shared").windows).toHaveLength(1);
     });
   });
 
@@ -435,6 +556,27 @@ describe("BrowserManager", () => {
       const manager = new BrowserManager(makeConfig());
       manager.releasePageSlot();
       expect(manager.pageSlotsInUse).toBe(0);
+    });
+
+    it("honors a lower runtime concurrency cap before waking queued work", async () => {
+      const manager = new BrowserManager(makeConfig({ maxConcurrentPageOps: 3 }));
+      await manager.acquirePageSlot();
+      await manager.acquirePageSlot();
+      await manager.acquirePageSlot();
+      manager.config.maxConcurrentPageOps = 1;
+
+      const queued = manager.acquirePageSlot();
+      manager.releasePageSlot();
+      await Promise.resolve();
+      expect(manager.pageSlotsInUse).toBe(2);
+
+      manager.releasePageSlot();
+      await Promise.resolve();
+      expect(manager.pageSlotsInUse).toBe(1);
+
+      manager.releasePageSlot();
+      await queued;
+      expect(manager.pageSlotsInUse).toBe(1);
     });
   });
 
@@ -503,9 +645,9 @@ describe("BrowserManager", () => {
       manager.cloakbrowserBrowser = {
         connected: true,
         pages: async () => [
-          { isClosed: () => false },
-          { isClosed: () => false },
-          { isClosed: () => true },
+          { isClosed: () => false, url: () => "https://one.example" },
+          { isClosed: () => false, url: () => "https://two.example" },
+          { isClosed: () => true, url: () => "https://closed.example" },
         ],
         process: () => ({ pid: 99 }),
       };

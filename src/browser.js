@@ -124,6 +124,7 @@ export class BrowserManager {
     this.lightpandaProcess = null;
     this.lightpandaBrowser = null;
     this.lightpandaLaunching = null;
+    this.lightpandaOwned = false;
 
     // CloakBrowser
     this.cloakbrowserBrowser = null;
@@ -162,14 +163,11 @@ export class BrowserManager {
   }
 
   async acquirePageSlot() {
-    if (this.pageSlotsInUse < this.config.maxConcurrentPageOps) {
-      this.pageSlotsInUse += 1;
-      return;
+    while (this.pageSlotsInUse >= this.config.maxConcurrentPageOps) {
+      await new Promise((resolve) => {
+        this.pageSlotWaiters.push(resolve);
+      });
     }
-
-    await new Promise((resolve) => {
-      this.pageSlotWaiters.push(resolve);
-    });
     this.pageSlotsInUse += 1;
   }
 
@@ -178,9 +176,9 @@ export class BrowserManager {
       this.pageSlotsInUse -= 1;
     }
 
-    const next = this.pageSlotWaiters.shift();
-    if (next) {
-      next();
+    if (this.pageSlotsInUse < this.config.maxConcurrentPageOps) {
+      const next = this.pageSlotWaiters.shift();
+      if (next) next();
     }
   }
 
@@ -201,6 +199,24 @@ export class BrowserManager {
       this.engineWorkingWindows.set(key, pool);
     }
     return pool;
+  }
+
+  wakeSearchWaiter(pool) {
+    const next = pool?.waiters.shift();
+    if (next) next();
+  }
+
+  clearSearchWindowsForBackend(backend) {
+    for (const pool of this.engineWorkingWindows.values()) {
+      const entryBackend = (entry) =>
+        entry.backend ||
+        (pool.engine === "_shared"
+          ? "lightpanda"
+          : getEngineMetadata(pool.engine)?.backend || this.config.defaultBackend);
+      const removed = pool.windows.some((entry) => entryBackend(entry) === backend);
+      pool.windows = pool.windows.filter((entry) => entryBackend(entry) !== backend);
+      if (removed) this.wakeSearchWaiter(pool);
+    }
   }
 
   buildWindowStats(engine) {
@@ -348,8 +364,8 @@ export class BrowserManager {
 
     browser.on("disconnected", () => {
       this.browser = null;
+      this.clearSearchWindowsForBackend("chromium");
       if (this.config.defaultBackend === "chromium") {
-        this.engineWorkingWindows.clear();
         this.keepAlivePage = null;
         this.prelaunchPromise = null;
       }
@@ -463,42 +479,41 @@ export class BrowserManager {
 
     return new Promise((resolve, reject) => {
       const proc = spawn(binaryPath, ["serve", "--port", String(port), "--timeout", "300"], {
-        stdio: ["ignore", "pipe", "pipe"]
+        stdio: "ignore"
       });
 
       let started = false;
-
-      proc.on("error", (err) => {
-        if (!started) reject(err);
-      });
-
-      proc.stderr.on("data", () => {
-        if (!started) {
-          started = true;
+      let pollTimer;
+      let startupTimer;
+      const settle = (error) => {
+        if (started) return;
+        started = true;
+        clearTimeout(pollTimer);
+        clearTimeout(startupTimer);
+        if (error) {
+          proc.kill();
+          reject(error);
+        } else {
           resolve(proc);
         }
+      };
+
+      proc.on("error", (err) => {
+        settle(err);
       });
 
       const poll = () => {
         const req = http.get(`http://127.0.0.1:${port}/json/version`, (res) => {
           res.resume();
-          if (!started) {
-            started = true;
-            resolve(proc);
-          }
+          settle();
         });
         req.on("error", () => {
-          if (!started) setTimeout(poll, 100);
+          if (!started) pollTimer = setTimeout(poll, 100);
         });
         req.end();
       };
-      setTimeout(poll, 300);
-
-      setTimeout(() => {
-        if (!started) {
-          reject(new Error("Lightpanda failed to start within 15s"));
-        }
-      }, 15000);
+      pollTimer = setTimeout(poll, 300);
+      startupTimer = setTimeout(() => settle(new Error("Lightpanda failed to start within 15s")), 15000);
     });
   }
 
@@ -524,6 +539,7 @@ export class BrowserManager {
           defaultViewport: { width: MONITOR_WIDTH, height: MONITOR_HEIGHT }
         });
         this.lightpandaBrowser = browser;
+        this.lightpandaOwned = false;
         this._watchLightpandaBrowser(browser);
         return browser;
       } catch {
@@ -542,10 +558,12 @@ export class BrowserManager {
     if (!processHandle) return null;
 
     this.lightpandaProcess = processHandle;
+    this.lightpandaOwned = true;
     processHandle.on("exit", (code) => {
       logBrowserEvent("lightpanda.exit", { code });
       this.lightpandaProcess = null;
       this.lightpandaBrowser = null;
+      this.lightpandaOwned = false;
     });
 
     const browser = await puppeteer.connect({
@@ -561,18 +579,14 @@ export class BrowserManager {
   _watchLightpandaBrowser(browser) {
     browser.on("disconnected", () => {
       this.lightpandaBrowser = null;
-      const pool = this.engineWorkingWindows.get("_shared");
-      if (pool) {
-        pool.windows = [];
-        for (const resolve of pool.waiters.splice(0)) resolve();
-      }
+      this.clearSearchWindowsForBackend("lightpanda");
     });
   }
 
   async _newLightpandaPage() {
     const browser = await this.getLightpandaBrowser();
     if (!browser) {
-      return this._newChromiumPage();
+      throw new Error("Lightpanda is unavailable; cannot create a Lightpanda page");
     }
 
     const page = await browser.newPage();
@@ -702,6 +716,12 @@ export class BrowserManager {
     this.cloakbrowserLaunching = (async () => {
       try {
         const { launch } = await import("cloakbrowser/puppeteer");
+        // CloakBrowser reads its binary path from process.env, not launch options.
+        if (this.config.cloakbrowserPath) {
+          process.env.CLOAKBROWSER_BINARY_PATH = this.config.cloakbrowserPath;
+        } else {
+          delete process.env.CLOAKBROWSER_BINARY_PATH;
+        }
         const browser = await launch({
           headless: this.config.headless,
           args: [
@@ -720,6 +740,7 @@ export class BrowserManager {
         browser.on("disconnected", () => {
           this.cloakbrowserBrowser = null;
           this.cloakbrowserLaunching = null;
+          this.clearSearchWindowsForBackend("cloakbrowser");
         });
         logBrowserEvent("cloakbrowser.launch.ready");
         return browser;
@@ -792,16 +813,14 @@ export class BrowserManager {
     return this.config.searchMaxWorkingWindows;
   }
 
-  async ensureMinWorkingWindows(engine, { startupUrl, waitUntil = "domcontentloaded", label, reason = "cold_start", browserEngine = engine } = {}) {
+  async ensureMinWorkingWindows(engine, { startupUrl, waitUntil = "domcontentloaded", label, reason = "cold_start" } = {}) {
     const lower = (engine || "").toLowerCase();
-    const routeBackend = getEngineMetadata(lower)?.backend;
-    const needsRouteBackend = routeBackend === "cloakbrowser" || routeBackend === "chromium" || routeBackend === "lightpanda";
-    if (this.config.defaultBackend !== "cloakbrowser" && this.config.defaultBackend !== "chromium" && !needsRouteBackend) return;
-    const pool = this.getEnginePool(engine);
+    const poolEngine = this._poolEngine(lower);
+    const pool = this.getEnginePool(poolEngine);
     this.pruneClosedWindows(pool);
 
     const minWindows = this.config.searchKeepMinWorkingWindows;
-    const maxWindows = this._poolMaxWindows(engine);
+    const maxWindows = this._poolMaxWindows(poolEngine);
     const target = Math.min(minWindows, maxWindows);
     const missing = Math.max(0, target - pool.windows.length);
 
@@ -811,18 +830,20 @@ export class BrowserManager {
         inUse: false,
         persistent: true,
         pending: true,
-        engine: String(engine || "").trim().toLowerCase() || "default"
+        engine: poolEngine,
+        backend: getEngineMetadata(lower)?.backend || this.config.defaultBackend
       };
       pool.windows.push(entry);
 
       try {
-        const page = await this.newPage({ engine: browserEngine });
+        const page = await this.newPage({ engine: lower });
         entry.page = page;
         entry.pending = false;
 
         page.on("close", () => {
           const activePool = this.getEnginePool(entry.engine);
           activePool.windows = activePool.windows.filter((item) => item.page !== page);
+          this.wakeSearchWaiter(activePool);
         });
 
         if (startupUrl) {
@@ -834,6 +855,7 @@ export class BrowserManager {
         this.logWindowEvent("search.window.opened", label || entry.engine, { reason, persistent: true });
       } catch (error) {
         pool.windows = pool.windows.filter((item) => item !== entry);
+        this.wakeSearchWaiter(pool);
         throw error;
       }
     }
@@ -847,12 +869,11 @@ export class BrowserManager {
     }
 
     const poolEngine = this._poolEngine(engine);
-    await this.ensureMinWorkingWindows(poolEngine, {
+    await this.ensureMinWorkingWindows(engine, {
       startupUrl,
       waitUntil,
       label: engine,
-      reason: "cold_start",
-      browserEngine: engine
+      reason: "cold_start"
     });
     const pool = this.getEnginePool(poolEngine);
 
@@ -870,7 +891,8 @@ export class BrowserManager {
           inUse: true,
           persistent: false,
           pending: true,
-          engine: poolEngine
+          engine: poolEngine,
+          backend: getEngineMetadata(engine)?.backend || this.config.defaultBackend
         };
         pool.windows.push(entry);
         try {
@@ -881,6 +903,7 @@ export class BrowserManager {
           page.on("close", () => {
             const activePool = this.getEnginePool(entry.engine);
             activePool.windows = activePool.windows.filter((item) => item.page !== page);
+            this.wakeSearchWaiter(activePool);
           });
 
           if (startupUrl) {
@@ -893,6 +916,7 @@ export class BrowserManager {
           return page;
         } catch (error) {
           pool.windows = pool.windows.filter((item) => item !== entry);
+          this.wakeSearchWaiter(pool);
           throw error;
         }
       }
@@ -931,10 +955,7 @@ export class BrowserManager {
       await this.trimIdleWindows(pool, Math.max(this.config.searchKeepMinWorkingWindows, 1));
     }
 
-    const next = pool.waiters.shift();
-    if (next) {
-      next();
-    }
+    this.wakeSearchWaiter(pool);
   }
 
   async getHealth() {
@@ -1062,37 +1083,28 @@ export class BrowserManager {
   async prelaunchIfConfigured() {
     if (!this.config.prelaunchBrowser) return;
 
-    // Always pre-launch Chromium so screenshots are fast
-    this._prelaunchChromium().catch(() => {});
-
-    if (this.config.defaultBackend !== "chromium") return;
     if (this.prelaunchPromise) {
       return this.prelaunchPromise;
     }
 
     this.prelaunchPromise = (async () => {
-      const browser = await this.getBrowser();
-      const pages = await browser.pages();
-      if (pages.length > 0) {
-        await pages[0].goto(this.config.startupUrl, {
-          waitUntil: "domcontentloaded",
-          timeout: this.config.browserOpTimeoutMs
-        });
+      if (this.config.defaultBackend === "chromium") {
+        await this._prelaunchChromium();
+      } else if (this.config.defaultBackend === "cloakbrowser") {
+        await this.getCloakbrowserBrowser();
       } else {
-        const page = await this.newPage();
-        await page.goto(this.config.startupUrl, {
-          waitUntil: "domcontentloaded",
-          timeout: this.config.browserOpTimeoutMs
-        });
+        const browser = await this.getLightpandaBrowser();
+        if (!browser) {
+          throw new Error("Lightpanda is unavailable; cannot pre-launch the configured backend");
+        }
       }
 
       await Promise.allSettled(
         getBrowserWarmupEngines(this.config.searchRouteWarmupEngines).map((engine) =>
-          this.ensureMinWorkingWindows(this._poolEngine(engine), {
+          this.ensureMinWorkingWindows(engine, {
             startupUrl: getEngineMetadata(engine)?.homeUrl || "about:blank",
             waitUntil: "domcontentloaded",
-            reason: "warmup",
-            browserEngine: engine
+            reason: "warmup"
           })
         )
       );
@@ -1138,7 +1150,7 @@ export class BrowserManager {
     this.launching = null;
     this.cloakbrowserBrowser = null;
     this.cloakbrowserLaunching = null;
-    this.engineWorkingWindows.clear();
+    this.clearSearchWindowsForBackend(backend);
     this.keepAlivePage = null;
     this.prelaunchPromise = null;
 
@@ -1175,7 +1187,8 @@ export class BrowserManager {
     // Lightpanda shutdown
     if (this.lightpandaBrowser) {
       try {
-        await this.lightpandaBrowser.close();
+        if (this.lightpandaOwned) await this.lightpandaBrowser.close();
+        else this.lightpandaBrowser.disconnect();
       } catch {
         // ignore close errors on shutdown
       }
@@ -1189,6 +1202,7 @@ export class BrowserManager {
         // ignore process kill errors
       }
       this.lightpandaProcess = null;
+      this.lightpandaOwned = false;
     }
 
     // CloakBrowser shutdown
@@ -1213,5 +1227,10 @@ export async function getBrowserManager() {
   if (!managerPromise) {
     managerPromise = loadConfig().then((config) => new BrowserManager(config));
   }
-  return managerPromise;
+  try {
+    return await managerPromise;
+  } catch (error) {
+    managerPromise = null;
+    throw error;
+  }
 }

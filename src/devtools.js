@@ -105,7 +105,11 @@ function startInactivityCleanup() {
   inactivityInterval = setInterval(() => {
     const now = Date.now();
     for (const [targetId, state] of [...targetsById.entries()]) {
-      if (state.page.isClosed()) continue;
+      if (state.page.isClosed()) {
+        targetsById.delete(targetId);
+        clearTab(state.backend, targetId);
+        continue;
+      }
       const lastActive = new Date(state.lastActiveAt).getTime();
       if (now - lastActive >= INACTIVITY_TIMEOUT_MS) {
         closedTargets.set(targetId, { closedAt: new Date().toISOString() });
@@ -192,12 +196,10 @@ async function createTarget(args = {}) {
   }
 
   const backend = normalizeBackend(manager);
-  const page = await manager.newPage({ backend });
   const customTargetId = typeof args.targetId === "string" && args.targetId.trim()
     ? args.targetId.trim()
     : null;
   if (customTargetId && targetsById.has(customTargetId)) {
-    await page.close();
     throw new Error(`Target ${customTargetId} already exists. Use a different targetId or close the existing one.`);
   }
 
@@ -209,6 +211,8 @@ async function createTarget(args = {}) {
     }
     url = resolveRefIdToUrl(ref);
   }
+
+  const page = await manager.newPage({ backend });
 
   const state = {
     targetId: customTargetId || randomBytes(6).toString("hex"),
@@ -226,15 +230,22 @@ async function createTarget(args = {}) {
   devtoolsCounters.targetsCreated += 1;
   touchTab(backend, state.targetId);
 
-  if (url !== "about:blank") {
-    await page.goto(url, {
-      waitUntil: manager.config.navWaitUntil,
-      timeout: manager.config.browserOpTimeoutMs
-    });
-  }
+  try {
+    if (url !== "about:blank") {
+      await page.goto(url, {
+        waitUntil: manager.config.navWaitUntil,
+        timeout: manager.config.browserOpTimeoutMs
+      });
+    }
 
-  await refreshTitle(state);
-  return buildTargetSummary(state);
+    await refreshTitle(state);
+    return buildTargetSummary(state);
+  } catch (error) {
+    targetsById.delete(state.targetId);
+    clearTab(backend, state.targetId);
+    await page.close().catch(() => {});
+    throw error;
+  }
 }
 
 async function listTargets() {

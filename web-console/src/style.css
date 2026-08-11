@@ -660,6 +660,17 @@ p,
 .activity-row {
   border-bottom: 1px dashed var(--line2);
 }
+.activity-row.activity-new td {
+  animation: activity-highlight-fade 10s ease-out forwards;
+}
+@keyframes activity-highlight-fade {
+  from {
+    background: var(--blue-bg);
+  }
+  to {
+    background: transparent;
+  }
+}
 .feed-time {
   color: var(--muted);
   font: 11px var(--mono);
