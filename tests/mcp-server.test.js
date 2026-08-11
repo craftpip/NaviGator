@@ -289,8 +289,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(body.config).toMatchObject({ enableWebConsole: true, novncPort: 7900 });
       expect(body.engines.length).toBeGreaterThan(0);
       const ddgApi = body.engines.find((e) => e.id === "duckduckgo_api");
-      expect(ddgApi).toMatchObject({ backend: "api", isBrowser: false, exposedInMcp: true });
-      expect(Array.isArray(body.mcpEngines)).toBe(true);
+      expect(ddgApi).toMatchObject({ backend: "api", isBrowser: false });
       expect(body.tools).toContain("web_search");
       expect(body.tools).toContain("Target.createTarget");
       expect(body.package).toMatchObject({ name: "navigator-mcp" });
@@ -677,19 +676,15 @@ describe("mcp-server HTTP endpoints", () => {
       ]);
     });
 
-    it("advertises the documented web_search engine enum", async () => {
+    it("does not advertise a separate engine allowlist", async () => {
       const { status, body } = await mcpPost({
         jsonrpc: "2.0", id: 57, method: "tools/list"
       });
 
       expect(status).toBe(200);
       const webSearch = body.result.tools.find((tool) => tool.name === "web_search");
-      const engineEnum = webSearch.inputSchema.properties.engine.enum;
-      expect(engineEnum).toEqual([
-        "select_best", "duckduckgo_api", "brave_cb", "bing_lp",
-        "mojeek_lp", "google_cb", "bing_cb", "duckduckgo_cb"
-      ]);
-      expect(webSearch.inputSchema.properties.engines.items.enum).toEqual(engineEnum);
+      expect(webSearch.inputSchema.properties.engine.enum).toBeUndefined();
+      expect(webSearch.inputSchema.properties.engines.items.enum).toBeUndefined();
     });
 
     it("responds to initialize via session transport with SSE stream", async () => {
@@ -799,6 +794,28 @@ describe("mcp-server HTTP endpoints", () => {
       expect(body.result.content[0].text).toContain("Engine Result");
       expect(searchMod.browserSearch).toHaveBeenCalledWith(
         expect.objectContaining({ engines: ["duckduckgo_api", "bing_lp"] })
+      );
+    });
+
+    it("forwards an explicitly requested route without advertising it", async () => {
+      const searchMod = await import("../src/search.js");
+      searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
+        query: "explicit route",
+        results: [{ title: "Explicit Result", url: "https://explicit.example.com", snippet: "explicit" }],
+      }));
+
+      const { status, body } = await mcpPost({
+        jsonrpc: "2.0", id: 160, method: "tools/call",
+        params: {
+          name: "web_search",
+          arguments: { query: "explicit route", engine: "duckduckgo_ch" },
+        },
+      });
+
+      expect(status).toBe(200);
+      expect(body.result.content[0].text).toContain("Explicit Result");
+      expect(searchMod.browserSearch).toHaveBeenCalledWith(
+        expect.objectContaining({ engines: ["duckduckgo_ch"] })
       );
     });
 

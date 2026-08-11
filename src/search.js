@@ -1,5 +1,5 @@
 import { getBrowserManager } from "./browser.js";
-import { DEFAULT_MAX_CHARS } from "./config.js";
+import { DEFAULT_MAX_CHARS, DEFAULT_SEARCH_ENABLED_ENGINES } from "./config.js";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { performance } from "node:perf_hooks";
@@ -96,12 +96,6 @@ async function waitForMutations(page, { maxWait = 5000, stableMs = 500 } = {}) {
   }
 }
 
-const DEFAULT_ENABLED_ENGINES = [
-  "duckduckgo_api",
-  "brave_cb",
-  "google_lp", "google_cb", "duckduckgo_cb", "bing_cb",
-  "bing_lp", "google_ch", "duckduckgo_ch", "mojeek_lp"
-];
 const engineScheduler = new EngineScheduler({
   engines: SUPPORTED_ENGINES,
   statePath: path.join(process.cwd(), ".cache", "search-engine-profiles.json")
@@ -1394,7 +1388,9 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
   const errors = [];
   const skipped = [];
 
-  const engines = (config.searchEnabledEngines?.length ? config.searchEnabledEngines : DEFAULT_ENABLED_ENGINES);
+  const engines = config.searchEnabledEngines?.length
+    ? config.searchEnabledEngines
+    : DEFAULT_SEARCH_ENABLED_ENGINES;
   engineScheduler.configure(config);
   const scheduled = engineScheduler.select(engines);
   for (const skippedEngine of scheduled.skipped) {

@@ -37,7 +37,6 @@ export class GoogleLpDriver extends GoogleDriver {
   id = "google_lp";
   backend = "lightpanda";
   pool = "shared";
-  exposedInMcp = true;
   homeUrl = "https://www.google.com/";
   resultSelectors = LP_RESULT_SELECTORS;
 

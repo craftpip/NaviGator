@@ -59,7 +59,6 @@ for (const DriverClass of DRIVER_CLASSES) {
     backend: instance.backend,
     pool: instance.pool,
     homeUrl: instance.homeUrl,
-    exposedInMcp: instance.exposedInMcp === true,
     inputSelectors: instance.inputSelectors,
     resultSelectors: instance.resultSelectors,
     isBrowser: instance.backend !== "api"
@@ -67,11 +66,6 @@ for (const DriverClass of DRIVER_CLASSES) {
 }
 
 export const SUPPORTED_ENGINES = Object.freeze([...REGISTRY.keys()]);
-
-export const MCP_SEARCH_ENGINES = Object.freeze(
-  ["duckduckgo_api", "brave_cb", "bing_lp", "mojeek_lp", "google_cb", "bing_cb", "duckduckgo_cb"]
-    .filter((id) => ENGINE_METADATA.get(id)?.exposedInMcp)
-);
 
 export function getEngineDriver(engine, config) {
   const DriverClass = REGISTRY.get(String(engine || "").toLowerCase());

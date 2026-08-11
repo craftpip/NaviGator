@@ -4,6 +4,5 @@ export class DuckDuckGoChDriver extends DuckDuckGoBrowserDriver {
   id = "duckduckgo_ch";
   backend = "chromium";
   pool = "engine";
-  exposedInMcp = false;
   homeUrl = "https://duckduckgo.com/";
 }

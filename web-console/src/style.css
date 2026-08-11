@@ -155,14 +155,14 @@ p,
 }
 .button:hover:not(:disabled),
 .button-like:hover {
-  background: #eff6ff;
+  background: var(--blue-bg);
 }
 .button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 .button.vnc-on {
-  background: #eff6ff;
+  background: var(--blue-bg);
 }
 .button.primary {
   background: var(--blue);
@@ -171,6 +171,26 @@ p,
 }
 .button.danger {
   color: var(--red);
+}
+.remote-desktop-actions {
+  display: inline-flex;
+  flex: none;
+}
+.remote-desktop-actions .button {
+  border-radius: 0;
+}
+.remote-desktop-actions .button + .button {
+  margin-left: -1px;
+}
+.remote-desktop-actions .button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+.remote-desktop-actions .button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+.remote-desktop-actions .button:focus-visible {
+  position: relative;
+  z-index: 1;
 }
 .button.small {
   height: 24px;

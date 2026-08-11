@@ -39,7 +39,6 @@ export class BraveCbDriver extends BrowserSearchDriver {
   id = "brave_cb";
   backend = "cloakbrowser";
   pool = "engine";
-  exposedInMcp = true;
   homeUrl = "https://search.brave.com/";
   inputSelectors = ["input#searchbox", "input[name='q']", "input[type='search']"];
   resultSelectors = RESULT_SELECTORS;

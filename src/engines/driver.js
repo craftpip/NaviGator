@@ -5,7 +5,6 @@ export class SearchEngineDriver {
   id = "";
   backend = "api";
   pool = null;
-  exposedInMcp = false;
   homeUrl = null;
   inputSelectors = [];
   resultSelectors = [];

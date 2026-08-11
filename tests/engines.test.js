@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { JSDOM } from "jsdom";
 import {
-  MCP_SEARCH_ENGINES,
   SUPPORTED_ENGINES,
   getBrowserWarmupEngines,
   getEngineDriver,
@@ -43,19 +42,6 @@ describe("engine registry", () => {
       "google_cb", "google_ch", "google_lp",
       "mojeek_lp",
     ]);
-  });
-
-  it("exposes exactly the documented MCP engine set in order", () => {
-    expect([...MCP_SEARCH_ENGINES]).toEqual([
-      "duckduckgo_api", "brave_cb", "bing_lp",
-      "mojeek_lp", "google_cb", "bing_cb", "duckduckgo_cb",
-    ]);
-  });
-
-  it("keeps every MCP engine inside SUPPORTED_ENGINES", () => {
-    for (const id of MCP_SEARCH_ENGINES) {
-      expect(SUPPORTED_ENGINES).toContain(id);
-    }
   });
 
   it("returns null metadata for unknown engines", () => {

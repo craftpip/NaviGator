@@ -128,6 +128,14 @@ describe("findCloakbrowserPath", () => {
 });
 
 describe("loadConfig (parse engine behavior)", () => {
+  it("defaults SEARCH_ROUTE_WARMUP_ENGINES to the primary routes", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("SEARCH_ROUTE_WARMUP_ENGINES", undefined);
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.searchRouteWarmupEngines).toEqual(["brave_cb", "duckduckgo_api", "duckduckgo_cb"]);
+  });
+
   it("parses MCP API key settings", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
     vi.stubEnv("MCP_API_KEYS", "first, second,first");
@@ -154,12 +162,15 @@ describe("loadConfig (parse engine behavior)", () => {
     expect(config.searchEnabledEngines).toEqual(["duckduckgo_api", "google_ch"]);
   });
 
-  it("handles empty SEARCH_ENABLED_ENGINES as null", async () => {
+  it("uses the shared default for an empty SEARCH_ENABLED_ENGINES", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
     vi.stubEnv("SEARCH_ENABLED_ENGINES", "");
     const { loadConfig } = await import("../src/config.js");
     const config = await loadConfig();
-    expect(config.searchEnabledEngines).toBeNull();
+    expect(config.searchEnabledEngines).toEqual([
+      "duckduckgo_api", "brave_cb", "google_lp", "google_cb", "duckduckgo_cb",
+      "bing_cb", "bing_lp", "google_ch", "duckduckgo_ch", "mojeek_lp"
+    ]);
   });
 
   it("parses BROWSER_BACKEND correctly", async () => {
@@ -292,7 +303,10 @@ describe("loadConfig (parse engine behavior)", () => {
     expect(config.searchKeepMinWorkingWindows).toBe(2);
     expect(config.searchMaxWorkingWindows).toBeGreaterThanOrEqual(2);
     expect(config.searchRouteCircuitOpenMs).toBe(300000);
-    expect(config.searchEnabledEngines).toBeNull();
+    expect(config.searchEnabledEngines).toEqual([
+      "duckduckgo_api", "brave_cb", "google_lp", "google_cb", "duckduckgo_cb",
+      "bing_cb", "bing_lp", "google_ch", "duckduckgo_ch", "mojeek_lp"
+    ]);
     expect(config.searchQueueMinIntervalMs).toBe(300000);
     expect(config.searchQueueMaxIntervalMs).toBe(3600000);
     expect(config.searchQueueEscalationFactor).toBe(2);

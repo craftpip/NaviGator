@@ -29,7 +29,6 @@ export class MojeekLpDriver extends BrowserSearchDriver {
   id = "mojeek_lp";
   backend = "lightpanda";
   pool = "shared";
-  exposedInMcp = true;
   homeUrl = "https://www.mojeek.com/";
   inputSelectors = ["input[name='q']", "input.js-search-input"];
   resultSelectors = RESULT_SELECTORS;

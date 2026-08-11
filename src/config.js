@@ -222,6 +222,18 @@ export async function findLightpandaPath() {
 
 const headlessDefault = !process.env.DISPLAY;
 export const DEFAULT_MAX_CHARS = parseInteger(process.env.WEB_FETCH_MAX_CHARS, 90000);
+export const DEFAULT_SEARCH_ENABLED_ENGINES = Object.freeze([
+  "duckduckgo_api",
+  "brave_cb",
+  "google_lp",
+  "google_cb",
+  "duckduckgo_cb",
+  "bing_cb",
+  "bing_lp",
+  "google_ch",
+  "duckduckgo_ch",
+  "mojeek_lp"
+]);
 
 export async function loadConfig() {
   const navWaitUntilRaw = process.env.NAV_WAIT_UNTIL || "domcontentloaded";
@@ -315,8 +327,9 @@ export async function loadConfig() {
     domainHintsPath,
     stabilizeStrategy: parseStabilizeStrategy(process.env.STABILIZE_STRATEGY, "network_idle"),
     searchRouteWarmupEngines: parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, ["brave_cb", "duckduckgo_api", "duckduckgo_cb"]),
-    searchEnabledEngines: process.env.SEARCH_ENABLED_ENGINES
-      ? parseEngines(process.env.SEARCH_ENABLED_ENGINES, [])
-      : null
+    searchEnabledEngines: parseEngines(
+      process.env.SEARCH_ENABLED_ENGINES,
+      DEFAULT_SEARCH_ENABLED_ENGINES
+    )
   };
 }

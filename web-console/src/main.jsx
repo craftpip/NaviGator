@@ -201,32 +201,36 @@ function Layout({
           </button>
         )}
         {toggleVnc && (
-          <>
-            <button
-              className={`button ${vnc?.running ? "vnc-on" : ""}`}
-              disabled={vncBusy}
-              onClick={toggleVnc}
-            >
-              {vncBusy
-                ? "Working..."
-                : vnc?.running
-                  ? "Disable VNC"
-                  : "Enable VNC"}
-            </button>
+          vncBusy ? (
             <button
               className="button"
-              disabled={!vnc?.running}
-              onClick={() =>
-                window.open(
-                  `http://${location.hostname}:${vnc.novncPort}/vnc.html`,
-                  "_blank",
-                  "noopener",
-                )
-              }
+              disabled
             >
-              Open VNC
+              Working...
             </button>
-          </>
+          ) : vnc?.running ? (
+            <div className="remote-desktop-actions" role="group" aria-label="Remote Desktop">
+              <button
+                className="button"
+                onClick={() =>
+                  window.open(
+                    `http://${location.hostname}:${vnc.novncPort}/vnc.html`,
+                    "_blank",
+                    "noopener",
+                  )
+                }
+              >
+                Open Remote Desktop
+              </button>
+              <button className="button danger" onClick={toggleVnc}>
+                Close Remote Desktop
+              </button>
+            </div>
+          ) : (
+            <button className="button" onClick={toggleVnc}>
+              Enable Remote Desktop
+            </button>
+          )
         )}
       </header>
       {children}
@@ -323,8 +327,11 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy, feed }) {
   const engines = config.engines || [];
   const circuits = health.searchRouteCircuitBreakers || [];
   const state = computeStatus(health, stats, ok);
-  const exposed = engines.filter((item) => item.exposedInMcp);
-  const unavailable = circuits.filter((item) => item.remainingMs > 0).length;
+  const enabledEngineIds = new Set(engines.map((engine) => engine.id));
+  const unavailable = circuits.filter(
+    (item) =>
+      item.remainingMs > 0 && enabledEngineIds.has(item.route?.split("/")[0]),
+  ).length;
   const tabs = instances.reduce((sum, item) => sum + (item.tabs || 0), 0);
   const limiter = health.pageLimiter || {};
   const period = stats.requests?.byPeriod?.["5m"] || {};
@@ -352,7 +359,7 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy, feed }) {
         <section className="metrics">
           <Metric
             label="Engines ready"
-            value={`${Math.max(0, exposed.length - unavailable)}/${exposed.length}`}
+            value={`${Math.max(0, engines.length - unavailable)}/${engines.length}`}
             note={
               unavailable
                 ? `${unavailable} route${unavailable === 1 ? "" : "s"} unavailable`
@@ -396,7 +403,7 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy, feed }) {
       <section className="content-grid">
         <div className="engine-activity">
           <Engines config={config} health={health} stats={stats} />
-          <LiveFeed feed={feed} />
+          <LiveFeed feed={feed} enabledEngines={engines.map((engine) => engine.id)} />
         </div>
         <Drivers health={health} instances={instances} />
         <Runtime health={health} stats={stats} history={history} />
@@ -556,10 +563,9 @@ function Engines({ config, health, stats }) {
         <Empty>No engine registry is available yet.</Empty>
       </Panel>
     );
-  const visible = engines.filter((item) => item.exposedInMcp);
-  const ready = visible.filter((item) => schedulingState(profiles.get(item.id) || {}) === "ready");
-  const cooling = visible.filter((item) => schedulingState(profiles.get(item.id) || {}) === "cooling_down");
-  const probes = visible.filter((item) => schedulingState(profiles.get(item.id) || {}) === "probe");
+  const ready = engines.filter((item) => schedulingState(profiles.get(item.id) || {}) === "ready");
+  const cooling = engines.filter((item) => schedulingState(profiles.get(item.id) || {}) === "cooling_down");
+  const probes = engines.filter((item) => schedulingState(profiles.get(item.id) || {}) === "probe");
   return (
     <Panel
       title="Search engines"
@@ -591,9 +597,6 @@ function Engines({ config, health, stats }) {
           } else if (schedulerState === "paced") {
             tone = "info";
             route = `paced · ${formatCountdown(dispatchWaitMs)}`;
-          } else if (!engine.exposedInMcp) {
-            tone = "off";
-            route = "internal";
           }
           const pool =
             health.searchWindows?.byEngine?.[
@@ -752,14 +755,24 @@ function buildFeed(entries, pageOps) {
   }
   return rows.sort((a, b) => Number(b.ts) - Number(a.ts));
 }
-function LiveFeed({ feed }) {
+function LiveFeed({ feed, enabledEngines }) {
   const [showWeb, setShowWeb] = useState(true);
   const [showDevtools, setShowDevtools] = useState(true);
   const [newKeys, setNewKeys] = useState(() => new Set());
   const knownKeys = useRef(null);
-  const rows = (feed || []).filter((entry) =>
-    entry.kind === "devtools" ? showDevtools : showWeb,
-  );
+  const enabledEngineIds = new Set(enabledEngines);
+  const rows = (feed || [])
+    .map((entry) =>
+      entry.attempts
+        ? {
+            ...entry,
+            attempts: entry.attempts.filter((attempt) =>
+              enabledEngineIds.has(attempt.engine),
+            ),
+          }
+        : entry,
+    )
+    .filter((entry) => (entry.kind === "devtools" ? showDevtools : showWeb));
   useEffect(() => {
     const currentKeys = new Set(rows.map((entry) => entry.key));
     if (!knownKeys.current) {

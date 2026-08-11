@@ -1,3 +1,5 @@
+import { DEFAULT_SEARCH_ENABLED_ENGINES } from "./config.js";
+
 export const CONFIG_SCHEMA = [
   { key: "BROWSER_BACKEND", category: "backend", type: "enum", values: ["cloakbrowser", "lightpanda", "chromium"], fallback: "cloakbrowser", applies: "recreate", description: "Primary browser backend for page fetch/screenshot." },
   { key: "DEVTOOLS_BROWSER_BACKEND", category: "backend", type: "enum", values: ["cloakbrowser", "lightpanda", "chromium"], fallback: "cloakbrowser", applies: "recreate", description: "Backend used by the devtools testing tools." },
@@ -13,7 +15,7 @@ export const CONFIG_SCHEMA = [
   { key: "BROWSER_USER_AGENT", category: "backend", type: "string", fallback: "Chromium UA", applies: "recreate", description: "User agent string used by the browsers." },
 
   { key: "SEARCH_ROUTE_WARMUP_ENGINES", category: "search", type: "engines", fallback: ["brave_cb", "duckduckgo_api", "duckduckgo_cb"], applies: "hot", description: "Browser routes prewarmed on start." },
-  { key: "SEARCH_ENABLED_ENGINES", category: "search", type: "engines", fallback: null, applies: "hot", description: "Search routes eligible for automatic select_best scheduling." },
+  { key: "SEARCH_ENABLED_ENGINES", category: "search", type: "engines", fallback: DEFAULT_SEARCH_ENABLED_ENGINES, applies: "hot", description: "Search routes eligible for automatic select_best scheduling." },
   { key: "SEARCH_ROUTE_CIRCUIT_OPEN_MS", category: "search", type: "number", fallback: 300000, applies: "hot", description: "Route cooldown after failure (ms)." },
   { key: "SEARCH_KEEP_MIN_WORKING_WINDOWS", category: "search", type: "integer", min: 0, fallback: 2, applies: "hot", description: "Min warm windows per route pool; the shared Lightpanda pool is capped at one." },
   { key: "SEARCH_MAX_WORKING_WINDOWS", category: "search", type: "integer", fallback: 10, applies: "hot", description: "Max concurrent windows per engine." },

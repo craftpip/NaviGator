@@ -2,7 +2,8 @@
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SUPPORTED_ENGINES, MCP_SEARCH_ENGINES, getEngineMetadata } from "./src/engines/index.js";
+import { DEFAULT_SEARCH_ENABLED_ENGINES, parseEngines } from "./src/config.js";
+import { getEngineMetadata } from "./src/engines/index.js";
 
 const DEFAULT_URL = "http://localhost:3000";
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -453,10 +454,11 @@ function engineMonitorRows(health) {
 }
 
 function printEngines(health) {
+  const engines = parseEngines(ENV_VARS.SEARCH_ENABLED_ENGINES, DEFAULT_SEARCH_ENABLED_ENGINES);
   const breakers = new Map((health.searchRouteCircuitBreakers || []).map((b) => [b.route, b]));
   const headers = ["route", "backend", "state", "fails", "last error"];
   const aligns = ["left", "left", "left", "right", "left"];
-  const rows = SUPPORTED_ENGINES.map((engine) => {
+  const rows = engines.map((engine) => {
     const meta = getEngineMetadata(engine);
     const entry = breakers.get(`${engine}/${meta?.backend || "browser"}`);
     return [
@@ -468,7 +470,7 @@ function printEngines(health) {
     ];
   });
   console.log(
-    `${sectionHeader("ENGINES")} ─ ${SUPPORTED_ENGINES.length} registered · ${MCP_SEARCH_ENGINES.length} exposed via MCP ${dim("(+ select_best)")}`
+    `${sectionHeader("ENGINES")} ─ ${engines.length} enabled for select_best`
   );
   printTable(headers, rows, aligns);
 }

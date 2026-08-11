@@ -63,7 +63,6 @@ function parseDuckDuckGoHtmlResults(html) {
 
 export class DuckDuckGoApiDriver extends ApiSearchDriver {
   id = "duckduckgo_api";
-  exposedInMcp = true;
 
   async search({ query }) {
     const timeoutMs = Math.min(this.config.browserOpTimeoutMs, 15000);

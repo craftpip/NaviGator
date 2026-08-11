@@ -26,7 +26,7 @@ import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsTool
 import { transform as asciiTransform } from "./ascii.js";
 import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
-import { MCP_SEARCH_ENGINES, SUPPORTED_ENGINES, getEngineMetadata } from "./engines/index.js";
+import { SUPPORTED_ENGINES, getEngineMetadata } from "./engines/index.js";
 import { getAuthorizedMcpKey, getMcpApiKey, isAuthorizedMcpRequest } from "./mcp-api-auth.js";
 
 const require = createRequire(import.meta.url);
@@ -51,11 +51,13 @@ const CONSOLE_ENGINE_REGISTRY = SUPPORTED_ENGINES.map((id) => {
     id,
     backend: meta.backend,
     pool: meta.pool,
-    exposedInMcp: meta.exposedInMcp,
     homeUrl: meta.homeUrl,
     isBrowser: meta.isBrowser
   };
 });
+const CONSOLE_ENGINE_BY_ID = new Map(
+  CONSOLE_ENGINE_REGISTRY.map((engine) => [engine.id, engine])
+);
 
 const screenshotDownloadById = new Map();
 const screenshotStorageDir = path.join(process.cwd(), "screenshots");
@@ -66,7 +68,6 @@ const SCREENSHOT_DOWNLOAD_TTL_MS = 60 * 60 * 1000;
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 const MAX_SCREENSHOT_DOWNLOADS = 200;
 const MAX_TOOL_CACHE_ENTRIES = 200;
-const WEB_SEARCH_ENGINE_ENUM = ["select_best", ...MCP_SEARCH_ENGINES];
 const TOOL_ERROR_LOG_PATH = path.join(process.cwd(), "logs", "tool-errors.log");
 const MAX_TOOL_ERROR_LOG_BYTES = 5 * 1024 * 1024;
 const SENSITIVE_ARG_KEY_RE = /password|passwd|token|secret|api[_-]?key|authorization|bearer|cookie/i;
@@ -377,12 +378,12 @@ async function checkEnvFileChanged(filePath) {
 async function getConsoleConfigPayload(manager) {
   const envPath = getEnvFilePath();
   const backupPath = await latestBackupPath(envPath);
+  const enabledEngines = manager.config.searchEnabledEngines || SUPPORTED_ENGINES;
   return {
     config: manager.config,
     env: getConfigEnvSubset(),
     envFile: { path: envPath, changedOnDisk: envFileState.changed, backup: backupPath },
-    engines: CONSOLE_ENGINE_REGISTRY,
-    mcpEngines: MCP_SEARCH_ENGINES,
+    engines: enabledEngines.map((id) => CONSOLE_ENGINE_BY_ID.get(id)).filter(Boolean),
     tools: [...new Set([...WEB_TOOL_NAMES, ...devtoolsToolDefinitions.map((tool) => tool.name)])].sort(),
     package: { name: PACKAGE_JSON.name, version: PACKAGE_JSON.version },
     schema: CONFIG_SCHEMA,
@@ -1500,17 +1501,13 @@ function getToolsListResponse(allowedTools = null) {
             },
             engines: {
               type: "array",
-              items: {
-                type: "string",
-                enum: WEB_SEARCH_ENGINE_ENUM
-              },
-              description: "Specific search engines to run. Prefer `select_best` by default. Only send concrete engines if the user explicitly requests certain engines or asks about engine behavior. If `select_best` appears anywhere in this list, it takes priority and automatic fallback/circuit-breaker selection is used."
+              items: { type: "string" },
+              description: "Specific search engines to run. Prefer `select_best` by default. A registered route may be named explicitly even when it is not enabled for `select_best`. If `select_best` appears anywhere in this list, it takes priority and automatic fallback/circuit-breaker selection is used."
             },
             engine: {
               type: "string",
               default: "select_best",
-              enum: WEB_SEARCH_ENGINE_ENUM,
-              description: "Preferred default: `select_best`. Only send a concrete engine if the user explicitly requests one engine or asks about engine behavior. `select_best` uses automatic fallback and circuit-breaker logic."
+              description: "Preferred default: `select_best`, which uses only SEARCH_ENABLED_ENGINES. A registered route may be named explicitly even when it is not enabled for `select_best`."
             }
           },
           description: "Provide query (string) or queries (string[]). Use queries for multiple search variations.",
