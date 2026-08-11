@@ -4,37 +4,18 @@ import "./style.css";
 import logo from "./navigator.png";
 
 const POLL_MS = 2000;
-const CATEGORIES = {
-  backend: "Backend",
-  search: "Search",
-  ops: "Ops / Timeouts",
-  console: "HTTP / Console",
-  vnc: "VNC",
-};
-const BACKEND_SUBGROUP = {
-  CHROME_PATH: "chrome",
-  CHROME_USER_DATA_DIR: "chrome",
-  CHROME_PROFILE_DIR: "chrome",
-  LIGHTPANDA_PATH: "lightpanda",
-  LIGHTPANDA_PORT: "lightpanda",
-  CLOAKBROWSER_BINARY_PATH: "cloakbrowser",
-  PRELAUNCH_BROWSER: "launch",
-  STARTUP_URL: "launch",
-  BROWSER_USER_AGENT: "launch",
-};
-const BACKEND_GROUP_LABELS = {
-  core: "Backend",
-  chrome: "Backend — Chrome",
-  lightpanda: "Backend — Lightpanda",
-  cloakbrowser: "Backend — Cloakbrowser",
-  launch: "Backend — Launch",
-};
-const groupKeyOf = (entry) =>
-  entry.category === "backend"
-    ? BACKEND_SUBGROUP[entry.key] || "core"
-    : entry.category;
-const groupLabelOf = (groupKey) =>
-  BACKEND_GROUP_LABELS[groupKey] || CATEGORIES[groupKey] || groupKey;
+const MANAGE_GROUPS = [
+  { label: "Browser Defaults", detail: "Shared defaults for direct page tools and DevTools.", keys: ["BROWSER_BACKEND", "DEVTOOLS_BROWSER_BACKEND", "BROWSER_USER_AGENT", "BROWSER_OP_TIMEOUT_MS"] },
+  { label: "Backend Installations", detail: "Executable and profile settings for Chromium, Cloakbrowser, and Lightpanda.", keys: ["CHROME_PATH", "CHROME_USER_DATA_DIR", "CHROME_PROFILE_DIR", "CLOAKBROWSER_BINARY_PATH", "LIGHTPANDA_PATH", "LIGHTPANDA_PORT"] },
+  { label: "Browser Startup And Desktop Access", detail: "VNC toggles HEADLESS automatically; use the header VNC action to change them together.", keys: ["PRELAUNCH_BROWSER", "STARTUP_URL", "HEADLESS", "ENABLE_VNC", "VNC_PORT", "NOVNC_PORT"] },
+  { label: "Search Route Availability", detail: "Eligible engines, startup warming, route cooldowns, and browser-window capacity.", keys: ["SEARCH_ENABLED_ENGINES", "SEARCH_ROUTE_WARMUP_ENGINES", "SEARCH_ROUTE_CIRCUIT_OPEN_MS", "SEARCH_KEEP_MIN_WORKING_WINDOWS", "SEARCH_MAX_WORKING_WINDOWS"] },
+  { label: "Search Scheduler", detail: "How select_best paces, recovers, explores, and ranks eligible engines.", keys: ["SEARCH_QUEUE_MIN_INTERVAL_MS", "SEARCH_QUEUE_MAX_INTERVAL_MS", "SEARCH_QUEUE_ESCALATION_FACTOR", "SEARCH_QUEUE_READY_INTERVAL_MS", "SEARCH_QUEUE_EXPLORATION_EVERY", "SEARCH_QUEUE_LATENCY_SAMPLES"] },
+  { label: "Page Operations And Extraction", detail: "Parallelism, navigation, stabilization, extraction hints, and response size.", keys: ["OPEN_PAGE_MAX_PARALLEL", "MAX_CONCURRENT_PAGE_OPS", "NAV_WAIT_UNTIL", "STABILIZE_STRATEGY", "DOMAIN_HINTS_PATH", "WEB_FETCH_MAX_CHARS"] },
+  { label: "MCP Transports And Tool Access", detail: "MCP transports, DevTools exposure, tool filtering, and HTTP authentication.", keys: ["ENABLE_HTTP_MCP", "ENABLE_STDIO_MCP", "ENABLE_DEVTOOLS_MCP", "HUMAN_TYPING_DELAY", "DISABLE_TOOLS", "MCP_ALLOW_UNAUTHENTICATED"] },
+  { label: "HTTP Server And Console", detail: "HTTP listener, health/status endpoints, and the Navigator console.", keys: ["ENABLE_HTTP_HEALTH", "ENABLE_WEB_CONSOLE", "MCP_API_PORT", "MCP_API_HOST"] },
+  { label: "Screenshot Storage And Downloads", detail: "Persist screenshots to enable file and download URL outputs.", keys: ["ENABLE_SCREENSHOT_PATH", "ENABLE_SCREENSHOT_DOWNLOAD_LINK"] },
+  { label: "Reliability And Logging", detail: "Hang recovery plus timing and tool-error diagnostics.", keys: ["ENABLE_HANG_RESTART", "HANG_RESTART_TIMEOUT_MS", "DEBUG", "LOG_TOOL_ERRORS"] },
+];
 const WEB_TOOLS = new Set([
   "web_search",
   "web_fetch",
@@ -534,21 +515,40 @@ function Engines({ config, health, stats }) {
     ]),
   );
   const attempts = stats.engineAttempts?.byEngine || {};
+  const profiles = new Map((stats.engineProfiles || []).map((profile) => [profile.engine, profile]));
+  const now = Date.now();
   const warmup = new Set(config.config?.searchRouteWarmupEngines || []);
-  const fallback = new Set(config.config?.searchFallback || []);
+  const enabled = new Set(config.config?.searchEnabledEngines || []);
   const rateFor = (id) => {
     const period = attempts[id]?.byPeriod?.["24h"] || attempts[id] || {};
     const tried = (period.ok || 0) + (period.fail || 0);
     return tried ? { tried, rate: (period.ok || 0) / tried } : { tried: 0, rate: 0 };
   };
+  const schedulingState = (profile) => {
+    if (profile.state === "cooling_down") return "cooling_down";
+    if (profile.state === "probe") return "probe";
+    if (profile.lastSelectedAt && now < profile.lastSelectedAt + (profile.dispatchGapMs || 0)) return "paced";
+    return "ready";
+  };
+  const stateRank = { ready: 0, probe: 1, paced: 2, cooling_down: 3 };
   const engines = [...(config.engines || [])].sort((a, b) => {
-    const openA = Boolean(circuits.get(`${a.id}/${a.backend}`)?.remainingMs);
-    const openB = Boolean(circuits.get(`${b.id}/${b.backend}`)?.remainingMs);
-    if (openA !== openB) return openA ? 1 : -1;
-    const rateA = rateFor(a.id);
-    const rateB = rateFor(b.id);
-    if (rateA.tried !== rateB.tried) return rateA.tried ? -1 : 1;
-    return rateB.rate - rateA.rate;
+    const profileA = profiles.get(a.id) || {};
+    const profileB = profiles.get(b.id) || {};
+    const rankA = stateRank[schedulingState(profileA)] ?? 4;
+    const rankB = stateRank[schedulingState(profileB)] ?? 4;
+    if (rankA !== rankB) return rankA - rankB;
+    if (rankA === 0) {
+      const latencyA = profileA.medianLatencyMs || 0;
+      const latencyB = profileB.medianLatencyMs || 0;
+      if (!latencyA && !latencyB) return a.id.localeCompare(b.id);
+      if (!latencyA) return -1;
+      if (!latencyB) return 1;
+      if (latencyA !== latencyB) return latencyA - latencyB;
+    }
+    if ((profileA.errorScore || 0) !== (profileB.errorScore || 0)) {
+      return (profileA.errorScore || 0) - (profileB.errorScore || 0);
+    }
+    return (profileB.successScore || 0) - (profileA.successScore || 0);
   });
   if (!engines.length)
     return (
@@ -556,58 +556,53 @@ function Engines({ config, health, stats }) {
         <Empty>No engine registry is available yet.</Empty>
       </Panel>
     );
-  let healthy = 0;
-  let recovering = 0;
-  let unavailable = 0;
-  const ranked = engines.filter(
-    (item) => item.exposedInMcp && !circuits.get(`${item.id}/${item.backend}`)?.remainingMs,
-  );
-  const mostWorking = ranked
-    .filter((item) => rateFor(item.id).tried > 0)
-    .sort((a, b) => rateFor(b.id).rate - rateFor(a.id).rate)[0];
+  const visible = engines.filter((item) => item.exposedInMcp);
+  const ready = visible.filter((item) => schedulingState(profiles.get(item.id) || {}) === "ready");
+  const cooling = visible.filter((item) => schedulingState(profiles.get(item.id) || {}) === "cooling_down");
+  const probes = visible.filter((item) => schedulingState(profiles.get(item.id) || {}) === "probe");
   return (
     <Panel
       title="Search engines"
-      sub="routes for the next search — best working first"
+      sub="select_best queue — fastest healthy route first"
     >
       <div className="engine-summary">
-        <b>{engines.filter((item) => item.exposedInMcp).length}</b> configured
-        routes
-        {mostWorking && (
-          <span className="most-working">
-            ★ most working: {mostWorking.id} (
-            {Math.round(rateFor(mostWorking.id).rate * 100)}% over 24h)
-          </span>
-        )}
+        <b>{ready.length}</b> ready · <b>{probes.length}</b> recovery probes · <b>{cooling.length}</b> cooling down
       </div>
       <div className="engine-grid">
-        {engines.map((engine) => {
+        {engines.map((engine, index) => {
           const circuit = circuits.get(`${engine.id}/${engine.backend}`);
           const stat = attempts[engine.id] || {};
+          const profile = profiles.get(engine.id) || {};
+          const schedulerState = schedulingState(profile);
+          const dispatchWaitMs = Math.max(0, (profile.lastSelectedAt || 0) + (profile.dispatchGapMs || 0) - now);
           const attempted = (stat.ok || 0) + (stat.fail || 0);
           const { rate } = rateFor(engine.id);
           let tone = "ok";
-          let route = "closed";
+          let route = schedulerState;
           if (circuit?.remainingMs > 0) {
             tone = "err";
             route = `open · retry ${Math.ceil(circuit.remainingMs / 1000)}s`;
-            unavailable += 1;
-          } else if (circuit?.state === "half_open") {
+          } else if (schedulerState === "cooling_down") {
+            tone = "err";
+            route = `cooling · retry ${formatCountdown(profile.remainingMs)}`;
+          } else if (schedulerState === "probe" || circuit?.state === "half_open") {
             tone = "warn";
-            route = "recovering";
-            recovering += 1;
+            route = "recovery probe";
+          } else if (schedulerState === "paced") {
+            tone = "info";
+            route = `paced · ${formatCountdown(dispatchWaitMs)}`;
           } else if (!engine.exposedInMcp) {
             tone = "off";
             route = "internal";
-          } else healthy += 1;
+          }
           const pool =
             health.searchWindows?.byEngine?.[
               engine.pool === "shared" ? "_shared" : engine.id
             ];
           const role = warmup.has(engine.id)
             ? "primary"
-            : fallback.has(engine.id)
-              ? "fallback"
+            : enabled.has(engine.id)
+              ? "enabled"
               : "available";
           const pct = Math.round(rate * 100);
           return (
@@ -619,41 +614,30 @@ function Engines({ config, health, stats }) {
               <Dot tone={tone === "ok" ? "" : tone} />
               <div className="engine-main">
                 <div className="engine-name">
-                  {engine.id}{" "}
-                  {engine.id === mostWorking?.id && (
-                    <Pill tone="best">★ most working</Pill>
-                  )}
+                  <span className="queue-position">{index + 1}</span>
+                  {engine.id}
                   <Pill tone={tone}>{route}</Pill>
                 </div>
-                <div className="engine-meta">
-                  {engine.backend} · {role} ·{" "}
-                  {pool
-                    ? `${pool.inUse}/${pool.total} windows${pool.pending ? ` · ${pool.pending} opening` : ""}`
-                    : "no window"}
+                <div className="engine-inline-meta"><span className="feed-backend">{formatBackend(engine.backend)}</span> · {role}</div>
+                <div className="ordering-factors">
+                  <span><b>{schedulerState.replace("_", " ")}</b> eligibility</span>
+                  <span className={profile.consecutiveFailures ? "score-error" : ""}><b>{profile.consecutiveFailures || 0}</b> failure streak</span>
+                  <span><b>{profile.medianLatencyMs ? formatMs(profile.medianLatencyMs) : "unmeasured"}</b> latency/{profile.latencySamples?.length || 0}</span>
+                  <span><b>{dispatchWaitMs ? formatCountdown(dispatchWaitMs) : "now"}</b> dispatch wait</span>
+                  {schedulerState === "cooling_down" && <span className="score-error"><b>{formatCountdown(profile.remainingMs)}</b> retry wait</span>}
                 </div>
-                <div className="engine-success">
-                  <span
-                    className="engine-bar"
-                    style={{
-                      background: tone === "err" ? "#f43f5e" : tone === "warn" ? "#f59e0b" : "#35e07a",
-                      width: `${tone === "err" ? 4 : Math.max(4, pct)}%`,
-                    }}
-                  />
-                  <span className="engine-pct">
-                    {attempted ? `${pct}%` : "no attempts"}
-                  </span>
-                </div>
+                {circuit?.lastError && schedulerState !== "ready" && (
+                  <div className="engine-route-error" title={circuit.lastError}>{circuit.lastError}</div>
+                )}
               </div>
               <div className="engine-stats">
-                <b>{stat.results || 0}</b> results · {stat.ok || 0} ok ·{" "}
-                {stat.fail || 0} failed · {stat.skip || 0} skipped · 24h
+                <b>{stat.results || 0}</b> results<br />
+                {stat.ok || 0}/{stat.fail || 0}/{stat.skip || 0} ok/fail/skip<br />
+                {attempted ? `${pct}%` : "-"} · 24h
               </div>
             </div>
           );
         })}
-      </div>
-      <div className="engine-summary">
-        {healthy} ready · {recovering} recovering · {unavailable} unavailable
       </div>
     </Panel>
   );
@@ -686,6 +670,11 @@ function formatTime(ts) {
   if (Number.isNaN(date.getTime())) return String(ts);
   return date.toLocaleTimeString([], { hour12: false });
 }
+function formatKeyDate(ts) {
+  const date = new Date(Number(ts));
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+}
 function formatRelativeTime(ts) {
   const ms = typeof ts === "number" && ts < 1e12 ? ts * 1000 : Number(ts);
   if (!Number.isFinite(ms) || ms <= 0) return "";
@@ -699,6 +688,14 @@ function formatRelativeTime(ts) {
   const days = Math.floor(hours / 24);
   return `${days}d`;
 }
+function formatBackend(backend) {
+  return {
+    lightpanda: "LP",
+    cloakbrowser: "CB",
+    chromium: "CH",
+    api: "API",
+  }[String(backend || "").toLowerCase()] || "-";
+}
 function buildFeed(entries, pageOps) {
   const preview = (value) => String(value || "").slice(0, 80);
   const requestTarget = (value) => {
@@ -711,6 +708,17 @@ function buildFeed(entries, pageOps) {
   };
   const rows = [];
   for (const search of entries || []) {
+    const attempts = (search.attempts || []).map((attempt) => ({
+      key: attempt.id,
+      engine: attempt.engine,
+      backend: formatBackend(attempt.backend),
+      status: attempt.status || "running",
+      response:
+        attempt.error ? "error" : attempt.status === "ok" ? `${attempt.result_count || 0} results` : attempt.status || "running",
+      duration: attempt.duration_ms != null ? formatMs(attempt.duration_ms) : "",
+      error: attempt.error || "",
+    }));
+    const backends = [...new Set(attempts.map((attempt) => attempt.backend).filter((backend) => backend !== "-"))];
     rows.push({
       key: `s-${search.id}`,
       ts: search.ts,
@@ -718,27 +726,14 @@ function buildFeed(entries, pageOps) {
       status: search.status || "",
       category: "Web",
       tool: "web_search",
+      backend: backends.join("/") || "-",
       request: preview(search.query),
       response:
         search.error ? "error" : search.result_count != null ? `${search.result_count} results` : search.status || "running",
       duration: search.duration_ms != null ? formatMs(search.duration_ms) : "",
       error: search.error || "",
+      attempts,
     });
-    for (const attempt of search.attempts || []) {
-      rows.push({
-        key: `a-${attempt.id}`,
-        ts: attempt.ts,
-        kind: "attempt",
-        status: attempt.status || "",
-        category: "Web",
-        tool: `${attempt.engine}${attempt.backend ? ` (${attempt.backend})` : ""}`,
-        request: preview(search.query),
-        response:
-          attempt.error ? "error" : attempt.status === "ok" ? `${attempt.result_count || 0} results` : attempt.status || "running",
-        duration: attempt.duration_ms != null ? formatMs(attempt.duration_ms) : "",
-        error: attempt.error || "",
-      });
-    }
   }
   for (const op of pageOps || []) {
     rows.push({
@@ -748,6 +743,7 @@ function buildFeed(entries, pageOps) {
       status: op.ok ? "ok" : "fail",
       category: op.source === "devtools" ? "Dev" : "Web",
       tool: op.tool || "page",
+      backend: formatBackend(op.backend),
       request: requestTarget(op.url),
       response: op.error ? "error" : op.response_chars ? `${Number(op.response_chars).toLocaleString()} chars` : "- chars",
       duration: op.duration_ms != null ? formatMs(op.duration_ms) : "",
@@ -825,8 +821,24 @@ function LiveFeed({ feed }) {
                       <small>{formatTime(entry.ts)}</small>
                     </td>
                     <td className="activity-tool-cell">
-                      <span className="feed-tool">{entry.tool}</span>
+                      <span className="feed-tool">
+                        {entry.tool} <span className="feed-backend">{entry.backend || "-"}</span>
+                      </span>
                       <span className="feed-request" title={entry.request}>req: {entry.request || "-"}</span>
+                      {entry.attempts?.length ? (
+                        <span className="feed-attempts">
+                          {entry.attempts.map((attempt) => (
+                            <span
+                              className={`feed-attempt ${attempt.status === "ok" ? "ok" : attempt.status === "fail" || attempt.status === "error" ? "fail" : ""}`}
+                              key={attempt.key}
+                              title={attempt.error || undefined}
+                            >
+                              {attempt.engine} <span className="feed-backend">{attempt.backend}</span>: {attempt.response}
+                              {attempt.duration ? ` · ${attempt.duration}` : ""}
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
                     </td>
                     <td className={`feed-response ${entry.error ? "feed-error" : ""}`} title={entry.error || entry.response}>
                       {entry.error ? "error" : entry.response}
@@ -952,7 +964,7 @@ function validateEntryValue(entry, value, engineIds) {
       return { ok: true };
   }
 }
-function EngineMultiSelect({ engines, value, changed, ok, message, onChange }) {
+function MultiSelect({ items, value, changed, ok, message, emptyLabel, ariaLabel, onChange }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const triggerRef = useRef(null);
@@ -1008,11 +1020,11 @@ function EngineMultiSelect({ engines, value, changed, ok, message, onChange }) {
         type="button"
         ref={triggerRef}
         className={`config-input engine-trigger ${changed ? "changed" : ""} ${ok ? "" : "invalid"}`}
-        aria-label="engines value"
+        aria-label={ariaLabel}
         onClick={() => setOpen(!open)}
       >
         <span className="engine-selected">
-          {selected.length ? selected.join(", ") : "Select engines…"}
+          {selected.length ? selected.join(", ") : emptyLabel}
         </span>
         <span className="engine-caret">{open ? "▴" : "▾"}</span>
       </button>
@@ -1022,14 +1034,14 @@ function EngineMultiSelect({ engines, value, changed, ok, message, onChange }) {
           className="engine-panel"
           style={{ left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight }}
         >
-          {engines.map((engine) => (
-            <label key={engine.id} className="engine-option">
+          {[...new Set([...items, ...selected])].map((item) => (
+            <label key={item} className="engine-option">
               <input
                 type="checkbox"
-                checked={selected.includes(engine.id)}
-                onChange={() => toggle(engine.id)}
+                checked={selected.includes(item)}
+                onChange={() => toggle(item)}
               />
-              <span>{engine.id}</span>
+              <span>{item}</span>
             </label>
           ))}
         </div>
@@ -1038,7 +1050,7 @@ function EngineMultiSelect({ engines, value, changed, ok, message, onChange }) {
     </>
   );
 }
-function ValueControl({ entry, value, changed, engines, onChange }) {
+function ValueControl({ entry, value, changed, engines, tools, onChange }) {
   const type = entry.type || "string";
   const engineIds = new Set((engines || []).map((engine) => engine.id));
   const { ok, message } = validateEntryValue(entry, value, engineIds);
@@ -1051,12 +1063,28 @@ function ValueControl({ entry, value, changed, engines, onChange }) {
   };
   if (type === "engines") {
     return (
-      <EngineMultiSelect
-        engines={engines || []}
+      <MultiSelect
+        items={(engines || []).map((engine) => engine.id)}
         value={value}
         changed={changed}
         ok={ok}
         message={message}
+        emptyLabel="Select engines…"
+        ariaLabel="engines value"
+        onChange={onChange}
+      />
+    );
+  }
+  if (type === "toolList") {
+    return (
+      <MultiSelect
+        items={tools || []}
+        value={value}
+        changed={changed}
+        ok={ok}
+        message={message}
+        emptyLabel="Select tools…"
+        ariaLabel="tools to disable"
         onChange={onChange}
       />
     );
@@ -1164,21 +1192,29 @@ function Manage({ config, reload }) {
         normalizeDraftValue(entry, rawFor(entry)),
       ),
   );
-  let group = "";
   const engineIds = new Set((config.engines || []).map((engine) => engine.id));
   const invalidCount = (config.schema || []).filter(
     (entry) => !validateEntryValue(entry, draft[entry.key] ?? "", engineIds).ok,
   ).length;
   const q = query.trim().toLowerCase();
-  const filteredSchema = (config.schema || []).filter((entry) => {
-    if (!q) return true;
-    return (
-      entry.key.toLowerCase().includes(q) ||
-      String(entry.fallback ?? "").toLowerCase().includes(q) ||
-      String(entry.description ?? "").toLowerCase().includes(q) ||
-      String(CATEGORIES[entry.category] || entry.category).toLowerCase().includes(q)
-    );
-  });
+  const matchesQuery = (entry, group) =>
+    !q ||
+    entry.key.toLowerCase().includes(q) ||
+    String(entry.fallback ?? "").toLowerCase().includes(q) ||
+    String(entry.description ?? "").toLowerCase().includes(q) ||
+    group.label.toLowerCase().includes(q) ||
+    group.detail.toLowerCase().includes(q);
+  const schemaByKey = new Map((config.schema || []).map((entry) => [entry.key, entry]));
+  const groupedSchema = MANAGE_GROUPS.map((group) => ({
+    ...group,
+    entries: group.keys.map((key) => schemaByKey.get(key)).filter(Boolean).filter((entry) => matchesQuery(entry, group)),
+  })).filter((group) => group.entries.length);
+  const groupedKeys = new Set(MANAGE_GROUPS.flatMap((group) => group.keys));
+  const ungrouped = (config.schema || []).filter((entry) => !groupedKeys.has(entry.key));
+  if (ungrouped.length) {
+    const entries = ungrouped.filter((entry) => matchesQuery(entry, { label: "Other Settings", detail: "" }));
+    if (entries.length) groupedSchema.push({ label: "Other Settings", detail: "Settings not yet assigned to a dependency group.", entries });
+  }
   return (
     <section className="panel manage">
       <h2>
@@ -1237,32 +1273,28 @@ function Manage({ config, reload }) {
               <th>Variable</th>
               <th>Default</th>
               <th>Value to save</th>
-              <th>Effective</th>
               <th>Applies</th>
               <th>Description</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {filteredSchema.map((entry) => {
-            const groupKey = groupKeyOf(entry);
-            const heading = groupKey !== group;
-            group = groupKey;
+            {groupedSchema.flatMap((group) => group.entries.map((entry, index) => {
             const fallback = Array.isArray(entry.fallback)
               ? entry.fallback.join(",")
               : String(entry.fallback ?? "");
-            const effective = config.config?.[entry.key.toLowerCase()];
             return (
               <FragmentRows
                 key={entry.key}
-                heading={heading}
-                label={groupLabelOf(groupKey)}
+                heading={index === 0}
+                label={group.label}
+                detail={group.detail}
                 entry={entry}
                 fallback={fallback}
-                effective={effective}
                 value={draft[entry.key] ?? ""}
                 changed={changed.some((item) => item.key === entry.key)}
                 engines={config.engines || []}
+                tools={config.tools || []}
                 onChange={(value) => setDraft({ ...draft, [entry.key]: value })}
                 reset={() =>
                   save(
@@ -1272,10 +1304,10 @@ function Manage({ config, reload }) {
                 }
               />
             );
-          })}
-          {!filteredSchema.length && (
+          }))}
+          {!groupedSchema.length && (
             <tr className="section">
-              <td colSpan="7">No variables match “{query}”.</td>
+              <td colSpan="6">No variables match “{query}”.</td>
             </tr>
           )}
         </tbody>
@@ -1287,12 +1319,13 @@ function Manage({ config, reload }) {
 function FragmentRows({
   heading,
   label,
+  detail,
   entry,
   fallback,
-  effective,
   value,
   changed,
   engines,
+  tools,
   onChange,
   reset,
 }) {
@@ -1300,7 +1333,11 @@ function FragmentRows({
     <>
       {heading && (
         <tr className="section">
-          <td colSpan="7">{label}</td>
+          <td colSpan="6">
+            <span>{label}</span>
+            <small>{detail}</small>
+            {label === "MCP Transports And Tool Access" && <a href="/console/keys">Manage API keys</a>}
+          </td>
         </tr>
       )}
       <tr>
@@ -1312,13 +1349,9 @@ function FragmentRows({
             value={value}
             changed={changed}
             engines={engines}
+            tools={tools}
             onChange={onChange}
           />
-        </td>
-        <td className="val-eff">
-          {Array.isArray(effective)
-            ? effective.join(",")
-            : String(effective ?? "")}
         </td>
         <td>
           <Pill tone={entry.applies === "hot" ? "info" : "warn"}>
@@ -1340,13 +1373,9 @@ function Tools() {
   const [tools, setTools] = useState([]);
   const [toolName, setToolName] = useState("");
   const [forms, setForms] = useState({});
-  const [output, setOutput] = useState("Select a tool and send a request.");
-  const [status, setStatus] = useState("Response");
-  const [meta, setMeta] = useState("");
+  const [responses, setResponses] = useState({});
   const [running, setRunning] = useState(false);
-  const [images, setImages] = useState([]);
   const [error, setError] = useState("");
-  const apiKeyRef = useRef("");
 
   useEffect(() => {
     loadTools();
@@ -1354,11 +1383,10 @@ function Tools() {
 
   const mcpRequest = async (method, params) => {
     const t0 = performance.now();
-    const response = await fetch("/mcp", {
+    const response = await fetch("/console/mcp", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${apiKeyRef.current}`,
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
@@ -1381,24 +1409,17 @@ function Tools() {
 
   const loadTools = async () => {
     try {
-      const payload = await request("/console/api-keys");
-      apiKeyRef.current = payload.consoleKey || "";
       const mcp = await mcpRequest("tools/list");
       const list = mcp.json?.result?.tools || [];
       setTools(list);
       if (list.length) selectTool(list[0]);
     } catch (loadError) {
       setError(String(loadError?.message || loadError));
-      setOutput("Failed to load tool definitions from the MCP API.");
     }
   };
 
   const selectTool = (tool) => {
     setToolName(tool.name);
-    setOutput("Select a tool and send a request.");
-    setStatus("Response");
-    setMeta("");
-    setImages([]);
     const defaults = {};
     for (const [name, schema] of Object.entries(
       tool.inputSchema?.properties || {},
@@ -1423,6 +1444,22 @@ function Tools() {
   const schema = activeTool?.inputSchema || {};
   const props = schema.properties || {};
   const form = forms[toolName] || {};
+  const response = responses[toolName] || {
+    output: "Select a tool and send a request.",
+    status: "Response",
+    images: [],
+  };
+  const setToolResponse = (name, updates) =>
+    setResponses((current) => ({
+      ...current,
+      [name]: {
+        output: "Select a tool and send a request.",
+        status: "Response",
+        images: [],
+        ...current[name],
+        ...updates,
+      },
+    }));
 
   const buildArguments = (properties) => {
     const args = {};
@@ -1453,39 +1490,39 @@ function Tools() {
   };
 
   const run = async () => {
+    const selectedTool = toolName;
     setRunning(true);
-    setStatus("Running...");
-    setMeta("");
-    setImages([]);
+    setToolResponse(selectedTool, {
+      status: "Running...",
+      images: [],
+    });
     try {
       const args = buildArguments(props);
       const { response, json, text, ms, bytes } = await mcpRequest(
         "tools/call",
-        { name: toolName, arguments: args },
+        { name: selectedTool, arguments: args },
       );
       const httpLabel = response.ok
         ? "200 OK"
         : `${response.status} ${response.statusText || "Error"}`;
-      setStatus(
-        `${httpLabel} · ${formatMs(ms)} · ${text.length.toLocaleString()} chars (${bytes.toLocaleString()} B)`,
-      );
-      setMeta(`${formatMs(ms)} · ${text.length.toLocaleString()} chars · ${bytes.toLocaleString()} B`);
       const extracted = extractToolResult(json, text);
-      setOutput(extracted.text);
-      setImages(extracted.images);
+      setToolResponse(selectedTool, {
+        status: `${httpLabel} · ${formatMs(ms)} · ${text.length.toLocaleString()} chars (${bytes.toLocaleString()} B)`,
+        output: extracted.text,
+        images: extracted.images,
+      });
     } catch (runError) {
-      setOutput(String(runError?.message || runError));
-      setStatus("Request failed");
+      setToolResponse(selectedTool, {
+        output: String(runError?.message || runError),
+        status: "Request failed",
+      });
     } finally {
       setRunning(false);
     }
   };
 
   const clear = () => {
-    setOutput("Select a tool and send a request.");
-    setStatus("Response");
-    setMeta("");
-    setImages([]);
+    setToolResponse(toolName, {});
   };
 
   return (
@@ -1539,16 +1576,16 @@ function Tools() {
               <section className="response">
                 <div className="response-head">
                   <span
-                    className={`status ${status.startsWith("200") ? "ok" : status === "Request failed" ? "error" : ""}`}
+                    className={`status ${response.status.startsWith("200") ? "ok" : response.status === "Request failed" ? "error" : ""}`}
                   >
-                    {status}
+                    {response.status}
                   </span>
                   <button className="clear" onClick={clear}>
                     Clear
                   </button>
                 </div>
-                <pre>{output}</pre>
-                {images.map((src, index) => (
+                <pre>{response.output}</pre>
+                {response.images.map((src, index) => (
                   <img
                     key={index}
                     className="preview"
@@ -1705,9 +1742,14 @@ function Keys() {
   const [message, setMessage] = useState("");
   const [kind, setKind] = useState("");
   const [secret, setSecret] = useState("");
+  const [name, setName] = useState("");
+  const [allowedTools, setAllowedTools] = useState([]);
+  const [creating, setCreating] = useState(false);
   const load = async () => {
     try {
-      setState(await request("/console/api-keys"));
+      const payload = await request("/console/api-keys");
+      setState(payload);
+      setAllowedTools(payload.toolGroups.flatMap((group) => group.tools));
     } catch (error) {
       setMessage(error.message);
       setKind("err");
@@ -1725,6 +1767,10 @@ function Keys() {
       });
       setState(next);
       setSecret(next.key || "");
+      if (body.action === "create") {
+        setName("");
+        setCreating(false);
+      }
       setMessage(success);
       setKind("ok");
     } catch (error) {
@@ -1732,86 +1778,78 @@ function Keys() {
       setKind("err");
     }
   };
-  const locked = state && !state.allowUnauthenticated;
+  const openAccess = state?.allowUnauthenticated;
+  const toolGroups = state?.toolGroups || [];
+  const allTools = toolGroups.flatMap((group) => group.tools);
+  const toggleTool = (tool) => setAllowedTools((current) =>
+    current.includes(tool) ? current.filter((name) => name !== tool) : [...current, tool],
+  );
+  const toggleGroup = (tools) => setAllowedTools((current) =>
+    tools.every((tool) => current.includes(tool))
+      ? current.filter((tool) => !tools.includes(tool))
+      : [...new Set([...current, ...tools])],
+  );
   return (
     <section className="grid keys-grid">
-      <Panel title="Request access">
-        <div className="access">
-          <div>
-            <p>
-              {state
-                ? locked
-                  ? "Every HTTP MCP request must include a valid API key."
-                  : "HTTP MCP requests can be made with or without an API key."
-                : "Loading authentication settings..."}
-            </p>
-          </div>
-          <Pill tone={locked ? "ok" : "warn"}>
-            {locked ? "Keys required" : "Open access"}
-          </Pill>
-        </div>
-      </Panel>
-      <Panel title="Unauthenticated requests">
-        <label className="switch">
-          <input
-            type="checkbox"
-            checked={state?.allowUnauthenticated || false}
-            onChange={(event) =>
-              mutate(
-                {
-                  action: "set_allow_unauthenticated",
-                  allowUnauthenticated: event.target.checked,
-                },
-                event.target.checked
-                  ? "Unauthenticated MCP requests are allowed."
-                  : "API keys are now required for MCP requests.",
-              )
-            }
-          />
-          <span>
-            <b>Allow requests without an API key</b>
-            <small>
-              Turn this off to require `Authorization: Bearer &lt;key&gt;` or
-              `X-API-Key` on every `/mcp` request.
-            </small>
-          </span>
-        </label>
-        <p className="warning">
-          Keep `/console` behind a trusted network or reverse-proxy access
-          control.
-        </p>
-        <p className={`message ${kind}`}>{message}</p>
-      </Panel>
-      <Panel title="Console internal key" wide>
-        {state?.consoleKey ? (
-          <div className="secret">
-            <b>This key lets the console talk to the MCP API.</b>
-            <code>{state.consoleKey}</code>
-            <button
-              className="button"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(state.consoleKey);
-                  setMessage("Console key copied.");
-                  setKind("ok");
-                } catch {
-                  setMessage("Copy failed. Select the key text manually.");
-                  setKind("err");
-                }
-              }}
-            >
-              Copy key
-            </button>
-            <small>
-              Generated at server start. The Web tools page uses it
-              automatically — it never leaves this server.
-            </small>
-          </div>
-        ) : (
-          <Empty>Console key unavailable.</Empty>
-        )}
-      </Panel>
       <Panel title="API keys" wide>
+        <div className="api-key-list-head">
+          <span>{state?.keys?.length || 0} keys</span>
+          <div className="api-key-toolbar">
+            <Pill tone={openAccess ? "warn" : "ok"}>
+              {openAccess ? "Open access" : "Authentication required"}
+            </Pill>
+            <button className="button primary" onClick={() => setCreating(true)}>Add API key</button>
+          </div>
+        </div>
+        {creating && <div className="api-key-modal-backdrop" onMouseDown={() => setCreating(false)}>
+          <form
+            className="api-key-modal"
+            onMouseDown={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (name.trim()) mutate({ action: "create", name: name.trim(), allowedTools }, "API key created.");
+            }}
+          >
+            <div className="api-key-modal-head">
+              <div><b>Create API key</b><small>Name it and choose exactly what it can access.</small></div>
+              <button type="button" className="clear" onClick={() => setCreating(false)}>Close</button>
+            </div>
+            <label className="api-key-name-field">
+              <span>MCP key name</span>
+              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. production deploy" maxLength={80} autoFocus />
+            </label>
+            <div className="api-key-permissions-field">
+              <span>Tool access</span>
+              <details className="api-key-tools" open>
+                <summary>{allowedTools.length === allTools.length ? "All tools allowed" : `${allowedTools.length} of ${allTools.length} tools allowed`}</summary>
+                <div className="api-key-tool-groups">
+                  <div className="api-key-tool-actions">
+                    <button type="button" onClick={() => setAllowedTools(allTools)}>Allow all</button>
+                    <button type="button" onClick={() => setAllowedTools([])}>Clear all</button>
+                  </div>
+                  {toolGroups.map((group) => (
+                    <div className="api-key-tool-group" key={group.id}>
+                      <Check
+                        label={group.label}
+                        checked={group.tools.every((tool) => allowedTools.includes(tool))}
+                        onChange={() => toggleGroup(group.tools)}
+                      />
+                      <div className="api-key-tool-items">
+                        {group.tools.map((tool) => (
+                          <Check key={tool} label={tool} checked={allowedTools.includes(tool)} onChange={() => toggleTool(tool)} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </div>
+            <div className="api-key-modal-actions">
+              <button type="button" className="button" onClick={() => setCreating(false)}>Cancel</button>
+              <button className="button primary" type="submit" disabled={!name.trim()}>Create API key</button>
+            </div>
+          </form>
+        </div>}
         {secret && (
           <div className="secret">
             <b>Copy this key now. It cannot be shown again.</b>
@@ -1833,25 +1871,27 @@ function Keys() {
             </button>
           </div>
         )}
-        <p>
-          Generated secrets are shown once. Save them in your MCP client; the
-          console only keeps a masked preview.
-        </p>
-        <div className="key-list">
+        <div className="api-key-list">
+          <div className="api-key-row api-key-heading">
+            <span>Name</span>
+            <span>Created</span>
+            <span>Key</span>
+            <span>Access</span>
+            <span />
+          </div>
           {state?.keys?.length
             ? state.keys.map((key) => (
-                <div className="key" key={key.id}>
+                <div className="api-key-row" key={key.id}>
+                  <b>{key.name}</b>
+                  <time dateTime={new Date(key.createdAt).toISOString()}>{formatKeyDate(key.createdAt)}</time>
                   <code>{key.preview}</code>
+                  <small>{key.allowedTools === null ? "all tools" : `${key.allowedTools.length} tools`}</small>
                   <button
                     className="button danger"
                     onClick={() =>
                       window.confirm(
                         "Revoke this API key? Clients using it will lose access immediately.",
-                      ) &&
-                      mutate(
-                        { action: "revoke", id: key.id },
-                        "API key revoked.",
-                      )
+                      ) && mutate({ action: "revoke", id: key.id }, "API key revoked.")
                     }
                   >
                     Revoke
@@ -1860,17 +1900,7 @@ function Keys() {
               ))
             : state && <Empty>No API keys created.</Empty>}
         </div>
-        <button
-          className="button primary"
-          onClick={() =>
-            mutate(
-              { action: "create" },
-              "API key created and enabled immediately.",
-            )
-          }
-        >
-          Create API key
-        </button>
+        <p className={`message ${kind}`}>{message}</p>
       </Panel>
     </section>
   );
@@ -1990,8 +2020,16 @@ function App() {
         <Manage config={snapshot.config || {}} reload={load} />
       ) : mode === "tools" ? (
         <Tools />
-      ) : (
+      ) : mode === "keys" ? (
         <Keys />
+      ) : (
+        <StatusView
+          snapshot={snapshot}
+          history={history}
+          toggleVnc={toggleVnc}
+          vncBusy={vncBusy}
+          feed={feed}
+        />
       )}
     </Layout>
   );

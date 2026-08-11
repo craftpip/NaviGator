@@ -24,6 +24,7 @@ vi.mock("../src/search.js", () => ({
   getSearchBackendHealth: vi.fn().mockReturnValue([]),
   getActivityCounters: vi.fn().mockReturnValue({ searches: 0, fetches: 0, screenshots: 0, botBlocks: 0 }),
   getEngineAttemptStats: vi.fn().mockReturnValue({ total: 0, ok: 0, fail: 0, skip: 0, byEngine: {}, recentFailures: [] }),
+  getEngineProfiles: vi.fn().mockReturnValue([]),
 }));
 vi.mock("../src/devtools.js", () => ({
   devtoolsToolDefinitions: [],
@@ -59,6 +60,12 @@ function makeMockManager(overrides = {}) {
       searchKeepMinWorkingWindows: 2,
       searchMaxWorkingWindows: 10,
       searchRouteCircuitOpenMs: 300000,
+      searchQueueMinIntervalMs: 300000,
+      searchQueueMaxIntervalMs: 3600000,
+      searchQueueEscalationFactor: 2,
+      searchQueueReadyIntervalMs: 10000,
+      searchQueueExplorationEvery: 5,
+      searchQueueLatencySamples: 20,
       openPageMaxParallel: 6,
       maxConcurrentPageOps: 30,
       humanTypingDelay: 15,
@@ -67,7 +74,7 @@ function makeMockManager(overrides = {}) {
       hangRestartTimeoutMs: 120000,
       startupUrl: "about:blank",
       searchRouteWarmupEngines: [],
-      searchFallback: null,
+      searchEnabledEngines: null,
       lightpandaPath: null,
       lightpandaPort: 9222,
       screenshotPathPrefix: null,
@@ -235,6 +242,7 @@ describe("mcp-server HTTP endpoints", () => {
         total: 4, ok: 3, fail: 1, skip: 0,
         recentFailures: [{ minutesAgo: 0, engine: "bing_lp", error: "captcha detected" }],
       });
+      expect(body.engineProfiles).toEqual([]);
     });
   });
 
@@ -283,6 +291,8 @@ describe("mcp-server HTTP endpoints", () => {
       const ddgApi = body.engines.find((e) => e.id === "duckduckgo_api");
       expect(ddgApi).toMatchObject({ backend: "api", isBrowser: false, exposedInMcp: true });
       expect(Array.isArray(body.mcpEngines)).toBe(true);
+      expect(body.tools).toContain("web_search");
+      expect(body.tools).toContain("Target.createTarget");
       expect(body.package).toMatchObject({ name: "navigator-mcp" });
       expect(Array.isArray(body.schema)).toBe(true);
       expect(body.schema.length).toBeGreaterThan(30);
@@ -290,8 +300,52 @@ describe("mcp-server HTTP endpoints", () => {
       expect(schemaKeys).toContain("HEADLESS");
       expect(schemaKeys).toContain("ENABLE_VNC");
       expect(schemaKeys).toContain("NOVNC_PORT");
+      expect(schemaKeys).toContain("SEARCH_QUEUE_MIN_INTERVAL_MS");
+      expect(schemaKeys).toContain("SEARCH_QUEUE_LATENCY_SAMPLES");
       expect(typeof body.env).toBe("object");
       expect(typeof body.envPath).toBe("string");
+    });
+  });
+
+  describe("console MCP tools proxy", () => {
+    it("does not expose the internal console key and lists MCP tools", async () => {
+      const keys = await fetch(`${MCP_BASE}/console/api-keys`);
+      expect(keys.status).toBe(200);
+      expect(await keys.json()).not.toHaveProperty("consoleKey");
+
+      const response = await fetch(`${MCP_BASE}/console/mcp`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      });
+      expect(response.status).toBe(200);
+      expect((await response.json()).result.tools.length).toBeGreaterThan(0);
+    });
+
+    it("creates named API keys with a creation timestamp", async () => {
+      const created = await fetch(`${MCP_BASE}/console/api-keys`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "create", name: "Console test key", allowedTools: ["web_search"] }),
+      });
+      const payload = await created.json();
+      expect(created.status).toBe(200);
+      expect(payload.key).toMatch(/^nvg_/);
+      const key = payload.keys.find((entry) => entry.preview === `${payload.key.slice(0, 4)}...${payload.key.slice(-4)}`);
+      expect(key).toMatchObject({ name: "Console test key", preview: expect.any(String), createdAt: expect.any(Number), allowedTools: ["web_search"] });
+
+      const tools = await mcpPost(
+        { jsonrpc: "2.0", id: 2, method: "tools/list" },
+        { authorization: `Bearer ${payload.key}` },
+      );
+      expect(tools.body.result.tools.map((tool) => tool.name)).toEqual(["web_search"]);
+
+      const revoked = await fetch(`${MCP_BASE}/console/api-keys`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "revoke", id: key.id }),
+      });
+      expect(revoked.status).toBe(200);
     });
   });
 
@@ -328,6 +382,18 @@ describe("mcp-server HTTP endpoints", () => {
       expect(after).toContain("# test env");
       expect(after).toContain("MAX_CONCURRENT_PAGE_OPS=40");
       expect(fs.readdirSync(envDir).some((f) => f.includes(".env.backup-"))).toBe(true);
+    });
+
+    it("hot-applies scheduler settings", async () => {
+      const res = await fetch(`${MCP_BASE}/console/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ updates: { SEARCH_QUEUE_READY_INTERVAL_MS: 15000 } }),
+      });
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.hotApplied).toContain("SEARCH_QUEUE_READY_INTERVAL_MS");
+      expect(fs.readFileSync(envFile, "utf8")).toContain("SEARCH_QUEUE_READY_INTERVAL_MS=15000");
     });
 
     it("returns restartRequired for recreate-apply keys", async () => {
@@ -434,7 +500,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(after).toContain("HEADLESS=false");
     });
 
-    it("disable stops the stack and persists ENABLE_VNC=0", async () => {
+    it("disable stops the stack and restores headless mode", async () => {
       const res = await fetch(`${MCP_BASE}/console/vnc`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -451,6 +517,7 @@ describe("mcp-server HTTP endpoints", () => {
 
       const after = fs.readFileSync(envFile, "utf8");
       expect(after).toContain("ENABLE_VNC=0");
+      expect(after).toContain("HEADLESS=true");
     });
 
     it("rejects unknown actions", async () => {
@@ -1244,7 +1311,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(text).toContain("Target 2 Page");
     });
 
-    it("returns HTTP 500 for unknown tool in stateless mode", async () => {
+    it("returns an MCP tool error for failures in stateless mode", async () => {
       const res = await fetch(`${MCP_BASE}/mcp`, {
         method: "POST",
         headers: {
@@ -1259,10 +1326,26 @@ describe("mcp-server HTTP endpoints", () => {
         }),
       });
 
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.ok).toBe(false);
-      expect(body.error).toMatch(/Unknown tool/);
+      expect(body.result.isError).toBe(true);
+      expect(body.result.content[0].text).toMatch(/Unknown tool/);
+    });
+
+    it("returns an actionable error for an unknown screenshot ref_id", async () => {
+      const { status, body } = await mcpPost({
+        jsonrpc: "2.0", id: 7, method: "tools/call",
+        params: {
+          name: "web_page_screenshot",
+          arguments: { ref_id: 999999 },
+        },
+      });
+
+      expect(status).toBe(200);
+      expect(body.result.isError).toBe(true);
+      expect(body.result.content[0].text).toBe(
+        "Error calling web_page_screenshot: No link found in memory for ref 999999"
+      );
     });
 
     it("returns 204 for notifications", async () => {
@@ -1319,7 +1402,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(fetchResp.body.result.content[0].text).toContain("Found Page");
     });
 
-    it("web_fetch returns HTTP 500 on invalid ref_id in stateless mode", async () => {
+    it("web_fetch returns an MCP tool error on invalid ref_id in stateless mode", async () => {
       const res = await fetch(`${MCP_BASE}/mcp`, {
         method: "POST",
         headers: {
@@ -1337,10 +1420,10 @@ describe("mcp-server HTTP endpoints", () => {
         }),
       });
 
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.ok).toBe(false);
-      expect(body.error).toMatch(/No link found/);
+      expect(body.result.isError).toBe(true);
+      expect(body.result.content[0].text).toMatch(/No link found/);
     });
 
     it("caches search results by argument key", async () => {
@@ -1666,9 +1749,10 @@ describe("DISABLE_TOOLS env filtering", () => {
       method: "tools/call",
       params: { name: "web_page_ascii", arguments: { url: "https://example.com" } },
     });
-    expect(status).toBe(500);
-    expect(body.error).toContain("disabled");
-    expect(body.error).toContain("DISABLE_TOOLS");
+    expect(status).toBe(200);
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0].text).toContain("disabled");
+    expect(body.result.content[0].text).toContain("DISABLE_TOOLS");
   });
 });
 

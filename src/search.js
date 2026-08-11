@@ -15,6 +15,7 @@ import {
 import { findDomainHint, getDomainHints } from "./domain-hints.js";
 import { htmlToMarkdown } from "./markdown.js";
 import { getEngineDriver, getEngineMetadata, SUPPORTED_ENGINES } from "./engines/index.js";
+import { EngineScheduler } from "./engine-scheduler.js";
 import {
   buildLlmText,
   cleanAndTruncateText,
@@ -95,20 +96,32 @@ async function waitForMutations(page, { maxWait = 5000, stableMs = 500 } = {}) {
   }
 }
 
-const DEFAULT_FALLBACK = [
+const DEFAULT_ENABLED_ENGINES = [
   "duckduckgo_api",
   "brave_cb",
   "google_lp", "google_cb", "duckduckgo_cb", "bing_cb",
   "bing_lp", "google_ch", "duckduckgo_ch", "mojeek_lp"
 ];
+const engineScheduler = new EngineScheduler({
+  engines: SUPPORTED_ENGINES,
+  statePath: path.join(process.cwd(), ".cache", "search-engine-profiles.json")
+});
 const routeCircuitState = new Map();
 const ROUTE_CIRCUIT_STATE_PATH = path.join(process.cwd(), ".cache", "search-circuit-breakers.json");
 
 try {
   const saved = JSON.parse(readFileSync(ROUTE_CIRCUIT_STATE_PATH, "utf8"));
+  let removedLocalBrowserFailures = false;
   for (const [key, state] of Object.entries(saved || {})) {
+    const engine = key.split("/")[0];
+    if (isLocalBrowserFailure(state?.lastError)) {
+      engineScheduler.reset(engine);
+      removedLocalBrowserFailures = true;
+      continue;
+    }
     if (state && Number.isFinite(state.openUntil)) routeCircuitState.set(key, state);
   }
+  if (removedLocalBrowserFailures) persistRouteCircuitState();
 } catch {
   // No persisted circuit state on the first start.
 }
@@ -136,6 +149,10 @@ export function getActivityCounters() {
 function routeKey(engine) {
   const meta = getEngineMetadata(engine);
   return `${engine}/${meta?.backend || "browser"}`;
+}
+
+export function isLocalBrowserFailure(error) {
+  return /missing x server|xvfb|cannot open display|failed to launch.*browser/i.test(String(error?.message || error));
 }
 
 function getRouteCircuit(engine, now = Date.now()) {
@@ -272,6 +289,10 @@ export function getEngineAttemptStats() {
   }
 
   return { total, ok, fail, skip, byEngine, recentFailures };
+}
+
+export function getEngineProfiles() {
+  return engineScheduler.getProfiles();
 }
 
 function normalizeEngines(engines, fallback) {
@@ -1339,11 +1360,14 @@ async function runSearchRoute({ manager, query, engine, config, explicit }) {
       value = await execute();
     }
     recordRouteSuccess(engine);
-    recordEngineAttempt(engine, "ok", "", value.results?.length || 0, performance.now() - routeStart);
-    return value;
+    const durationMs = performance.now() - routeStart;
+    recordEngineAttempt(engine, "ok", "", value.results?.length || 0, durationMs);
+    return { ...value, durationMs };
   } catch (error) {
-    recordRouteFailure(engine, error, config.searchRouteCircuitOpenMs);
-    recordEngineAttempt(engine, "fail", error, 0, performance.now() - routeStart);
+    const localBrowserFailure = isLocalBrowserFailure(error);
+    if (!localBrowserFailure) recordRouteFailure(engine, error, config.searchRouteCircuitOpenMs);
+    recordEngineAttempt(engine, localBrowserFailure ? "skip" : "fail", error, 0, performance.now() - routeStart);
+    error.schedulerIgnore = localBrowserFailure;
     if (explicit) throw error;
     throw error;
   }
@@ -1370,9 +1394,15 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
   const errors = [];
   const skipped = [];
 
-  const engines = (config.searchFallback?.length ? config.searchFallback : DEFAULT_FALLBACK);
+  const engines = (config.searchEnabledEngines?.length ? config.searchEnabledEngines : DEFAULT_ENABLED_ENGINES);
+  engineScheduler.configure(config);
+  const scheduled = engineScheduler.select(engines);
+  for (const skippedEngine of scheduled.skipped) {
+    recordEngineAttempt(skippedEngine.engine, "skip", skippedEngine.reason);
+    skipped.push({ engine: skippedEngine.engine, route: routeKey(skippedEngine.engine), remainingMs: skippedEngine.remainingMs, error: skippedEngine.reason });
+  }
 
-  for (const engine of engines) {
+  for (const engine of scheduled.ordered) {
     const circuit = getRouteCircuit(engine);
     if (circuit.open) {
       recordEngineAttempt(engine, "skip", circuit.lastError || "route open");
@@ -1381,7 +1411,14 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
     }
 
     try {
+      engineScheduler.markSelected(engine);
       const value = await runSearchRoute({ manager, query, engine, config, explicit: false });
+      if (!value.results?.length) {
+        engineScheduler.recordFailure(engine);
+        errors.push({ engine, route: routeKey(engine), error: "Search engine returned no results" });
+        continue;
+      }
+      engineScheduler.recordSuccess(engine, value.durationMs);
       const settled = [{ status: "fulfilled", value, engine }];
       const result = buildQueryResult({ query, settled, limit, fallbackAttempted: true });
 
@@ -1403,10 +1440,11 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
           used: true,
           selectedEngine: engine,
           skipped,
-          ...(config.searchFallback?.length ? { configuredFallback: config.searchFallback } : {})
+          ...(config.searchEnabledEngines?.length ? { configuredEnabledEngines: config.searchEnabledEngines } : {})
         }
       };
     } catch (reason) {
+      if (!reason.schedulerIgnore) engineScheduler.recordFailure(engine);
       errors.push({ engine, route: routeKey(engine), error: String(reason?.message || reason) });
     }
   }
@@ -1483,9 +1521,13 @@ export async function browserSearch({ query, queries, limit = 5, engines }) {
   const manager = await getBrowserManager();
   activityCounters.searches += 1;
   const tSearchStart = performance.now();
-  const explicitEngines = Array.isArray(engines)
+  const requestedEngineIds = (Array.isArray(engines) ? engines : [engines])
+    .filter((engine) => engine !== undefined && engine !== null)
+    .map((engine) => String(engine).trim().toLowerCase());
+  const selectBestRequested = requestedEngineIds.includes("select_best");
+  const explicitEngines = !selectBestRequested && (Array.isArray(engines)
     ? engines.length > 0
-    : engines !== undefined && engines !== null && String(engines).trim() !== "";
+    : engines !== undefined && engines !== null && String(engines).trim() !== "");
   const selectedEngines = explicitEngines ? normalizeEngines(engines, []) : [];
 
   const queryList = [];

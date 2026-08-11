@@ -146,20 +146,20 @@ describe("loadConfig (parse engine behavior)", () => {
     expect(config.searchRouteWarmupEngines).toEqual(["google_cb", "bing_lp"]);
   });
 
-  it("parses SEARCH_FALLBACK correctly", async () => {
+  it("parses SEARCH_ENABLED_ENGINES correctly", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
-    vi.stubEnv("SEARCH_FALLBACK", "duckduckgo_api,google_ch");
+    vi.stubEnv("SEARCH_ENABLED_ENGINES", "duckduckgo_api,google_ch");
     const { loadConfig } = await import("../src/config.js");
     const config = await loadConfig();
-    expect(config.searchFallback).toEqual(["duckduckgo_api", "google_ch"]);
+    expect(config.searchEnabledEngines).toEqual(["duckduckgo_api", "google_ch"]);
   });
 
-  it("handles empty SEARCH_FALLBACK as null", async () => {
+  it("handles empty SEARCH_ENABLED_ENGINES as null", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
-    vi.stubEnv("SEARCH_FALLBACK", "");
+    vi.stubEnv("SEARCH_ENABLED_ENGINES", "");
     const { loadConfig } = await import("../src/config.js");
     const config = await loadConfig();
-    expect(config.searchFallback).toBeNull();
+    expect(config.searchEnabledEngines).toBeNull();
   });
 
   it("parses BROWSER_BACKEND correctly", async () => {
@@ -173,9 +173,20 @@ describe("loadConfig (parse engine behavior)", () => {
   it("parses HEADLESS correctly", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
     vi.stubEnv("HEADLESS", "false");
+    vi.stubEnv("ENABLE_VNC", "1");
     const { loadConfig } = await import("../src/config.js");
     const config = await loadConfig();
     expect(config.headless).toBe(false);
+  });
+
+  it("falls back to headless when a headful browser has no VNC display", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("HEADLESS", "false");
+    vi.stubEnv("ENABLE_VNC", "0");
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.headless).toBe(true);
+    expect(config.vncEnabled).toBe(false);
   });
 
   it("parses PRELAUNCH_BROWSER correctly", async () => {
@@ -250,6 +261,13 @@ describe("loadConfig (parse engine behavior)", () => {
       "SEARCH_KEEP_MIN_WORKING_WINDOWS",
       "SEARCH_MAX_WORKING_WINDOWS",
       "SEARCH_ROUTE_CIRCUIT_OPEN_MS",
+      "SEARCH_ENABLED_ENGINES",
+      "SEARCH_QUEUE_MIN_INTERVAL_MS",
+      "SEARCH_QUEUE_MAX_INTERVAL_MS",
+      "SEARCH_QUEUE_ESCALATION_FACTOR",
+      "SEARCH_QUEUE_READY_INTERVAL_MS",
+      "SEARCH_QUEUE_EXPLORATION_EVERY",
+      "SEARCH_QUEUE_LATENCY_SAMPLES",
       "OPEN_PAGE_MAX_PARALLEL",
       "MAX_CONCURRENT_PAGE_OPS",
       "HUMAN_TYPING_DELAY",
@@ -274,6 +292,13 @@ describe("loadConfig (parse engine behavior)", () => {
     expect(config.searchKeepMinWorkingWindows).toBe(2);
     expect(config.searchMaxWorkingWindows).toBeGreaterThanOrEqual(2);
     expect(config.searchRouteCircuitOpenMs).toBe(300000);
+    expect(config.searchEnabledEngines).toBeNull();
+    expect(config.searchQueueMinIntervalMs).toBe(300000);
+    expect(config.searchQueueMaxIntervalMs).toBe(3600000);
+    expect(config.searchQueueEscalationFactor).toBe(2);
+    expect(config.searchQueueReadyIntervalMs).toBe(10000);
+    expect(config.searchQueueExplorationEvery).toBe(5);
+    expect(config.searchQueueLatencySamples).toBe(20);
     expect(config.openPageMaxParallel).toBe(6);
     expect(config.maxConcurrentPageOps).toBe(30);
     expect(config.humanTypingDelay).toBe(15);
@@ -306,5 +331,23 @@ describe("loadConfig (parse engine behavior)", () => {
     const { loadConfig } = await import("../src/config.js");
     const config = await loadConfig();
     expect(config.searchRouteCircuitOpenMs).toBe(600000);
+  });
+
+  it("parses search queue cooldown settings", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("SEARCH_QUEUE_MIN_INTERVAL_MS", "600000");
+    vi.stubEnv("SEARCH_QUEUE_MAX_INTERVAL_MS", "7200000");
+    vi.stubEnv("SEARCH_QUEUE_ESCALATION_FACTOR", "3");
+    vi.stubEnv("SEARCH_QUEUE_READY_INTERVAL_MS", "15000");
+    vi.stubEnv("SEARCH_QUEUE_EXPLORATION_EVERY", "4");
+    vi.stubEnv("SEARCH_QUEUE_LATENCY_SAMPLES", "12");
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.searchQueueMinIntervalMs).toBe(600000);
+    expect(config.searchQueueMaxIntervalMs).toBe(7200000);
+    expect(config.searchQueueEscalationFactor).toBe(3);
+    expect(config.searchQueueReadyIntervalMs).toBe(15000);
+    expect(config.searchQueueExplorationEvery).toBe(4);
+    expect(config.searchQueueLatencySamples).toBe(12);
   });
 });

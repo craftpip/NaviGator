@@ -49,7 +49,7 @@ export function validateConfigValue(entry, raw) {
 
 const HOT_APPLYERS = {
   SEARCH_ROUTE_WARMUP_ENGINES: (config, value) => { config.searchRouteWarmupEngines = value; },
-  SEARCH_FALLBACK: (config, value) => { config.searchFallback = value.length ? value : null; },
+  SEARCH_ENABLED_ENGINES: (config, value) => { config.searchEnabledEngines = value.length ? value : null; },
   SEARCH_ROUTE_CIRCUIT_OPEN_MS: (config, value) => { config.searchRouteCircuitOpenMs = value; },
   SEARCH_KEEP_MIN_WORKING_WINDOWS: (config, value) => {
     config.searchKeepMinWorkingWindows = clamp(value, 0, 20);
@@ -58,6 +58,17 @@ const HOT_APPLYERS = {
   SEARCH_MAX_WORKING_WINDOWS: (config, value) => {
     config.searchMaxWorkingWindows = Math.max(config.searchKeepMinWorkingWindows, clamp(value, 1, 30));
   },
+  SEARCH_QUEUE_MIN_INTERVAL_MS: (config, value) => {
+    config.searchQueueMinIntervalMs = Math.max(1000, value);
+    config.searchQueueMaxIntervalMs = Math.max(config.searchQueueMinIntervalMs, config.searchQueueMaxIntervalMs);
+  },
+  SEARCH_QUEUE_MAX_INTERVAL_MS: (config, value) => {
+    config.searchQueueMaxIntervalMs = Math.max(config.searchQueueMinIntervalMs, Math.max(1000, value));
+  },
+  SEARCH_QUEUE_ESCALATION_FACTOR: (config, value) => { config.searchQueueEscalationFactor = Math.max(1, value); },
+  SEARCH_QUEUE_READY_INTERVAL_MS: (config, value) => { config.searchQueueReadyIntervalMs = Math.max(0, value); },
+  SEARCH_QUEUE_EXPLORATION_EVERY: (config, value) => { config.searchQueueExplorationEvery = Math.max(2, Math.floor(value)); },
+  SEARCH_QUEUE_LATENCY_SAMPLES: (config, value) => { config.searchQueueLatencySamples = Math.max(3, Math.floor(value)); },
   OPEN_PAGE_MAX_PARALLEL: (config, value) => { config.openPageMaxParallel = clamp(value, 1, 20); },
   MAX_CONCURRENT_PAGE_OPS: (config, value) => { config.maxConcurrentPageOps = clamp(value, 1, 30); },
   HUMAN_TYPING_DELAY: (config, value) => { config.humanTypingDelay = clamp(value, 0, 500); },

@@ -52,7 +52,23 @@ const MIGRATIONS = [
   );
    CREATE INDEX IF NOT EXISTS idx_page_ops_ts ON page_ops(ts);
    CREATE INDEX IF NOT EXISTS idx_page_ops_tool ON page_ops(tool);`,
-  `ALTER TABLE page_ops ADD COLUMN response_chars INTEGER NOT NULL DEFAULT 0;`
+  `ALTER TABLE page_ops ADD COLUMN response_chars INTEGER NOT NULL DEFAULT 0;`,
+  `CREATE TABLE IF NOT EXISTS api_keys (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     name TEXT NOT NULL,
+     secret TEXT NOT NULL UNIQUE,
+     created_at INTEGER NOT NULL
+   );
+   CREATE TABLE IF NOT EXISTS app_state (
+     key TEXT PRIMARY KEY,
+     value TEXT NOT NULL
+   );`,
+  `ALTER TABLE api_keys ADD COLUMN allowed_tools TEXT;`,
+  `CREATE TABLE IF NOT EXISTS ref_links (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     url TEXT NOT NULL UNIQUE,
+     created_at INTEGER NOT NULL
+   );`
 ];
 
 export function initDb(dataDir = path.join(process.cwd(), "data")) {
@@ -81,6 +97,59 @@ export function getDb() {
 
 export function isDbReady() {
   return Boolean(db);
+}
+
+export function rememberRefLink(url) {
+  const normalized = String(url || "").trim();
+  if (!normalized) return null;
+
+  const database = getDb();
+  database.prepare("INSERT OR IGNORE INTO ref_links (url, created_at) VALUES (?, ?)").run(normalized, Date.now());
+  return database.prepare("SELECT id FROM ref_links WHERE url = ?").get(normalized)?.id ?? null;
+}
+
+export function getRefLinkById(id) {
+  return getDb().prepare("SELECT id, url FROM ref_links WHERE id = ?").get(id) ?? null;
+}
+
+export function getRefLinkByUrl(url) {
+  const normalized = String(url || "").trim();
+  if (!normalized) return null;
+  return getDb().prepare("SELECT id, url FROM ref_links WHERE url = ?").get(normalized) ?? null;
+}
+
+export function initializeMcpApiKeys(legacyKeys = []) {
+  const database = getDb();
+  const initialized = database.prepare("SELECT value FROM app_state WHERE key = 'mcp_api_keys_initialized'").get();
+  if (initialized?.value !== "complete") {
+    const insert = database.prepare("INSERT OR IGNORE INTO api_keys (name, secret, created_at) VALUES (?, ?, ?)");
+    const markInitialized = database.prepare("INSERT INTO app_state (key, value) VALUES ('mcp_api_keys_initialized', 'complete') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    const now = Date.now();
+    database.transaction(() => {
+      for (const [index, secret] of legacyKeys.entries()) {
+        insert.run(`Imported key ${index + 1}`, secret, now);
+      }
+      markInitialized.run();
+    })();
+  }
+  return listMcpApiKeys();
+}
+
+export function listMcpApiKeys() {
+  return getDb().prepare("SELECT id, name, secret, created_at, allowed_tools FROM api_keys ORDER BY created_at DESC, id DESC").all();
+}
+
+export function createMcpApiKey({ name, secret, allowedTools = null }) {
+  const result = getDb().prepare("INSERT INTO api_keys (name, secret, created_at, allowed_tools) VALUES (?, ?, ?, ?)").run(name, secret, Date.now(), allowedTools === null ? null : JSON.stringify(allowedTools));
+  return getDb().prepare("SELECT id, name, secret, created_at, allowed_tools FROM api_keys WHERE id = ?").get(result.lastInsertRowid);
+}
+
+export function revokeMcpApiKey(id) {
+  return getDb().prepare("DELETE FROM api_keys WHERE id = ?").run(id).changes > 0;
+}
+
+export function setMcpApiKeyTools(id, allowedTools) {
+  return getDb().prepare("UPDATE api_keys SET allowed_tools = ? WHERE id = ?").run(JSON.stringify(allowedTools), id).changes > 0;
 }
 
 export function closeDb() {

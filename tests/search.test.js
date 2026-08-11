@@ -20,7 +20,13 @@ afterEach(() => {
 function makeMockConfig(overrides = {}) {
   return {
     searchRouteCircuitOpenMs: 300000,
-    searchFallback: null,
+    searchQueueMinIntervalMs: 300000,
+    searchQueueMaxIntervalMs: 3600000,
+    searchQueueEscalationFactor: 2,
+    searchQueueReadyIntervalMs: 10000,
+    searchQueueExplorationEvery: 5,
+    searchQueueLatencySamples: 20,
+    searchEnabledEngines: null,
     defaultBackend: "cloakbrowser",
     browserOpTimeoutMs: 60000,
     userAgent: "test-agent",
@@ -101,6 +107,18 @@ describe("getSearchBackendHealth", () => {
       expect(entry).toHaveProperty("lastFailureAt");
       expect(["open", "half_open"]).toContain(entry.state);
     }
+  });
+});
+
+describe("isLocalBrowserFailure", () => {
+  it("identifies a missing X server as local infrastructure failure", async () => {
+    const { isLocalBrowserFailure } = await import("../src/search.js");
+    expect(isLocalBrowserFailure(new Error("Missing X server to start the headful browser"))).toBe(true);
+  });
+
+  it("does not classify provider failures as local infrastructure failures", async () => {
+    const { isLocalBrowserFailure } = await import("../src/search.js");
+    expect(isLocalBrowserFailure(new Error("Google blocked this request with a CAPTCHA page"))).toBe(false);
   });
 });
 

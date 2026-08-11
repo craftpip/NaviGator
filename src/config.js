@@ -253,6 +253,12 @@ export async function loadConfig() {
   const domainHintsPath = hintsPathCustom
     ? path.resolve(hintsPathCustom)
     : defaultHintsPath;
+  const vncEnabled = parseBoolean(process.env.ENABLE_VNC, false);
+  let headless = parseBoolean(process.env.HEADLESS, headlessDefault);
+  if (!headless && !vncEnabled) {
+    console.error("⚠️  HEADLESS=false requires ENABLE_VNC=1; starting headless instead");
+    headless = true;
+  }
 
   return {
     chromePath,
@@ -268,7 +274,7 @@ export async function loadConfig() {
     ),
     browserOpTimeoutMs: parseNumber(process.env.BROWSER_OP_TIMEOUT_MS, 60000),
     navWaitUntil,
-    headless: parseBoolean(process.env.HEADLESS, headlessDefault),
+    headless,
     userAgent:
       process.env.BROWSER_USER_AGENT ||
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
@@ -283,13 +289,19 @@ export async function loadConfig() {
     enableScreenshotDownloadLink: parseBoolean(process.env.ENABLE_SCREENSHOT_DOWNLOAD_LINK, false),
     screenshotPathPrefix: screenshotPathPrefix.trim() || null,
     enableWebConsole: parseBoolean(process.env.ENABLE_WEB_CONSOLE, true),
-    vncEnabled: parseBoolean(process.env.ENABLE_VNC, false),
+    vncEnabled,
     vncPort: parseNumber(process.env.VNC_PORT, 5900),
     novncPort: parseNumber(process.env.NOVNC_PORT, 7900),
     searchKeepMinWorkingWindows,
     searchMaxWorkingWindows,
     maxChars: DEFAULT_MAX_CHARS,
     searchRouteCircuitOpenMs: parseNumber(process.env.SEARCH_ROUTE_CIRCUIT_OPEN_MS, 300000),
+    searchQueueMinIntervalMs: Math.max(1000, parseNumber(process.env.SEARCH_QUEUE_MIN_INTERVAL_MS, 300000)),
+    searchQueueMaxIntervalMs: Math.max(1000, parseNumber(process.env.SEARCH_QUEUE_MAX_INTERVAL_MS, 3600000)),
+    searchQueueEscalationFactor: Math.max(1, parseNumber(process.env.SEARCH_QUEUE_ESCALATION_FACTOR, 2)),
+    searchQueueReadyIntervalMs: Math.max(0, parseNumber(process.env.SEARCH_QUEUE_READY_INTERVAL_MS, 10000)),
+    searchQueueExplorationEvery: Math.max(2, parseInteger(process.env.SEARCH_QUEUE_EXPLORATION_EVERY, 5)),
+    searchQueueLatencySamples: Math.max(3, parseInteger(process.env.SEARCH_QUEUE_LATENCY_SAMPLES, 20)),
     openPageMaxParallel: Math.max(1, Math.min(20, parseInteger(process.env.OPEN_PAGE_MAX_PARALLEL, 6))),
     maxConcurrentPageOps: Math.max(1, Math.min(30, parseInteger(process.env.MAX_CONCURRENT_PAGE_OPS, 30))),
     humanTypingDelay: Math.max(0, Math.min(500, parseInteger(process.env.HUMAN_TYPING_DELAY, 15))),
@@ -302,9 +314,9 @@ export async function loadConfig() {
     disableTools: parseToolList(process.env.DISABLE_TOOLS),
     domainHintsPath,
     stabilizeStrategy: parseStabilizeStrategy(process.env.STABILIZE_STRATEGY, "network_idle"),
-    searchRouteWarmupEngines: parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, ["duckduckgo_api", "google_cb", "google_lp", "bing_lp", "duckduckgo_cb", "bing_cb"]),
-    searchFallback: process.env.SEARCH_FALLBACK
-      ? parseEngines(process.env.SEARCH_FALLBACK, [])
+    searchRouteWarmupEngines: parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, ["brave_cb", "duckduckgo_api", "duckduckgo_cb"]),
+    searchEnabledEngines: process.env.SEARCH_ENABLED_ENGINES
+      ? parseEngines(process.env.SEARCH_ENABLED_ENGINES, [])
       : null
   };
 }

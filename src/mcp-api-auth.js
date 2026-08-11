@@ -18,3 +18,14 @@ export function isAuthorizedMcpRequest(headers, config = {}) {
     return provided.length === expected.length && timingSafeEqual(provided, expected);
   });
 }
+
+export function getAuthorizedMcpKey(headers, config = {}) {
+  const provided = getMcpApiKey(headers);
+  if (!provided) return null;
+  const keys = Array.isArray(config.mcpApiKeys) ? config.mcpApiKeys : [];
+  return keys.find((key) => {
+    const actual = Buffer.from(provided);
+    const expected = Buffer.from(key);
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  }) || null;
+}

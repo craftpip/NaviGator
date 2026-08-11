@@ -1131,15 +1131,28 @@ export class BrowserManager {
     const previousHeadless = this.config.headless;
     this.config.headless = Boolean(headless);
 
-    if (backend === "lightpanda") {
-      logBrowserEvent("relaunch.skip", { backend, reason: "cdp_only" });
-      return { ok: true, backend, relaunched: false, headless: this.config.headless, note: "lightpanda is CDP-only (no GUI)" };
+    // VNC needs every active graphical route restarted, not only the default
+    // backend. Search and devtools may use a different browser backend.
+    const graphicalBackends = new Set();
+    if (this.browser || [...this.engineWorkingWindows.values()].some((pool) => pool.windows.some((entry) => entry.backend === "chromium"))) {
+      graphicalBackends.add("chromium");
+    }
+    if (this.cloakbrowserBrowser || [...this.engineWorkingWindows.values()].some((pool) => pool.windows.some((entry) => entry.backend === "cloakbrowser"))) {
+      graphicalBackends.add("cloakbrowser");
+    }
+    if (!graphicalBackends.size) {
+      if (this.config.devtoolsBackend === "chromium" || this.config.devtoolsBackend === "cloakbrowser") {
+        graphicalBackends.add(this.config.devtoolsBackend);
+      } else if (backend === "chromium" || backend === "cloakbrowser") {
+        graphicalBackends.add(backend);
+      }
     }
 
     try {
-      if (backend === "chromium" && this.browser) {
+      if (graphicalBackends.has("chromium") && this.browser) {
         await this.browser.close();
-      } else if (backend === "cloakbrowser" && this.cloakbrowserBrowser) {
+      }
+      if (graphicalBackends.has("cloakbrowser") && this.cloakbrowserBrowser) {
         await this.cloakbrowserBrowser.close();
       }
     } catch (error) {
@@ -1150,18 +1163,31 @@ export class BrowserManager {
     this.launching = null;
     this.cloakbrowserBrowser = null;
     this.cloakbrowserLaunching = null;
-    this.clearSearchWindowsForBackend(backend);
+    for (const graphicalBackend of graphicalBackends) {
+      this.clearSearchWindowsForBackend(graphicalBackend);
+    }
     this.keepAlivePage = null;
     this.prelaunchPromise = null;
 
-    const relaunched =
-      backend === "chromium" ? await this.getBrowser() : await this.getCloakbrowserBrowser();
+    const relaunched = await Promise.all(
+      [...graphicalBackends].map((graphicalBackend) =>
+        graphicalBackend === "chromium" ? this.getBrowser() : this.getCloakbrowserBrowser()
+      )
+    );
     logBrowserEvent("relaunch.ready", {
       backend,
+      backends: [...graphicalBackends],
       headless: this.config.headless,
       previousHeadless
     });
-    return { ok: true, backend, relaunched: Boolean(relaunched), headless: this.config.headless };
+    return {
+      ok: true,
+      backend,
+      backends: [...graphicalBackends],
+      relaunched: relaunched.length > 0,
+      headless: this.config.headless,
+      ...(backend === "lightpanda" ? { note: "Lightpanda is CDP-only; graphical routes were relaunched for VNC." } : {})
+    };
   }
 
   async shutdown() {

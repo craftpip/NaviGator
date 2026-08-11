@@ -13,21 +13,21 @@ import {
   ListToolsRequestSchema,
   isInitializeRequest
 } from "@modelcontextprotocol/sdk/types.js";
-import { formatBrowserBackendShort, parseApiKeys, parseBrowserBackend, DEFAULT_MAX_CHARS } from "./config.js";
+import { formatBrowserBackendShort, parseBrowserBackend, DEFAULT_MAX_CHARS } from "./config.js";
 import { getBrowserManager } from "./browser.js";
 import { CONFIG_SCHEMA } from "./config-schema.js";
 import { validateConfigValue, hotApplyConfig } from "./config-manager.js";
 import { getEnvFilePath, readEnvFile, writeEnvFile, upsertEnvText, removeEnvKeysText, backupEnvFile, revertEnvFile, recordEnvChange, getEnvChangeHistory, latestBackupPath } from "./env-file.js";
 import { vncManager } from "./vnc-manager.js";
-import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats } from "./search.js";
+import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats, getEngineProfiles } from "./search.js";
 import { getRecentActivity, recordPageOp } from "./activity.js";
-import { initDb } from "./db.js";
+import { createMcpApiKey, initDb, initializeMcpApiKeys, listMcpApiKeys, revokeMcpApiKey, setMcpApiKeyTools } from "./db.js";
 import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters } from "./devtools.js";
 import { transform as asciiTransform } from "./ascii.js";
 import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
 import { MCP_SEARCH_ENGINES, SUPPORTED_ENGINES, getEngineMetadata } from "./engines/index.js";
-import { isAuthorizedMcpRequest } from "./mcp-api-auth.js";
+import { getAuthorizedMcpKey, getMcpApiKey, isAuthorizedMcpRequest } from "./mcp-api-auth.js";
 
 const require = createRequire(import.meta.url);
 const PACKAGE_JSON = require("../package.json");
@@ -60,6 +60,7 @@ const CONSOLE_ENGINE_REGISTRY = SUPPORTED_ENGINES.map((id) => {
 const screenshotDownloadById = new Map();
 const screenshotStorageDir = path.join(process.cwd(), "screenshots");
 const CONSOLE_API_KEY = `nvg_console_${randomBytes(32).toString("base64url")}`;
+const WEB_TOOL_NAMES = new Set(["web_search", "web_fetch", "web_page_screenshot", "web_page_links", "web_page_ascii"]);
 const TOOL_CACHE_TTL_MS = 5 * 60 * 1000;
 const SCREENSHOT_DOWNLOAD_TTL_MS = 60 * 60 * 1000;
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
@@ -382,6 +383,7 @@ async function getConsoleConfigPayload(manager) {
     envFile: { path: envPath, changedOnDisk: envFileState.changed, backup: backupPath },
     engines: CONSOLE_ENGINE_REGISTRY,
     mcpEngines: MCP_SEARCH_ENGINES,
+    tools: [...new Set([...WEB_TOOL_NAMES, ...devtoolsToolDefinitions.map((tool) => tool.name)])].sort(),
     package: { name: PACKAGE_JSON.name, version: PACKAGE_JSON.version },
     schema: CONFIG_SCHEMA,
     envPath,
@@ -390,55 +392,108 @@ async function getConsoleConfigPayload(manager) {
 }
 
 function maskApiKey(key) {
-  if (key.length <= 8) return "********";
-  return `${key.slice(0, 4)}...${key.slice(-4)}`;
+  if (key.length <= 24) return "********";
+  return `${key.slice(0, 12)}...${key.slice(-12)}`;
+}
+
+function parseAllowedTools(value) {
+  if (!value) return null;
+  try {
+    const tools = JSON.parse(value);
+    return Array.isArray(tools) ? tools.filter((tool) => typeof tool === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function getToolGroups() {
+  const available = getToolsListResponse().tools.map((tool) => tool.name);
+  return [
+    { id: "web", label: "Web", tools: available.filter((name) => WEB_TOOL_NAMES.has(name)) },
+    { id: "dev", label: "Dev", tools: available.filter((name) => !WEB_TOOL_NAMES.has(name)) }
+  ].filter((group) => group.tools.length);
+}
+
+function getAllowedToolsForRequest(headers, config) {
+  const key = getMcpApiKey(headers);
+  if (!key || key === CONSOLE_API_KEY) return null;
+  const authorizedKey = getAuthorizedMcpKey(headers, config);
+  if (!authorizedKey) return null;
+  const record = listMcpApiKeys().find((entry) => entry.secret === authorizedKey);
+  const allowedTools = record ? parseAllowedTools(record.allowed_tools) : null;
+  return allowedTools === null ? null : new Set(allowedTools);
 }
 
 async function getConsoleApiKeysPayload(manager) {
-  const envPath = getEnvFilePath();
-  await checkEnvFileChanged(envPath);
   return {
     ok: true,
     allowUnauthenticated: manager.config.mcpAllowUnauthenticated,
-    consoleKey: CONSOLE_API_KEY,
-    keys: manager.config.mcpApiKeys.map((key, index) => ({ id: index, preview: maskApiKey(key) })),
-    envPath
+    toolGroups: getToolGroups(),
+    keys: listMcpApiKeys().map((key) => ({
+      id: key.id,
+      name: key.name,
+      preview: maskApiKey(key.secret),
+      createdAt: key.created_at,
+      allowedTools: parseAllowedTools(key.allowed_tools)
+    }))
   };
 }
 
-async function persistMcpApiAuth(manager, { keys = manager.config.mcpApiKeys, allowUnauthenticated = manager.config.mcpAllowUnauthenticated }) {
+function syncMcpApiKeys(manager) {
+  const keys = initializeMcpApiKeys(Array.isArray(manager.config.mcpApiKeys) ? manager.config.mcpApiKeys : []);
+  manager.config.mcpApiKeys = keys.map((key) => key.secret);
+}
+
+async function persistMcpApiAuth(manager, { allowUnauthenticated = manager.config.mcpAllowUnauthenticated }) {
   const envPath = getEnvFilePath();
-  const normalizedKeys = parseApiKeys(keys.join(","));
   const envText = await readEnvFile(envPath);
   const updated = upsertEnvText(envText, {
-    MCP_API_KEYS: normalizedKeys.join(","),
     MCP_ALLOW_UNAUTHENTICATED: allowUnauthenticated ? "1" : "0"
   });
   const backup = await backupEnvFile(envPath);
   await writeEnvFile(envPath, updated.text);
-  manager.config.mcpApiKeys = normalizedKeys;
   manager.config.mcpAllowUnauthenticated = Boolean(allowUnauthenticated);
   await checkEnvFileChanged(envPath);
   envFileState.changed = false;
-  recordEnvChange({ action: "update_mcp_api_auth", keys: ["MCP_API_KEYS", "MCP_ALLOW_UNAUTHENTICATED"] });
-  return { backup, keys: normalizedKeys };
+  recordEnvChange({ action: "update_mcp_api_auth", keys: ["MCP_ALLOW_UNAUTHENTICATED"] });
+  return { backup };
 }
 
 async function handleConsoleApiKeys(manager, body) {
   const action = body?.action;
   if (action === "create") {
+    const name = String(body?.name || "").trim();
+    if (!name || name.length > 80) {
+      return { ok: false, error: "Key name must be between 1 and 80 characters" };
+    }
     const key = `nvg_${randomBytes(32).toString("base64url")}`;
-    await persistMcpApiAuth(manager, { keys: [...manager.config.mcpApiKeys, key] });
+    const availableTools = new Set(getToolGroups().flatMap((group) => group.tools));
+    const allowedTools = Array.isArray(body?.allowedTools)
+      ? [...new Set(body.allowedTools.filter((tool) => availableTools.has(tool)))]
+      : [...availableTools];
+    createMcpApiKey({ name, secret: key, allowedTools });
+    syncMcpApiKeys(manager);
     return { ok: true, key, ...await getConsoleApiKeysPayload(manager) };
   }
 
   if (action === "revoke") {
-    const index = Number(body?.id);
-    if (!Number.isInteger(index) || index < 0 || index >= manager.config.mcpApiKeys.length) {
+    const id = Number(body?.id);
+    if (!Number.isInteger(id) || !revokeMcpApiKey(id)) {
       return { ok: false, error: "Unknown API key" };
     }
-    const keys = manager.config.mcpApiKeys.filter((_, keyIndex) => keyIndex !== index);
-    await persistMcpApiAuth(manager, { keys });
+    syncMcpApiKeys(manager);
+    return getConsoleApiKeysPayload(manager);
+  }
+
+  if (action === "set_tools") {
+    const id = Number(body?.id);
+    const availableTools = new Set(getToolGroups().flatMap((group) => group.tools));
+    const allowedTools = Array.isArray(body?.allowedTools)
+      ? [...new Set(body.allowedTools.filter((tool) => availableTools.has(tool)))]
+      : [];
+    if (!Number.isInteger(id) || !setMcpApiKeyTools(id, allowedTools)) {
+      return { ok: false, error: "Unknown API key" };
+    }
     return getConsoleApiKeysPayload(manager);
   }
 
@@ -597,11 +652,7 @@ async function handleConsoleVnc(manager, body) {
     const relaunch = await manager.relaunchDefaultBackend(true);
     manager.config.vncEnabled = false;
     let envText = await readEnvFile(envPath);
-    const { text, removed } = removeEnvKeysText(envText, ["ENABLE_VNC"]);
-    envText = text;
-    if (removed.includes("ENABLE_VNC")) {
-      envText = upsertEnvText(envText, { ENABLE_VNC: "0" }).text;
-    }
+    envText = upsertEnvText(envText, { ENABLE_VNC: "0", HEADLESS: "true" }).text;
     const backup = await backupEnvFile(envPath);
     await writeEnvFile(envPath, envText);
     vncRunningCache.at = 0;
@@ -1423,7 +1474,7 @@ function isToolDisabled(name) {
   return getDisabledToolsSet().has(String(name).toLowerCase());
 }
 
-function getToolsListResponse() {
+function getToolsListResponse(allowedTools = null) {
   const devtoolsEnabled = Boolean(manager?.config?.enableDevtoolsMcp);
   const disabledTools = getDisabledToolsSet();
   return {
@@ -1616,12 +1667,15 @@ function getToolsListResponse() {
         }
       },
       ...(devtoolsEnabled ? devtoolsToolDefinitions : [])
-    ].filter((tool) => !disabledTools.has(String(tool.name).toLowerCase()))
+    ].filter((tool) => !disabledTools.has(String(tool.name).toLowerCase()) && (!allowedTools || allowedTools.has(tool.name)))
   };
 }
 
-async function handleToolCall(name, args = {}) {
+async function handleToolCall(name, args = {}, allowedTools = null) {
   try {
+    if (allowedTools && !allowedTools.has(name)) {
+      throw new Error(`Tool "${name}" is not permitted for this API key`);
+    }
     const result = await handleToolCallInner(name, args);
     recordRequest(name, true);
     return result;
@@ -1680,6 +1734,7 @@ async function handleToolCallInner(name, args = {}) {
   }
 
   if (name === "web_fetch") {
+    const manager = await getBrowserManager();
     const bypassCache = args.bypassCache === true;
     const cacheKeyArgs = excludeMaxChars(getCacheArgs(args));
     const cached = bypassCache ? null : await getCachedToolResult(name, cacheKeyArgs);
@@ -1706,7 +1761,6 @@ async function handleToolCallInner(name, args = {}) {
     mark = timer.step("resolve_targets", mark);
     const maxChars = parseMaxChars(args.maxChars, manager.config.maxChars || DEFAULT_MAX_CHARS);
     const includeSeoAnalysis = args.includeSeoAnalysis !== false;
-    const manager = await getBrowserManager();
     mark = timer.step("prepare_execution", mark);
     const fullResult = await runWithHangGuard(`mcp:${name}`, () =>
       openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, includeSeoAnalysis, manager.config.debug)
@@ -2135,6 +2189,7 @@ async function handleToolCallInner(name, args = {}) {
       recordPageOp({
         tool: name,
         url: args.url || args.targetId || "",
+        backend: manager.config.devtoolsBackend,
         durationMs: performance.now() - startedAt,
         responseChars: JSON.stringify(result).length,
         source: "devtools"
@@ -2149,6 +2204,7 @@ async function handleToolCallInner(name, args = {}) {
         durationMs: performance.now() - startedAt,
         ok: false,
         error: String(error?.message || error),
+        backend: manager.config.devtoolsBackend,
         source: "devtools"
       });
       throw error;
@@ -2160,7 +2216,7 @@ async function handleToolCallInner(name, args = {}) {
   throw new Error(`Unknown tool: ${name}`);
 }
 
-async function handleStatelessMcpPost(body) {
+async function handleStatelessMcpPost(body, allowedTools = null) {
   const id = body?.id ?? null;
   const method = String(body?.method || "");
 
@@ -2182,7 +2238,7 @@ async function handleStatelessMcpPost(body) {
   }
 
   if (method === "tools/list") {
-    return { jsonrpc: "2.0", id, result: getToolsListResponse() };
+    return { jsonrpc: "2.0", id, result: getToolsListResponse(allowedTools) };
   }
 
   if (method === "tools/call") {
@@ -2190,11 +2246,18 @@ async function handleStatelessMcpPost(body) {
     const args = body?.params?.arguments || {};
     const t0 = Date.now();
     try {
-      const result = await handleToolCall(name, args);
+      const result = await handleToolCall(name, args, allowedTools);
       return { jsonrpc: "2.0", id, result };
     } catch (error) {
       logToolError({ tool: name, args, error, ms: Date.now() - t0, transport: "stateless" });
-      throw error;
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          isError: true,
+          ...asMarkdownContent(`Error calling ${name}: ${String(error?.message || error)}`)
+        }
+      };
     }
   }
 
@@ -2212,7 +2275,7 @@ async function handleStatelessMcpPost(body) {
   };
 }
 
-function createMcpServer() {
+function createMcpServer(allowedTools = null) {
   const server = new Server(
     {
       name: "search-tools",
@@ -2226,7 +2289,7 @@ function createMcpServer() {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const response = getToolsListResponse();
+    const response = getToolsListResponse(allowedTools);
     logEvent("mcp.request", { method: "tools/list" });
     logEvent("mcp.response", { method: "tools/list", result: response });
     return response;
@@ -2243,7 +2306,7 @@ function createMcpServer() {
 
     const t0 = Date.now();
     try {
-      const response = await handleToolCall(name, args);
+      const response = await handleToolCall(name, args, allowedTools);
       const ms = Date.now() - t0;
       const ok = response?.content?.[0]?.text || "";
       const okLabel = ok.length ? `${Math.round(ok.length / 1000)}k chars` : "";
@@ -2267,6 +2330,7 @@ function createMcpServer() {
 async function maybeStartHttpServer(managerOverride) {
   const manager = managerOverride || (await getBrowserManager());
   initDb();
+  syncMcpApiKeys(manager);
   if (!manager.config.enableHttpHealth && !manager.config.enableHttpMcp) return;
 
   const mcpTransports = new Map();
@@ -2320,6 +2384,16 @@ async function maybeStartHttpServer(managerOverride) {
             console.error(`📡  ${reqSum}`);
           }
 
+          const authConfig = {
+            ...manager.config,
+            mcpApiKeys: [...(manager.config.mcpApiKeys || []), CONSOLE_API_KEY]
+          };
+          if (!isAuthorizedMcpRequest(req.headers, authConfig)) {
+            sendMcpUnauthorized(res);
+            return;
+          }
+          const allowedTools = getAllowedToolsForRequest(req.headers, authConfig);
+
           if (isInitializeRequest(body)) {
             // If client sends initialize with an existing session ID, the old
             // transport is already initialized and will reject. Clean it up
@@ -2354,7 +2428,7 @@ async function maybeStartHttpServer(managerOverride) {
               }
             };
 
-            const mcpServer = createMcpServer();
+            const mcpServer = createMcpServer(allowedTools);
             await mcpServer.connect(transport);
             await transport.handleRequest(req, res, body);
             if (transport.sessionId) {
@@ -2363,11 +2437,6 @@ async function maybeStartHttpServer(managerOverride) {
               mcpServers.set(transport.sessionId, mcpServer);
             }
             console.error(`🤝  MCP initialized`);
-            return;
-          }
-
-          if (!isAuthorizedMcpRequest(req.headers, { ...manager.config, mcpApiKeys: [...manager.config.mcpApiKeys, CONSOLE_API_KEY] })) {
-            sendMcpUnauthorized(res);
             return;
           }
 
@@ -2381,7 +2450,7 @@ async function maybeStartHttpServer(managerOverride) {
             }
           }
 
-          const response = await handleStatelessMcpPost(body);
+          const response = await handleStatelessMcpPost(body, allowedTools);
           const ms = Date.now() - t0;
 
           if (response === null) {
@@ -2480,6 +2549,7 @@ async function maybeStartHttpServer(managerOverride) {
           },
           requests: getRequestStats(),
           engineAttempts: getEngineAttemptStats(),
+          engineProfiles: getEngineProfiles(),
           activity: getRecentActivity({ sinceId: 0, limit: 20, includePageOps: true })
         };
         logEvent("http.request", { method, path: url.pathname });
@@ -2519,6 +2589,25 @@ async function maybeStartHttpServer(managerOverride) {
           return;
         }
         sendJson(res, 405, { ok: false, error: "Method not allowed" });
+        return;
+      }
+
+      if (url.pathname === "/console/mcp") {
+        if (!manager.config.enableWebConsole || !manager.config.enableHttpMcp) {
+          sendJson(res, 404, { ok: false, error: "Web tools not available" });
+          return;
+        }
+        if (method !== "POST") {
+          sendJson(res, 405, { ok: false, error: "Method not allowed" });
+          return;
+        }
+        const response = await handleStatelessMcpPost(await readJsonBody(req));
+        if (response === null) {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+        sendJson(res, 200, response);
         return;
       }
 

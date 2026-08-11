@@ -1,25 +1,31 @@
+import { getRefLinkById, getRefLinkByUrl, rememberRefLink } from "./db.js";
+
 const MAX_LINK_MEMORY_ENTRIES = 2000;
 
 const linkMemoryByRef = new Map();
 const linkMemoryByUrl = new Map();
-let nextLinkRef = 1;
+
+function cacheLink(ref, url) {
+  linkMemoryByRef.set(ref, url);
+  linkMemoryByUrl.set(url, ref);
+  pruneLinkMemory();
+}
 
 export function getRememberedLinkRecord(ref) {
-  const remembered = linkMemoryByRef.get(ref);
+  const cachedUrl = linkMemoryByRef.get(ref);
+  if (cachedUrl) return { url: cachedUrl };
+
+  const remembered = getRefLinkById(ref);
   if (!remembered) return null;
-  if (typeof remembered === "string") {
-    return { url: remembered };
-  }
-  const url = String(remembered?.url || "").trim();
-  if (!url) return null;
-  return { url };
+  cacheLink(remembered.id, remembered.url);
+  return { url: remembered.url };
 }
 
 function pruneLinkMemory() {
   while (linkMemoryByRef.size > MAX_LINK_MEMORY_ENTRIES) {
     const oldestRef = linkMemoryByRef.keys().next().value;
     if (oldestRef === undefined) break;
-    const rememberedUrl = getRememberedLinkRecord(oldestRef)?.url;
+    const rememberedUrl = linkMemoryByRef.get(oldestRef);
     linkMemoryByRef.delete(oldestRef);
     if (rememberedUrl) {
       linkMemoryByUrl.delete(rememberedUrl);
@@ -31,16 +37,12 @@ export function rememberLink(url) {
   const normalized = String(url || "").trim();
   if (!normalized) return null;
 
-  pruneLinkMemory();
-
   const existingRef = linkMemoryByUrl.get(normalized);
   if (existingRef) return existingRef;
 
-  const ref = nextLinkRef;
-  nextLinkRef += 1;
-  linkMemoryByUrl.set(normalized, ref);
-  linkMemoryByRef.set(ref, normalized);
-  pruneLinkMemory();
+  const ref = rememberRefLink(normalized);
+  if (!ref) return null;
+  cacheLink(ref, normalized);
   return ref;
 }
 
@@ -53,7 +55,16 @@ export function resolveRefIdToUrl(ref) {
 }
 
 export function getLinkRefByUrl(url) {
-  return linkMemoryByUrl.get(url) ?? null;
+  const normalized = String(url || "").trim();
+  if (!normalized) return null;
+
+  const cachedRef = linkMemoryByUrl.get(normalized);
+  if (cachedRef) return cachedRef;
+
+  const remembered = getRefLinkByUrl(normalized);
+  if (!remembered) return null;
+  cacheLink(remembered.id, remembered.url);
+  return remembered.id;
 }
 
 export function getUrlForRefId(ref) {

@@ -43,7 +43,7 @@ function makeConfig(overrides = {}) {
     hangRestartTimeoutMs: 120000,
     startupUrl: "about:blank",
     searchRouteWarmupEngines: [],
-    searchFallback: null,
+    searchEnabledEngines: null,
     lightpandaPath: null,
     lightpandaPort: 9222,
     cloakbrowserPath: null,
@@ -486,6 +486,22 @@ describe("BrowserManager", () => {
       await manager.relaunchDefaultBackend(false);
 
       expect(lightpandaPool.windows).toHaveLength(1);
+    });
+
+    it("relaunches an active graphical search backend when the default is Lightpanda", async () => {
+      const manager = new BrowserManager(makeConfig({ defaultBackend: "lightpanda", devtoolsBackend: "cloakbrowser" }));
+      const cloakPool = manager.getEnginePool("google_cb");
+      cloakPool.windows.push({ backend: "cloakbrowser", page: { isClosed: () => false } });
+      const previousBrowser = { close: vi.fn().mockResolvedValue(undefined) };
+      manager.cloakbrowserBrowser = previousBrowser;
+      manager.getCloakbrowserBrowser = vi.fn().mockResolvedValue({ connected: true });
+
+      const result = await manager.relaunchDefaultBackend(false);
+
+      expect(previousBrowser.close).toHaveBeenCalled();
+      expect(manager.getCloakbrowserBrowser).toHaveBeenCalled();
+      expect(result).toMatchObject({ headless: false, relaunched: true, backends: ["cloakbrowser"] });
+      expect(cloakPool.windows).toHaveLength(0);
     });
   });
 

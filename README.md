@@ -412,7 +412,8 @@ The most important environment variables are:
 - `BROWSER_OP_TIMEOUT_MS`: browser operation timeout in milliseconds
 - `BROWSER_BACKEND`: default backend for page operations
 - `DEVTOOLS_BROWSER_BACKEND`: backend for the browser-testing tools; defaults to `BROWSER_BACKEND`
-- `SEARCH_ROUTE_WARMUP_ENGINES`: comma-separated search-route warmup engine list
+- `SEARCH_ROUTE_WARMUP_ENGINES`: browser routes to open and keep warm at startup
+- `SEARCH_ENABLED_ENGINES`: routes eligible for automatic `select_best` scheduling
 - `ENABLE_VNC`: enable VNC and noVNC in Docker
 
 See `.env.example` for the full list (the pre-cleanup reference copy is kept at `.env.example.full`).
