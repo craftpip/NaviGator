@@ -36,7 +36,7 @@
     "start": "node src/mcp-server.js",
     "console:dev": "vite --config web-console/vite.config.js",
     "console:build": "vite build --config web-console/vite.config.js",
-    "build": "npm run console:build",
+    "build": "docker compose up --build -d",
     "bench": "node benchmark/web-search-benchmark.mjs",
     "test:hints": "vitest run tests/domain-hints.test.js",
     "test:hints:live": "LIVE_DOMAIN_HINTS=1 vitest run tests/domain-hints-live.test.js",

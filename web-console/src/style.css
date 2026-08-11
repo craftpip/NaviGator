@@ -127,6 +127,7 @@ p,
 .hdr-item {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   height: 30px;
   font: 11px var(--sans);
   white-space: nowrap;
