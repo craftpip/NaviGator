@@ -39,24 +39,23 @@ environment mapped. User is dictating improvements live; everything lands in
 | `web-console/src/main.jsx` | **the entire app** — all components + logic in 68 very dense lines (~34KB) |
 | `web-console/src/style.css` | the entire stylesheet — 7 very dense lines (~13KB), CSS variables + 3 media queries |
 | `web-console/src/navigator.png` | header logo, imported by `main.jsx`, hashed by Vite into `dist/assets/` |
-| `web-console/dist/` | build output; copied to `/web-console` in the Docker image (`WEB_CONSOLE_DIR`) |
+| `web-console/dist/` | build output; served directly from the bind mount (no image bake) |
 
 ### 1.3 Build & serve flow
 
 ```
-source (jsx/css/png) --vite build--> web-console/dist/ --Dockerfile COPY--> /web-console in image
+source (jsx/css/png) --vite build--> web-console/dist/ (bind-mounted at /app/web-console/dist)
                                                                   |
 web console browser <--GET /console/assets/*-- src/mcp-server.js (serveWebConsoleAsset)
 ```
 
-- Server resolves the console dir as `WEB_CONSOLE_DIR` env, default
-  `<cwd>/web-console/dist` (src/mcp-server.js:33).
+- Server resolves the console dir as `<cwd>/web-console/dist` (src/mcp-server.js:35).
 - `/console/assets/*` served with `cache-control: public, max-age=31536000, immutable`
   (mcp-server.js:284-298) — **a console rebuild requires a hard refresh** in the client.
 - Dev mode: `npm run console:dev` runs vite against the source (needs dev deps installed).
-- **Deploy note (this host):** docker compose is unavailable; rebuild image
-  (`docker build -t navigator:latest .`), then recreate the container manually with
-  the env/volumes/ports from `docker inspect navigator` (see `/www1/AGENTS.md`).
+- **Deploy note (this host):** docker compose is available; build the console on the host
+  with `npm run console:build` (needs dev deps), then `docker compose up -d` recreates the
+  container from the existing image — no image rebuild.
 
 ### 1.4 Data contract — endpoints the console polls
 

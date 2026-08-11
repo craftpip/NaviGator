@@ -290,10 +290,10 @@ function Trend({ label, values, color }) {
 }
 
 const REQUEST_SERIES = [
-  { key: "web-ok", label: "Web succeeded", color: "var(--green)" },
-  { key: "web-fail", label: "Web failed", color: "var(--red)" },
-  { key: "devtools-ok", label: "DevTools succeeded", color: "var(--blue)" },
-  { key: "devtools-fail", label: "DevTools failed", color: "var(--gold)" },
+  { key: "web-ok", label: "Web succeeded", color: "var(--series-web-ok)" },
+  { key: "web-fail", label: "Web failed", color: "var(--series-web-fail)" },
+  { key: "devtools-ok", label: "DevTools succeeded", color: "var(--series-devtools-ok)" },
+  { key: "devtools-fail", label: "DevTools failed", color: "var(--series-devtools-fail)" },
 ];
 function requestValue(bucket, key) {
   const [category, status] = key.split("-");
@@ -305,8 +305,20 @@ function formatTrendLabel(ts, range) {
     ? date.toLocaleString([], { weekday: range === "week" ? "short" : undefined, hour: "2-digit", minute: "2-digit", hour12: false })
     : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 }
-function ActivityBarChart({ buckets, range }) {
+function ActivityLineChart({ buckets, range }) {
   const [selected, setSelected] = useState(null);
+  const wrapRef = useRef(null);
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const next = el.clientWidth ? el.clientWidth / 800 : 1;
+      setScale(next);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const max = Math.max(1, ...buckets.flatMap((bucket) => REQUEST_SERIES.map((series) => requestValue(bucket, series.key))));
   const width = 800;
   const height = 260;
@@ -316,31 +328,45 @@ function ActivityBarChart({ buckets, range }) {
   const bottom = 32;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
-  const bucket = selected === null ? null : buckets[selected];
+  const active = selected === null ? buckets.length - 1 : selected;
+  const bucket = buckets[active] || null;
+  const xFor = (index) => (buckets.length === 1 ? left + plotWidth / 2 : left + (index / (buckets.length - 1)) * plotWidth);
+  const yFor = (value) => top + plotHeight - (value / max) * plotHeight;
+  const pointsFor = (series) => buckets.map((item, index) => `${xFor(index)},${yFor(requestValue(item, series.key))}`).join(" ");
+  const every = Math.max(1, Math.ceil(buckets.length / 4));
   return <>
-    <div className="request-trend-key" aria-label="Request outcome legend">
-      {REQUEST_SERIES.map((series) => <span key={series.key}><i style={{ "--series": series.color }} />{series.label}</span>)}
-    </div>
-    <div className="request-trend-chart" role="img" aria-label="Web and DevTools request bar graph">
+    <div className="request-trend-chart" ref={wrapRef} role="img" aria-label="Web and DevTools request line graph" style={{ "--tscale": scale }}>
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
         {[0, 0.5, 1].map((ratio) => {
           const y = top + plotHeight - ratio * plotHeight;
           return <g key={ratio}><line className="request-trend-grid" x1={left} x2={width - right} y1={y} y2={y} /><text x={left - 5} y={y + 4} textAnchor="end">{Math.round(max * ratio)}</text></g>;
         })}
+        {REQUEST_SERIES.map((series) => (
+          <g key={series.key}>
+            <polyline className="request-trend-line" style={{ "--series": series.color }} points={pointsFor(series)} />
+            {buckets.map((item, index) => (
+              <circle key={item.ts} className="request-trend-dot" cx={xFor(index)} cy={yFor(requestValue(item, series.key))} r={active === index ? 3.5 : 2.25} style={{ "--series": series.color }} />
+            ))}
+          </g>
+        ))}
         {buckets.map((item, index) => {
-          const groupWidth = plotWidth / buckets.length;
-          const barGap = Math.max(1, groupWidth * 0.05);
-          const barWidth = Math.max(1, (groupWidth - barGap * 5) / REQUEST_SERIES.length);
-          const x = left + index * groupWidth;
-          const every = Math.max(1, Math.ceil(buckets.length / 4));
-          return <g key={item.ts} onMouseEnter={() => setSelected(index)} onFocus={() => setSelected(index)} onClick={() => setSelected(index)} tabIndex="0"><title>{formatTrendLabel(item.ts, range)}</title>{REQUEST_SERIES.map((series, seriesIndex) => {
-            const value = requestValue(item, series.key);
-            const barHeight = (value / max) * plotHeight;
-            return <rect className="request-trend-bar" key={series.key} x={x + barGap + seriesIndex * (barWidth + barGap)} y={top + plotHeight - barHeight} width={barWidth} height={barHeight} style={{ "--series": series.color }} />;
-          })}{(index === 0 || index === buckets.length - 1 || index % every === 0) && <text className="request-trend-label" x={x + groupWidth / 2} y={height - 8} textAnchor="middle">{formatTrendLabel(item.ts, range)}</text>}</g>;
+          const x = xFor(index);
+          const half = buckets.length > 1 ? plotWidth / (buckets.length - 1) / 2 : plotWidth / 2;
+          return <g key={item.ts} onMouseEnter={() => setSelected(index)} onFocus={() => setSelected(index)} onClick={() => setSelected(index)} tabIndex="0"><title>{formatTrendLabel(item.ts, range)}</title><rect className="request-trend-hit" x={x - half} y={top} width={half * 2} height={plotHeight} />{(index === 0 || index === buckets.length - 1 || index % every === 0) && <text className="request-trend-label" x={x} y={height - 8} textAnchor="middle">{formatTrendLabel(item.ts, range)}</text>}</g>;
         })}
+        {bucket && (() => {
+          const text = `${formatTrendLabel(bucket.ts, range)} · Web ${bucket.web?.ok || 0} ok / ${bucket.web?.fail || 0} fail · DevTools ${bucket.devtools?.ok || 0} ok / ${bucket.devtools?.fail || 0} fail`;
+          const rectW = (text.length * 6 + 16) / scale;
+          const rectH = 18 / scale;
+          const bx = width - right - rectW;
+          const by = top + 2 / scale;
+          return <g className="request-trend-readout">
+            <rect x={bx} y={by} width={rectW} height={rectH} rx={4 / scale} />
+            <text x={bx + 8 / scale} y={by + 13 / scale}>{text}</text>
+          </g>;
+        })()}
       </svg>
-    </div>
+      </div>
     <div className="request-trend-detail" aria-live="polite">{bucket ? `${formatTrendLabel(bucket.ts, range)}: Web ${bucket.web.ok} succeeded / ${bucket.web.fail} failed; DevTools ${bucket.devtools.ok} succeeded / ${bucket.devtools.fail} failed.` : "Hover or select a time point for exact counts."}</div>
   </>;
 }
@@ -357,16 +383,21 @@ function RequestActivityTrend({ trend, range, error, setRange }) {
             <span className={trend?.summary?.fail ? "request-trend-fail" : ""}>{trend?.summary?.fail || 0} failed</span>
           </div>
         </div>
-        <div className="request-trend-controls" aria-label="Request activity filters">
-          {["minutes", "hour", "day", "week"].map((item) => (
-            <button key={item} className={range === item ? "active" : ""} aria-pressed={range === item} onClick={() => setRange(item)}>
-              {item === "minutes" ? "Minutes" : item[0].toUpperCase() + item.slice(1)}
-            </button>
-          ))}
+        <div className="request-trend-actions">
+          <div className="request-trend-controls" aria-label="Request activity filters">
+            {["minutes", "hour", "day", "week"].map((item) => (
+              <button key={item} className={range === item ? "active" : ""} aria-pressed={range === item} onClick={() => setRange(item)}>
+                {{ minutes: "15 minutes", hour: "1 hour", day: "24 hours", week: "7 days" }[item]}
+              </button>
+            ))}
+          </div>
+          <div className="request-trend-key" aria-label="Request outcome legend">
+            {REQUEST_SERIES.map((series) => <span key={series.key}><i style={{ "--series": series.color }} />{series.label}</span>)}
+          </div>
         </div>
       </div>
       {error ? <Empty>Could not load activity trend: {error}</Empty> : !buckets.length ? <Empty>Loading activity trend…</Empty> : (
-        <ActivityBarChart buckets={buckets} range={range} />
+        <ActivityLineChart buckets={buckets} range={range} />
       )}
     </section>
   );
@@ -702,15 +733,15 @@ function Engines({ config, health, stats }) {
                   <span><b>{profile.medianLatencyMs ? formatMs(profile.medianLatencyMs) : "unmeasured"}</b> latency/{profile.latencySamples?.length || 0}</span>
                   <span><b>{dispatchWaitMs ? formatCountdown(dispatchWaitMs) : "now"}</b> dispatch wait</span>
                   {schedulerState === "cooling_down" && <span className="score-error"><b>{formatCountdown(profile.remainingMs)}</b> retry wait</span>}
+                  <span><b>{stat.ok || 0}/{stat.fail || 0}/{stat.skip || 0}</b> ok/fail/skip</span>
+                  <span><b>{attempted ? `${pct}%` : "-"}</b> · 24h</span>
                 </div>
                 {circuit?.lastError && schedulerState !== "ready" && (
                   <div className="engine-route-error" title={circuit.lastError}>{circuit.lastError}</div>
                 )}
               </div>
               <div className="engine-stats">
-                <b>{stat.results || 0}</b> results<br />
-                {stat.ok || 0}/{stat.fail || 0}/{stat.skip || 0} ok/fail/skip<br />
-                {attempted ? `${pct}%` : "-"} · 24h
+                <b>{stat.results || 0}</b> results
               </div>
             </div>
           );

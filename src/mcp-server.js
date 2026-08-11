@@ -32,7 +32,7 @@ import { getAuthorizedMcpKey, getMcpApiKey, isAuthorizedMcpRequest } from "./mcp
 const require = createRequire(import.meta.url);
 const PACKAGE_JSON = require("../package.json");
 
-const webConsoleDir = process.env.WEB_CONSOLE_DIR || path.join(process.cwd(), "web-console", "dist");
+const webConsoleDir = path.join(process.cwd(), "web-console", "dist");
 const webConsoleIndexPath = path.join(webConsoleDir, "index.html");
 const WEB_CONSOLE_CONTENT_TYPES = {
   ".css": "text/css; charset=utf-8",

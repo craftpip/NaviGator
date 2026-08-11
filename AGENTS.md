@@ -455,7 +455,7 @@ Do not remove `console.log` / `console.error` calls from `src/search.js` or othe
 - `searches` and `page_ops` have **independent id sequences** — a single `since` cursor across both drops rows. `GET /stats/activity` takes `since` (searches) and `sinceOps` (page_ops) separately; the console tracks two refs.
 - Activity rows store `ts` as epoch ms (`Date.now()`), not ISO. `formatTime` in main.jsx must handle epoch-ms (and epoch-s < 1e12).
 - Feed merge lives in `App.load()` and `feed` is passed as a direct prop to `StatusView` — stuffing it into `snapshot` state creates a stale-closure bug because `load` is captured by the mount-once effect.
-- Console deploy: image rebuild copies the built bundle to `/web-console`; verify the new hashed `assets/index-*.js` is what `index.html` references.
+- Console deploy: build on the host with `npm run console:build` (needs dev deps), output goes to `web-console/dist`, which the server serves from the bind mount (`cwd/web-console/dist`). No image bake, no image rebuild — `docker compose up -d` recreates the container from the existing image. Verify the new hashed `assets/index-*.js` is what `index.html` references.
 - New CSS vars needed by the console: `--gold` (countdowns, most-working badge) — defined in both `:root` themes.
 
 **Unfinished:** commit is pending; plan checklist in `plans/console-redesign.md` §6 has the full log.

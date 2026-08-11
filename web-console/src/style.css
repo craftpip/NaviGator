@@ -15,6 +15,10 @@
   --red: #b91c1c;
   --red-bg: #fee2e2;
   --gold: #b45309;
+  --series-web-ok: #16a34a;
+  --series-web-fail: #dc2626;
+  --series-devtools-ok: #2563eb;
+  --series-devtools-fail: #9333ea;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --sans: Inter, ui-sans-serif, system-ui, sans-serif;
   color: var(--text);
@@ -38,6 +42,10 @@ html[data-theme="dark"] {
   --red: #f07178;
   --red-bg: #3a1c20;
   --gold: #e8b45a;
+  --series-web-ok: #4ade80;
+  --series-web-fail: #f87171;
+  --series-devtools-ok: #60a5fa;
+  --series-devtools-fail: #c084fc;
 }
 * {
   box-sizing: border-box;
@@ -262,6 +270,12 @@ p,
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+.request-trend-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
 .request-trend-controls button,
 .request-trend-legend button {
   border: 1px solid var(--line);
@@ -324,10 +338,11 @@ p,
 }
 .request-trend-key {
   display: flex;
-  gap: 12px;
-  margin: 8px 0 2px;
+  align-items: center;
+  gap: 10px;
   color: var(--muted);
   font: 10px var(--sans);
+  white-space: nowrap;
 }
 .request-trend-key span {
   display: inline-flex;
@@ -335,9 +350,25 @@ p,
   gap: 5px;
 }
 .request-trend-key i {
+  position: relative;
+  flex: none;
   display: block;
-  width: 13px;
-  border-top: 2px solid var(--series);
+  width: 22px;
+  height: 4px;
+  margin-right: 2px;
+  background: var(--series);
+  border-radius: 2px;
+}
+.request-trend-key i::after {
+  content: "";
+  position: absolute;
+  right: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--series);
 }
 .request-trend-chart {
   width: 100%;
@@ -351,7 +382,8 @@ p,
 }
 .request-trend-chart text {
   fill: var(--muted);
-  font: 10px var(--sans);
+  font-family: var(--sans);
+  font-size: calc(10px / var(--tscale, 1));
 }
 .request-trend-grid {
   stroke: var(--line2);
@@ -363,12 +395,18 @@ p,
   stroke-width: 2.25;
   vector-effect: non-scaling-stroke;
 }
-.request-trend-bar {
+.request-trend-dot {
   fill: var(--series);
-  opacity: 0.9;
 }
-.request-trend-bar:hover {
-  opacity: 1;
+.request-trend-readout rect {
+  fill: var(--panel);
+  stroke: var(--line2);
+  stroke-width: 1;
+}
+.request-trend-readout text {
+  fill: var(--text);
+  font-family: var(--mono);
+  font-size: calc(10px / var(--tscale, 1));
 }
 .request-trend-hit {
   fill: transparent;
@@ -543,7 +581,7 @@ p,
 .engine-activity {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
   gap: 10px;
 }
 .engine-activity > .panel {
@@ -557,7 +595,6 @@ p,
   flex: 1;
   min-height: 0;
   max-height: none;
-  contain: size;
 }
 .list {
   display: flex;
@@ -653,7 +690,7 @@ p,
 }
 .engine-row {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) 112px;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: start;
   gap: 10px;
   padding: 10px 0;
@@ -695,7 +732,7 @@ p,
   font: 11px var(--sans);
   text-align: right;
   line-height: 1.6;
-  white-space: normal;
+  white-space: nowrap;
 }
 .engine-stats b {
   color: var(--text);
@@ -875,7 +912,7 @@ p,
 .feed {
   display: block;
   max-height: 320px;
-  overflow-y: auto;
+  overflow: auto;
   scrollbar-color: var(--line) var(--panel2);
   scrollbar-width: thin;
 }
@@ -895,6 +932,7 @@ p,
 }
 .activity-table {
   width: 100%;
+  min-width: 460px;
   border-collapse: collapse;
   table-layout: fixed;
   font: 12px var(--sans);
@@ -1783,6 +1821,9 @@ select.config-input option {
   .request-trend-controls {
     justify-content: flex-start;
   }
+  .request-trend-actions {
+    align-items: flex-start;
+  }
   .request-trend-chart {
     aspect-ratio: 2 / 1;
   }
@@ -1799,13 +1840,7 @@ select.config-input option {
     font-size: 18px;
   }
   .engine-row {
-    grid-template-columns: 8px minmax(0, 1fr);
+    grid-template-columns: 8px minmax(0, 1fr) auto;
     align-items: start;
-  }
-  .engine-stats {
-    grid-column: 2;
-    text-align: left;
-    padding-top: 4px;
-    white-space: normal;
   }
 }

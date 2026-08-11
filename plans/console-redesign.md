@@ -137,14 +137,14 @@ See conversation; wireframe agreed in principle pending user review.
 
 See `plans/web-console-improvements.md` §1 for the full environment map
 (React 19 + Vite 7, `web-console/src/main.jsx` single 68-line file, served
-from `/web-console` in the image, build via `npm run console:build`).
+from the bind mount at `<cwd>/web-console/dist`, build via `npm run console:build`).
 
 Key facts:
 - Entire app lives in `web-console/src/main.jsx` (~34KB, 68 dense lines).
 - All CSS in `web-console/src/style.css` (~13KB, 7 lines).
 - No TypeScript, no test coverage for the console, ESLint covers `web-console/src/`.
-- Console served from image (`WEB_CONSOLE_DIR`), NOT the bind mount — image rebuild required.
-- This host has no docker compose: `docker build -t navigator:latest .` + manual recreate.
+- Console is NOT baked into the image — served from the bind mount (`cwd/web-console/dist`).
+- Deploy: host `npm run console:build` + `docker compose up -d` (no image rebuild).
 
 ---
 
