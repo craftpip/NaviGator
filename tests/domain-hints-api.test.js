@@ -303,4 +303,25 @@ describe("domain hints API", () => {
       expect(searchMod.browserOpenAndExtract.mock.calls[0][0].hintOverride).toBeNull();
     });
   });
+
+  describe("requireSelector identity", () => {
+    it("allows two hints with the same domain+path when requireSelector differs", async () => {
+      const { status, body } = await jsonRequest("/console/api/hints", {
+        method: "POST",
+        body: JSON.stringify({ hint: { domain: "example.com", pathPattern: "/**", requireSelector: ".profile-banner", pageType: "profile-page", comment: "selector-split" } }),
+      });
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+    });
+
+    it("still rejects exact duplicates including requireSelector", async () => {
+      const { status, body } = await jsonRequest("/console/api/hints", {
+        method: "POST",
+        body: JSON.stringify({ hint: { domain: "example.com", pathPattern: "/**", requireSelector: ".profile-banner", pageType: "profile-page", comment: "dup" } }),
+      });
+      expect(status).toBe(400);
+      expect(body.ok).toBe(false);
+      expect(body.error).toMatch(/collides with/);
+    });
+  });
 });

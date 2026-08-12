@@ -2,6 +2,7 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import logo from "./navigator.png";
+import { renderMarkdown } from "./markdown.js";
 
 const POLL_MS = 2000;
 const MANAGE_GROUPS = [
@@ -1582,6 +1583,7 @@ function Tools() {
   const [responses, setResponses] = useState({});
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const [viewMode, setViewMode] = useState("markdown");
 
   useEffect(() => {
     loadTools();
@@ -1786,11 +1788,34 @@ function Tools() {
                   >
                     {response.status}
                   </span>
+                  <div className="view-toggle" role="group" aria-label="Response view">
+                    <button
+                      className={viewMode === "markdown" ? "active" : ""}
+                      onClick={() => setViewMode("markdown")}
+                      title="Show the raw markdown response"
+                    >
+                      Markdown
+                    </button>
+                    <button
+                      className={viewMode === "html" ? "active" : ""}
+                      onClick={() => setViewMode("html")}
+                      title="Render the markdown response as HTML"
+                    >
+                      HTML
+                    </button>
+                  </div>
                   <button className="clear" onClick={clear}>
                     Clear
                   </button>
                 </div>
-                <pre>{response.output}</pre>
+                {viewMode === "html" ? (
+                  <div
+                    className="response-html"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(response.output) }}
+                  />
+                ) : (
+                  <pre>{response.output}</pre>
+                )}
                 {response.images.map((src, index) => (
                   <img
                     key={index}
@@ -2130,6 +2155,7 @@ function emptyHint() {
     pathPattern: "/**",
     comment: "",
     testUrls: [],
+    requireSelector: "",
     waitForSelector: [],
     skipSelectors: [],
     preferReadability: true,
@@ -2148,6 +2174,7 @@ function hintKey(hint) {
 function hintMeta(hint) {
   const parts = [];
   if (hint?.pageType) parts.push(hint.pageType);
+  if (hint?.requireSelector) parts.push(`require: ${hint.requireSelector}`);
   const sectionCount = hint?.content?.sections?.length || 0;
   if (sectionCount) parts.push(`${sectionCount} section${sectionCount === 1 ? "" : "s"}`);
   const flags = HINT_FLAGS.filter((flag) => hint?.flags?.[flag]);
@@ -2515,6 +2542,17 @@ function HintGuide() {
               </td>
             </tr>
             <tr>
+              <td>Required element</td>
+              <td>
+                Optional. When set, the rule only applies if an element matching
+                this CSS selector exists on the page. Splits one domain+path into
+                multiple page types.
+              </td>
+              <td>
+                <code>div.js-profile-editable-area</code>
+              </td>
+            </tr>
+            <tr>
               <td>Wait for selectors</td>
               <td>Elements that must ALL appear before extracting (SPA sites)</td>
               <td>
@@ -2571,6 +2609,7 @@ function HintGuide() {
   "domain": "github.com",
   "pathPattern": "/*/*",            // repo pages, not the profile "/*"
   "comment": "Repo — README + metadata",
+  "requireSelector": "article.markdown-body",  // optional: only applies when this element exists
   "waitForSelector": "turbo-frame#repo-content-turbo-frame",
   "preferReadability": false,
   "content": {
@@ -2658,7 +2697,7 @@ function Hints() {
     .map((hint, index) => ({ index, hint }))
     .filter(({ hint }) => {
       if (!q) return true;
-      const haystack = `${hint.domain} ${hint.pathPattern} ${hint.pageType} ${hint.comment}`.toLowerCase();
+      const haystack = `${hint.domain} ${hint.pathPattern} ${hint.requireSelector} ${hint.pageType} ${hint.comment}`.toLowerCase();
       return haystack.includes(q);
     });
   if (editor && state && editingHint !== undefined && editingHint !== null) {
@@ -2716,7 +2755,17 @@ function Hints() {
               <div className="hints-row" key={index}>
                 <span className="mono">{index}</span>
                 <b className="mono">{hint.domain || "—"}</b>
-                <span>{hint.pageType || "—"}</span>
+                <span>
+                  {hint.pageType || "—"}
+                  {hint.requireSelector ? (
+                    <>
+                      {" "}
+                      <em className="hint-meta-badge" title={`Required element: ${hint.requireSelector}`}>
+                        sel
+                      </em>
+                    </>
+                  ) : null}
+                </span>
                 <code>{hint.pathPattern || "/**"}</code>
                 <span className="hints-comment" title={hint.comment || ""}>
                   {hint.comment || "—"}
@@ -2878,6 +2927,18 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                     placeholder="/**"
                     value={hint.pathPattern || ""}
                     onChange={(event) => patch({ pathPattern: event.target.value })}
+                  />
+                </HintField>
+                <HintField
+                  label="Required element (CSS selector)"
+                  meta="optional"
+                  help="If set, this rule only applies when an element matching this selector exists on the loaded page. Lets you split one domain+path into several page types (e.g. a profile vs a list). Leave empty to match by domain+path alone."
+                >
+                  <input
+                    className="mono"
+                    placeholder="div.js-profile-editable-area"
+                    value={hint.requireSelector || ""}
+                    onChange={(event) => patch({ requireSelector: event.target.value.trim() })}
                   />
                 </HintField>
               </HintFieldGroup>

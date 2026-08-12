@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
-import { findDomainHint, getDomainHints, loadDomainHints, loadRawDomainHints, saveDomainHints, validateHintRule } from "../src/domain-hints.js";
+import { findDomainHint, findMatchingHints, getDomainHints, loadDomainHints, loadRawDomainHints, saveDomainHints, validateHintRule } from "../src/domain-hints.js";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hintsPath = path.join(projectRoot, "domain-hints.json");
@@ -103,9 +103,21 @@ describe("domain hints", () => {
     }
   );
 
-  it("does not contain duplicate domain and path-pattern entries", () => {
-    const keys = rawHints.map((hint) => `${hint.domain}|${hint.pathPattern}`);
+  it("does not contain duplicate domain, path-pattern, and requireSelector entries", () => {
+    const keys = rawHints.map((hint) => `${hint.domain}|${hint.pathPattern}|${hint.requireSelector || ""}`);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("returns all matching hints in order via findMatchingHints", () => {
+    const hints = [
+      { domain: "example.com", pathPattern: "/**", pageType: "a" },
+      { domain: "example.com", pathPattern: "/**", requireSelector: ".special", pageType: "b" },
+      { domain: "other.com", pathPattern: "/**", pageType: "c" }
+    ];
+    const matches = findMatchingHints("https://example.com/x", hints);
+    expect(matches).toEqual([hints[0], hints[1]]);
+    expect(findMatchingHints("https://other.com/x", hints)).toEqual([hints[2]]);
+    expect(findMatchingHints("https://unknown.com/x", hints)).toEqual([]);
   });
 });
 
@@ -158,6 +170,27 @@ describe("validateHintRule", () => {
       { scope: "test" }
     );
     expect(errors).toEqual([]);
+  });
+
+  it("accepts a valid requireSelector", () => {
+    const { errors, warnings } = validateHintRule(
+      { requireSelector: "div.js-profile-editable-area" },
+      { scope: "test" }
+    );
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("rejects an invalid requireSelector selector", () => {
+    const { errors } = validateHintRule({ requireSelector: "a[" }, { scope: "test" });
+    expect(errors.map((e) => e.field)).toContain("requireSelector");
+  });
+
+  it("rejects a non-string or empty requireSelector", () => {
+    for (const bad of [123, [], "", "   "]) {
+      const { errors } = validateHintRule({ requireSelector: bad }, { scope: "test" });
+      expect(errors.map((e) => e.field)).toContain("requireSelector");
+    }
   });
 
   it("rejects an invalid selector inside a waitForSelector array", () => {

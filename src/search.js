@@ -12,7 +12,7 @@ import {
   recordSearchStart,
   searchContext
 } from "./activity.js";
-import { findDomainHint, getDomainHints } from "./domain-hints.js";
+import { findMatchingHints, getDomainHints } from "./domain-hints.js";
 import { htmlToMarkdown } from "./markdown.js";
 import { getEngineDriver, getEngineMetadata, SUPPORTED_ENGINES } from "./engines/index.js";
 import { EngineScheduler } from "./engine-scheduler.js";
@@ -1770,6 +1770,34 @@ function extractLinksFromHtml({ html, url }) {
   }
 }
 
+async function domHasSelector(page, selector) {
+  try {
+    return Boolean(
+      await page.evaluate(
+        (sel) => {
+          try {
+            return !!document.querySelector(sel);
+          } catch {
+            return false;
+          }
+        },
+        selector
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function firstMatchingHint(page, candidates) {
+  if (!Array.isArray(candidates) || !candidates.length) return null;
+  for (const candidate of candidates) {
+    if (!candidate?.requireSelector) return candidate;
+    if (await domHasSelector(page, candidate.requireSelector)) return candidate;
+  }
+  return null;
+}
+
 export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, includeSeoAnalysis = true, hintOverride = null }) {
   const tOverall = performance.now();
   activityCounters.fetches += 1;
@@ -1781,13 +1809,15 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
     if (debug) console.log(`[web_fetch] [${url}] ${label}: ${Math.round(performance.now() - t)}ms`);
   };
   let t = performance.now();
-  let hint;
+  let hint = null;
+  let hintCandidates = [];
+  let hintNote = "";
   if (hintOverride) {
     hint = hintOverride;
     if (debug) console.log(`[web_fetch] [${url}] hint=override (test-before-save)`);
   } else {
     const hints = await getDomainHints(manager.config);
-    hint = findDomainHint(url, hints);
+    hintCandidates = findMatchingHints(url, hints);
   }
   debugLog("load_domain_hints", t);
 
@@ -1832,6 +1862,12 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       );
       debugLog("goto_page", t);
 
+      t = performance.now();
+      hint = hintOverride
+        ? hintOverride
+        : await firstMatchingHint(page, hintCandidates);
+      debugLog("resolve_hint_dom", t);
+
       if (hint?.flags?.authWall || hint?.flags?.visualOnly) {
         const pageTitle = await page.title().catch(() => "");
         const resolvedUrl = page.url();
@@ -1870,6 +1906,16 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         await waitForMutations(page, { maxWait: 5000 }).catch(() => {});
       }
       debugLog("stabilize_page", t);
+
+      if (hintOverride) {
+        if (hint?.requireSelector && !(await domHasSelector(page, hint.requireSelector))) {
+          hintNote = `⚠ requireSelector "${hint.requireSelector}" not found on this page — hint did not apply`;
+          hint = null;
+        }
+      } else if (!hint && hintCandidates.length) {
+        hint = await firstMatchingHint(page, hintCandidates);
+      }
+      debugLog("resolve_hint_dom_final", t);
 
       t = performance.now();
       const seoSnapshot =
@@ -1959,6 +2005,10 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
           finalText = finalText.slice(0, -3).trimEnd();
         }
         finalText += `\n\n*(Response truncated — full page is ${fullSize} chars, increase maxChars to see more)*`;
+      }
+
+      if (hintNote) {
+        finalText = `${hintNote}\n\n${finalText}`;
       }
 
       const result = {

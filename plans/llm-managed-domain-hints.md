@@ -15,7 +15,7 @@
 - [ ] 7. Docker Compose named volume at `/data/navigator` for the managed store.
 - [ ] 8. Tests: schema/resolver, managed-store, integration (request hint scoping, cache invalidation, tool absence when disabled, telemetry redaction).
 - [ ] 9. Documentation: `AGENTS.md` + tool contract (format, semantics, default-deny, no auto-save).
-- [ ] 10. Dynamic workflows (stage 5) — only after `plans/domain-hint-workflows.md` lands, gated by `ENABLE_DYNAMIC_HINT_WORKFLOWS=1`.
+- [ ] 10. Dynamic workflows (stage 5) — only after `plans/domain-hint-flows.md` lands, gated by `ENABLE_DYNAMIC_HINT_WORKFLOWS=1`.
 
 ## Goal
 
@@ -90,7 +90,7 @@ Call-scoped hints initially support non-interactive extraction only:
 - Allowed: `waitForSelector`, `stabilizeStrategy`, `content`, `skipSelectors`, `preferReadability`, and table extraction settings.
 - Rejected: `workflow`, authentication flags, visual-only flags, arbitrary browser options, and any executable expression.
 
-The sequential click workflow in `plans/domain-hint-workflows.md` remains separately opt-in. It can later be enabled for dynamic hints only behind an explicit configuration flag after the workflow feature is implemented and tested.
+The sequential click workflow in `plans/domain-hint-flows.md` remains separately opt-in. It can later be enabled for dynamic hints only behind an explicit configuration flag after the workflow feature is implemented and tested.
 
 ## Managed Persistent Hints
 
@@ -239,7 +239,7 @@ In `src/mcp-server.js`:
 
 ### 5. Dynamic workflows, later
 
-After `plans/domain-hint-workflows.md` is complete:
+After `plans/domain-hint-flows.md` is complete:
 
 - Managed hints may contain a validated `workflow` because only a trusted, explicitly enabled management tool can save them.
 - Request-scoped workflows remain rejected unless `ENABLE_DYNAMIC_HINT_WORKFLOWS=1`.

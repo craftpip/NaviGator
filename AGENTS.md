@@ -346,8 +346,9 @@ recommended authoring path — it replaces the hand-edit → `docker cp` → res
    screenshot, and prominent `⚠ section selector "…" matched 0 elements` warnings.
 4. **Save** — atomic write + `.bak`, `clearDomainHintCache()`, live immediately, no
    restart. Server endpoints: `GET /console/api/hints`, `POST /console/api/hints`,
-   `PUT /console/api/hints/:index` (duplicate `domain|pathPattern` rejected with a 400
-   naming the collision). No delete/reorder in v1.
+    `PUT /console/api/hints/:index` (duplicate `domain|pathPattern|requireSelector`
+    rejected with a 400 naming the collision — same domain+path with a different
+    `requireSelector` is allowed). No delete/reorder in v1.
 
 The manual CLI/DOM exploration routine below is still the way to *discover* the
 right selectors for a tricky page; the panel is where you iterate and commit them.
@@ -384,6 +385,7 @@ right selectors for a tricky page; the panel is where you iterate and commit the
      "pathPattern": "/page-type",
      "pageType": "type-name",
      "comment": "What this page type is.",
+     "requireSelector": "optional-css-selector",
      "waitForSelector": "selector-for-dynamic-content",
      "navigationWait": 2000,
      "preferReadability": true,
@@ -395,6 +397,16 @@ right selectors for a tricky page; the panel is where you iterate and commit the
      }
    }
    ```
+
+   **`requireSelector` (optional):** When set, the rule only applies if an element
+   matching this CSS selector exists on the loaded page — domain + path + this element
+   must ALL match. Lets you split one domain+path into several page types (e.g. a
+   profile vs a list that share a path). Candidate hints are tried in file order; the
+   first one whose selector is present wins, so a hint without `requireSelector` acts
+   as a fallback for the same domain+path. The selector is checked after the page
+   loads (after `waitForSelector` + stabilization). When it doesn't match, extraction
+   falls through to the next hint (or default extraction), and the override test pane
+   shows a `⚠ requireSelector "…" not found — hint did not apply` note.
 
   **Content type hint in selector comment:** Mention what the selector targets — single text (one line), list (multiple items), mixed (text block, multi-line).
 
@@ -443,6 +455,7 @@ right selectors for a tricky page; the panel is where you iterate and commit the
 - **test without the hints first** as step 6 before writing the hint to see what's missing.
 - **Path pattern matching:** `/*` means one segment (`/foo`), `/*/*` means two segments (`/foo/bar`), `/**` means everything. Uses `compileGlob` which converts `*` to `[^/]*`. The special case for `/*` was removed — it now uses `compileGlob` like everything else.
 - **Hint matching is first-match:** The first hint that matches wins. List hints from most specific to least specific (profile before repo, then issues, etc.). GitHub entries are ordered: profile (`/*`), repo (`/*/*`), issues (`/*/*/issues`), prs (`/*/*/pulls`).
+- **`requireSelector` splits one domain+path:** With `requireSelector` set, the first hint in file order whose selector exists on the loaded page wins — a hint without `requireSelector` is the fallback for the same domain+path. Matching is checked after `waitForSelector` + stabilization so SPA-rendered elements count; the test pane reports `⚠ requireSelector "…" not found — hint did not apply` when an override hint's selector is missing.
 - **GitHub selector stability:** GitHub uses React + Turbo and CSS-module classes change per build. Use stable selectors like `h1.vcard-names`, `div.js-profile-editable-area`, `ol.js-pinned-items-reorder-list`, `article.markdown-body`, `li[role="listitem"]` (issues/PRs list). Avoid CSS-module class names. For repo pages, `article.markdown-body` is inside Turbo + React, so wait for it specifically.
 
 ---

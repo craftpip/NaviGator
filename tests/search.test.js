@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { JSDOM } from "jsdom";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 const mockGetBrowserManager = vi.fn();
@@ -387,6 +388,146 @@ describe("browserOpenAndExtract", () => {
       expect(result.text).not.toContain("Upvote");
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  function makeRequireSelectorManager({ html, url = "https://example.com/page", hintsPath, configOverrides = {} }) {
+    const dom = new JSDOM(html);
+    const page = {
+      goto: vi.fn().mockResolvedValue(undefined),
+      waitForNetworkIdle: vi.fn().mockResolvedValue(undefined),
+      title: vi.fn().mockResolvedValue("Page"),
+      url: vi.fn().mockReturnValue(url),
+      content: vi.fn().mockResolvedValue(html),
+      isClosed: vi.fn(() => false),
+      close: vi.fn().mockResolvedValue(undefined),
+      evaluate: vi.fn().mockImplementation(async (fn, arg) => {
+        const source = String(fn);
+        if (source.includes("document.querySelector(sel)")) {
+          return !!dom.window.document.querySelector(arg);
+        }
+        if (source.includes("cf-browser-verification")) return null;
+        return "Rendered browser text";
+      })
+    };
+    return {
+      manager: {
+        config: makeMockConfig({ domainHintsPath: hintsPath, defaultBackend: "cloakbrowser", ...configOverrides }),
+        withPageSlot: vi.fn().mockImplementation((fn) => fn()),
+        newPage: vi.fn().mockResolvedValue(page)
+      },
+      page,
+      cleanup: () => dom.window.close()
+    };
+  }
+
+  async function writeRequireSelectorHints(hints) {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-require-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify(hints));
+    return { tempDir, hintsPath };
+  }
+
+  it("applies the first hint whose requireSelector exists on the page", async () => {
+    const { tempDir, hintsPath } = await writeRequireSelectorHints([
+      {
+        domain: "example.com",
+        pathPattern: "/**",
+        navigationWait: 0,
+        requireSelector: ".profile-banner",
+        content: { sections: [{ selector: ".profile", label: "Profile", priority: "high" }] }
+      },
+      {
+        domain: "example.com",
+        pathPattern: "/**",
+        navigationWait: 0,
+        content: { sections: [{ selector: ".listing", label: "Listing", priority: "high" }] }
+      }
+    ]);
+    const html = `<!doctype html><html><head><title>Page</title></head><body>
+      <div class="listing"><p>Product listing content here</p></div>
+    </body></html>`;
+    const { manager, cleanup } = makeRequireSelectorManager({ html, hintsPath });
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({
+        url: "https://example.com/page",
+        includeSeoAnalysis: false
+      });
+
+      expect(result.text).toContain("### Listing");
+      expect(result.text).not.toContain("### Profile");
+      expect(result.text).not.toContain("requireSelector");
+    } finally {
+      cleanup();
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the requireSelector hint when its element is present", async () => {
+    const { tempDir, hintsPath } = await writeRequireSelectorHints([
+      {
+        domain: "example.com",
+        pathPattern: "/**",
+        navigationWait: 0,
+        requireSelector: ".profile-banner",
+        content: { sections: [{ selector: ".profile", label: "Profile", priority: "high" }] }
+      },
+      {
+        domain: "example.com",
+        pathPattern: "/**",
+        navigationWait: 0,
+        content: { sections: [{ selector: ".listing", label: "Listing", priority: "high" }] }
+      }
+    ]);
+    const html = `<!doctype html><html><head><title>Page</title></head><body>
+      <div class="profile-banner"><p>Banner</p></div>
+      <div class="profile"><p>Profile content here</p></div>
+    </body></html>`;
+    const { manager, cleanup } = makeRequireSelectorManager({ html, hintsPath });
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({
+        url: "https://example.com/page",
+        includeSeoAnalysis: false
+      });
+
+      expect(result.text).toContain("### Profile");
+      expect(result.text).not.toContain("### Listing");
+    } finally {
+      cleanup();
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("notes when an override hint's requireSelector is missing", async () => {
+    const { manager, cleanup } = makeRequireSelectorManager({
+      html: `<!doctype html><html><head><title>Page</title></head><body><p>Plain content</p></body></html>`
+    });
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({
+        url: "https://example.com/page",
+        includeSeoAnalysis: false,
+        hintOverride: {
+          domain: "example.com",
+          pathPattern: "/**",
+          requireSelector: ".missing-element",
+          content: { sections: [{ selector: ".profile", label: "Profile", priority: "high" }] }
+        }
+      });
+
+      expect(result.text).toContain("requireSelector");
+      expect(result.text).toContain("did not apply");
+      expect(result.text).not.toContain("### Profile");
+    } finally {
+      cleanup();
     }
   });
 });

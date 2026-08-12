@@ -404,7 +404,7 @@ automatically.
   `validateHintRule` which that plan reuses; the `mergeDomainHints`/resolver machinery
   is deliberately not built here.
 - **`navigationWait` and `workflow[]`** — unimplemented in code today
-  (`navigationWait` is docs-only; `workflow` is `plans/domain-hint-workflows.md`).
+  (`navigationWait` is docs-only; `workflow` is `plans/domain-hint-flows.md`).
   The panel offers only fields the engine actually reads.
 - **Selector auto-detection / page inspection** — stays with the devtools browser
   tools and the AGENTS.md exploration routine; embedding those in the console is a

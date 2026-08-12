@@ -706,7 +706,8 @@ function queueHintMutation(task) {
 function hintDuplicateKey(hint) {
   const domain = String(hint?.domain || "").toLowerCase();
   const pathPattern = hint?.pathPattern || "/**";
-  return `${domain}|${pathPattern}`;
+  const requireSelector = String(hint?.requireSelector || "").trim();
+  return `${domain}|${pathPattern}|${requireSelector}`;
 }
 
 function findHintDuplicate(hints, hint, excludeIndex) {
@@ -717,7 +718,8 @@ function findHintDuplicate(hints, hint, excludeIndex) {
     if (!entry || typeof entry !== "object") continue;
     if (hintDuplicateKey(entry) === key) {
       const entryHint = entry;
-      return { index, key, label: `${entryHint.domain || "?"} ${entryHint.pathPattern || "/**"}` };
+      const require = entryHint.requireSelector ? ` require:${entryHint.requireSelector}` : "";
+      return { index, key, label: `${entryHint.domain || "?"} ${entryHint.pathPattern || "/**"}${require}` };
     }
   }
   return null;
@@ -739,7 +741,7 @@ async function createHint(hintsPath, rawHint) {
     const hints = await loadRawDomainHints(hintsPath);
     const duplicate = findHintDuplicate(hints, hint, -1);
     if (duplicate) {
-      return { ok: false, error: `duplicate hint: ${hint.domain} ${hint.pathPattern} collides with #${duplicate.index} (${duplicate.label})`, validation: { errors: [{ field: "pathPattern", message: `collides with hint #${duplicate.index} (${duplicate.label})` }], warnings: [] } };
+      return { ok: false, error: `duplicate hint: ${hint.domain} ${hint.pathPattern}${hint.requireSelector ? ` require:${hint.requireSelector}` : ""} collides with #${duplicate.index} (${duplicate.label})`, validation: { errors: [{ field: "pathPattern", message: `collides with hint #${duplicate.index} (${duplicate.label})` }], warnings: [] } };
     }
     hints.push(hint);
     const save = await saveDomainHints(hints, hintsPath);
@@ -770,7 +772,7 @@ async function updateHint(hintsPath, index, rawHint) {
     }
     const duplicate = findHintDuplicate(hints, hint, index);
     if (duplicate) {
-      return { ok: false, error: `duplicate hint: ${hint.domain} ${hint.pathPattern} collides with #${duplicate.index} (${duplicate.label})`, validation: { errors: [{ field: "pathPattern", message: `collides with hint #${duplicate.index} (${duplicate.label})` }], warnings: [] } };
+      return { ok: false, error: `duplicate hint: ${hint.domain} ${hint.pathPattern}${hint.requireSelector ? ` require:${hint.requireSelector}` : ""} collides with #${duplicate.index} (${duplicate.label})`, validation: { errors: [{ field: "pathPattern", message: `collides with hint #${duplicate.index} (${duplicate.label})` }], warnings: [] } };
     }
     hints[index] = hint;
     const save = await saveDomainHints(hints, hintsPath);

@@ -73,12 +73,17 @@ export async function loadDomainHints(hintsPath) {
   return entries.filter((e) => e && typeof e.domain === "string");
 }
 
-export function findDomainHint(urlStr, hints) {
-  if (!urlStr || !Array.isArray(hints) || !hints.length) return null;
+export function findMatchingHints(urlStr, hints) {
+  if (!urlStr || !Array.isArray(hints) || !hints.length) return [];
+  const matches = [];
   for (const entry of hints) {
-    if (isMatch(entry, urlStr)) return entry;
+    if (isMatch(entry, urlStr)) matches.push(entry);
   }
-  return null;
+  return matches;
+}
+
+export function findDomainHint(urlStr, hints) {
+  return findMatchingHints(urlStr, hints)[0] || null;
 }
 
 export async function getDomainHints(config) {
@@ -207,6 +212,15 @@ export function validateHintRule(hint, { scope = "static" } = {}) {
     });
   }
 
+  if (hint.requireSelector !== undefined) {
+    if (typeof hint.requireSelector !== "string" || !hint.requireSelector.trim()) {
+      errors.push({ field: "requireSelector", message: "must be a non-empty CSS selector string" });
+    } else {
+      const selectorError = validateSelector(hint.requireSelector);
+      if (selectorError) errors.push({ field: "requireSelector", message: `invalid CSS selector: ${selectorError}` });
+    }
+  }
+
   if (hint.skipSelectors !== undefined) {
     if (!Array.isArray(hint.skipSelectors)) {
       errors.push({ field: "skipSelectors", message: "must be an array of CSS selectors" });
@@ -267,8 +281,8 @@ export function validateHintRule(hint, { scope = "static" } = {}) {
 
   for (const key of Object.keys(hint)) {
     if (!["domain", "pathPattern", "pageType", "comment", "testUrls", "waitForSelector",
-      "skipSelectors", "preferReadability", "tableExtraction", "stabilizeStrategy",
-      "contentSelectors", "flags", "content"].includes(key)) {
+      "requireSelector", "skipSelectors", "preferReadability", "tableExtraction",
+      "stabilizeStrategy", "contentSelectors", "flags", "content"].includes(key)) {
       warnings.push({ field: key, message: "unknown field (ignored)" });
     }
   }
