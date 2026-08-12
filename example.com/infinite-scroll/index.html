@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScrollFeed — Infinite Scroll Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; color: #222; background: #f4f6f8; }
+    header { background: #1f3b4d; color: #fff; padding: 14px 20px; position: sticky; top: 0; }
+    main { max-width: 640px; margin: 20px auto; padding: 0 16px; }
+    article.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px 16px; margin: 14px 0; }
+    article.card h2 { margin: 0 0 6px; font-size: 1.2em; }
+    .author { color: #888; font-size: 0.85em; }
+    .sentinel { height: 40px; text-align: center; color: #888; }
+  </style>
+</head>
+<body>
+  <header><strong>ScrollFeed</strong> — content keeps loading as you scroll</header>
+  <main>
+    <div id="feed">
+      <article class="card" data-i="1">
+        <h2>Welcome to ScrollFeed</h2>
+        <p class="author">posted 5m ago</p>
+        <p>The first few posts are in the HTML. More are appended by JavaScript whenever the sentinel at the bottom scrolls into view — like an infinite-scroll news feed.</p>
+      </article>
+      <article class="card" data-i="2">
+        <h2>Why infinite scroll is hard for extractors</h2>
+        <p class="author">posted 12m ago</p>
+        <p>A single page load only sees the first batch. The rest of the feed doesn't exist in the DOM until the user keeps scrolling.</p>
+      </article>
+      <article class="card" data-i="3">
+        <h2>A third post to give the page some height</h2>
+        <p class="author">posted 1h ago</p>
+        <p>This post just adds enough content that the page can scroll, which triggers the observer below.</p>
+      </article>
+    </div>
+    <div class="sentinel" id="sentinel">…</div>
+  </main>
+  <script>
+    var titles = [
+      'Breaking: Testville wins the trophy',
+      'Five solar lights to see before you die',
+      'Council votes on the new bridge',
+      'Local bakery sells 1,000th loaf',
+      'River levels expected to rise this week',
+      'Robot dog joins the city patrol',
+      'Airport runway work begins Monday',
+      'New park opens on the east side'
+    ];
+    var n = 3;
+    var sentinel = document.getElementById('sentinel');
+    function loadMore() {
+      if (n >= titles.length) { sentinel.textContent = 'You have reached the end.'; return; }
+      for (var k = 0; k < 2 && n < titles.length; k++) {
+        n++;
+        var card = document.createElement('article');
+        card.className = 'card';
+        card.setAttribute('data-i', n);
+        card.innerHTML = '<h2>' + titles[n - 1] + '</h2>' +
+          '<p class="author">posted just now</p>' +
+          '<p>This is post number ' + n + ', appended dynamically by the IntersectionObserver. It did not exist in the original HTML.</p>';
+        document.getElementById('feed').appendChild(card);
+      }
+    }
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting) { loadMore(); }
+      });
+      io.observe(sentinel);
+    }
+  </script>
+</body>
+</html>

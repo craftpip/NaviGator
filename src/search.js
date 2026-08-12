@@ -759,6 +759,7 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       if (debug) console.log(">>> entering sections path, selector:", hint.content.sections[0].selector);
       const sectionOutput = [];
       const allSectionTables = [];
+      const zeroMatch = [];
       const order = { high: 0, medium: 1, low: 2 };
       const sorted = [...hint.content.sections].sort(
         (a, b) => (order[a.priority] || 1) - (order[b.priority] || 1)
@@ -766,7 +767,10 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
         for (const section of sorted) {
           const elements = doc.querySelectorAll(section.selector);
           if (debug) console.log(">>> section selector:", section.selector, "matched:", elements.length);
-          if (!elements.length) continue;
+          if (!elements.length) {
+            zeroMatch.push(section.selector);
+            continue;
+          }
           let markdown = "";
           let sectionHadTable = false;
           if (section.fields?.length) {
@@ -820,7 +824,8 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
           url,
           text: safeTruncateText(text, maxChars),
           textOriginalLength: text.length,
-          ...(allSectionTables.length ? { tables: allSectionTables } : {})
+          ...(allSectionTables.length ? { tables: allSectionTables } : {}),
+          ...(zeroMatch.length ? { warnings: zeroMatch.map((selector) => `section selector "${selector}" matched 0 elements`) } : {})
         };
       }
       if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: sections_no_output: ${Math.round(performance.now() - tFunc)}ms`);
@@ -1765,7 +1770,7 @@ function extractLinksFromHtml({ html, url }) {
   }
 }
 
-export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, includeSeoAnalysis = true }) {
+export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, includeSeoAnalysis = true, hintOverride = null }) {
   const tOverall = performance.now();
   activityCounters.fetches += 1;
   incrementUsageTotal("fetches");
@@ -1776,8 +1781,14 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
     if (debug) console.log(`[web_fetch] [${url}] ${label}: ${Math.round(performance.now() - t)}ms`);
   };
   let t = performance.now();
-  const hints = await getDomainHints(manager.config);
-  const hint = findDomainHint(url, hints);
+  let hint;
+  if (hintOverride) {
+    hint = hintOverride;
+    if (debug) console.log(`[web_fetch] [${url}] hint=override (test-before-save)`);
+  } else {
+    const hints = await getDomainHints(manager.config);
+    hint = findDomainHint(url, hints);
+  }
   debugLog("load_domain_hints", t);
 
   try {
@@ -1829,11 +1840,18 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         return { title: pageTitle, url: resolvedUrl, text: "", error: reason };
       }
 
-      if (hint?.waitForSelector) {
+      const waitSelectors = Array.isArray(hint?.waitForSelector)
+        ? hint.waitForSelector
+        : hint?.waitForSelector
+          ? [hint.waitForSelector]
+          : [];
+      if (waitSelectors.length) {
         t = performance.now();
-        await page.waitForSelector(hint.waitForSelector, {
-          timeout: Math.min(operationTimeoutMs, 20000)
-        }).catch(() => {});
+        await Promise.all(
+          waitSelectors.map((sel) =>
+            page.waitForSelector(sel, { timeout: Math.min(operationTimeoutMs, 20000) })
+          )
+        ).catch(() => {});
         debugLog("wait_for_selector", t);
       }
 

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why Test Pages Matter — Blog Post</title>
+  <meta name="author" content="Test Author">
+  <meta name="description" content="A sample blog post for extraction testing.">
+  <style>
+    body { font-family: Georgia, serif; margin: 0; color: #222; line-height: 1.6; }
+    header { background: #33475b; color: #fff; padding: 20px 30px; }
+    nav a { color: #ffd166; margin-right: 14px; text-decoration: none; }
+    main { max-width: 720px; margin: 30px auto; padding: 0 20px; }
+    article h1 { font-size: 2em; }
+    .meta { color: #777; font-style: italic; }
+    blockquote { border-left: 4px solid #ffd166; margin: 20px 0; padding: 10px 20px; background: #faf7ef; }
+    aside { background: #eef4fb; padding: 15px; border-radius: 8px; margin-top: 30px; }
+    footer { background: #f2f2f2; padding: 15px 30px; margin-top: 40px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Example Test Site</h1>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/post/">Blog Post</a>
+      <a href="/profile/">Profile</a>
+      <a href="/news/">News</a>
+      <a href="/table/">Tables</a>
+      <a href="/interactive/">Interactive</a>
+      <a href="/chaos/">Chaos</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Why Test Pages Matter</h1>
+      <p class="meta">By Test Author · Published 2026-08-01 · 4 min read</p>
+
+      <p>When you build a web extraction tool, the very first thing you need is a page you control completely. No ads, no paywalls, no JavaScript frameworks, no bot protection. Just clean semantic HTML.</p>
+
+      <h2>What this page exercises</h2>
+      <p>This article contains the typical building blocks an extractor should handle:</p>
+      <ul>
+        <li>Headings at multiple levels (h1, h2, h3)</li>
+        <li>Paragraphs of running text</li>
+        <li>Ordered and unordered lists</li>
+        <li>Blockquotes</li>
+        <li>Inline links and emphasis</li>
+        <li>A small aside with extra context</li>
+      </ul>
+
+      <h3>A nested heading</h3>
+      <p>Sub-sections like this one test whether the extractor keeps document structure. The hierarchy matters — a good extractor preserves the outline.</p>
+
+      <ol>
+        <li>Create a controlled test page.</li>
+        <li>Run the extractor on it.</li>
+        <li>Compare the output with what you see in a browser.</li>
+      </ol>
+
+      <blockquote>
+        "A test page you control is worth a thousand pages you don't." — someone, probably
+      </blockquote>
+
+      <p>Finally, a paragraph with <strong>bold text</strong>, <em>italic text</em>, and a <a href="https://example.com/link-target">link to an external site</a> to make sure inline elements survive extraction.</p>
+
+      <h2>Conclusion</h2>
+      <p>If the extractor handles everything on this page cleanly, it will probably handle most real-world articles too. Now go test.</p>
+    </article>
+
+    <aside>
+      <h3>About the author</h3>
+      <p>Test Author is a fictional persona who writes test content for testing tools.</p>
+      <p><a href="/profile/">View profile</a></p>
+    </aside>
+  </main>
+
+  <footer>
+    <p>Example Test Site — made for extraction testing.</p>
+  </footer>
+</body>
+</html>

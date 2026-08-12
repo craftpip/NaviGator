@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TestBank Markets — WIDG NSE Option Chain</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; color: #222; }
+    header { background: #0b3d62; color: #fff; padding: 12px 20px; }
+    header a { color: #ffd166; margin-right: 12px; font-size: 13px; text-decoration: none; }
+    main { max-width: 1100px; margin: 20px auto; padding: 0 20px; }
+    h1 { font-size: 1.4em; }
+    .quote { display: flex; gap: 24px; font-size: 15px; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 12px 0; background: #f8fafc; }
+    .up { color: #0a7a2a; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: right; white-space: nowrap; }
+    th { background: #0b3d62; color: #fff; text-align: center; }
+    td:nth-child(1), td:nth-child(2) { text-align: left; }
+    .strike { background: #eef4fb; font-weight: bold; }
+    tbody tr:nth-child(even) { background: #f6f9fc; }
+    .note { font-size: 12px; color: #777; margin-top: 8px; }
+    footer { border-top: 1px solid #ddd; margin-top: 24px; padding: 12px 20px; font-size: 12px; color: #777; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>TestBank Markets</strong>
+    <a href="#">Markets</a><a href="#">Options</a><a href="#">Indices</a><a href="#">News</a><a href="#">Portfolio</a>
+  </header>
+  <main>
+    <h1>WIDG — Widget Industries Ltd.</h1>
+    <div class="quote">
+      <div>Last: <b>₹412.35</b></div>
+      <div>Change: <b class="up">+₹8.10 (+2.00%)</b></div>
+      <div>Open: ₹405.20</div>
+      <div>Prev close: ₹404.25</div>
+      <div>Volume: 1,840,552</div>
+      <div>52w high: ₹465.00</div>
+      <div>52w low: ₹301.10</div>
+    </div>
+
+    <h2 style="font-size:1.1em;">Option chain — expiry 28 Aug 2026 (Calls / Puts)</h2>
+    <table id="option-chain">
+      <thead>
+        <tr>
+          <th>Call OI</th><th>Call LTP</th><th>Strike</th><th>Put LTP</th><th>Put OI</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>1,152,000</td><td>41.85</td><td>370.00</td><td>0.35</td><td>3,114,000</td></tr>
+        <tr><td>1,980,000</td><td>32.60</td><td>380.00</td><td>0.55</td><td>2,888,000</td></tr>
+        <tr><td>2,340,000</td><td>23.75</td><td>390.00</td><td>0.95</td><td>2,650,000</td></tr>
+        <tr><td>2,110,000</td><td>15.90</td><td>400.00</td><td>2.10</td><td>2,305,000</td></tr>
+        <tr class="strike"><td>2,842,000</td><td>9.45</td><td>410.00</td><td>4.80</td><td>2,976,000</td></tr>
+        <tr><td>1,760,000</td><td>5.15</td><td>420.00</td><td>10.25</td><td>1,840,000</td></tr>
+        <tr><td>980,000</td><td>2.60</td><td>430.00</td><td>18.90</td><td>1,120,000</td></tr>
+        <tr><td>642,000</td><td>1.35</td><td>440.00</td><td>27.40</td><td>880,000</td></tr>
+        <tr><td>388,000</td><td>0.70</td><td>450.00</td><td>36.05</td><td>610,000</td></tr>
+        <tr><td>201,000</td><td>0.30</td><td>460.00</td><td>45.80</td><td>402,000</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Data delayed by 15 minutes. Strike 410.00 is at the money. OI = open interest, LTP = last traded price.</p>
+
+    <h2 style="font-size:1.1em;">Recent trades</h2>
+    <table>
+      <thead><tr><th>Time</th><th>Price</th><th>Qty</th><th>Direction</th></tr></thead>
+      <tbody>
+        <tr><td>15:29:04</td><td>412.35</td><td>350</td><td class="up">Buy</td></tr>
+        <tr><td>15:28:51</td><td>412.00</td><td>120</td><td>Sell</td></tr>
+        <tr><td>15:28:40</td><td>412.10</td><td>480</td><td class="up">Buy</td></tr>
+        <tr><td>15:28:22</td><td>411.80</td><td>95</td><td>Sell</td></tr>
+        <tr><td>15:28:05</td><td>412.05</td><td>610</td><td class="up">Buy</td></tr>
+      </tbody>
+    </table>
+  </main>
+  <footer>TestBank Markets · market data for testing only, not investment advice.</footer>
+</body>
+</html>

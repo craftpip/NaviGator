@@ -187,7 +187,7 @@ Domain hints are per-site extraction configurations stored in `domain-hints.json
 | `domain` | string | Domain to match (exact hostname) |
 | `pathPattern` | string | Glob pattern for path matching |
 | `pageType` | string | Classification (homepage, article, video, etc.) |
-| `waitForSelector` | string | CSS selector to wait for before extraction |
+| `waitForSelector` | string \| string[] | CSS selector(s) to wait for before extraction — waits for **all** when an array |
 | `navigationWait` | number | Extra wait time in ms after content loads |
 | `preferReadability` | boolean | `false` skips Readability entirely |
 | `tableExtraction` | string | `"disabled"` skips table extraction |

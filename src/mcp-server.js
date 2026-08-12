@@ -28,6 +28,7 @@ import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
 import { SUPPORTED_ENGINES, getEngineMetadata } from "./engines/index.js";
 import { getAuthorizedMcpKey, getMcpApiKey, isAuthorizedMcpRequest } from "./mcp-api-auth.js";
+import { loadRawDomainHints, saveDomainHints, validateHintRule } from "./domain-hints.js";
 
 const require = createRequire(import.meta.url);
 const PACKAGE_JSON = require("../package.json");
@@ -695,6 +696,89 @@ async function handleConsoleLogs(manager, url) {
   return { ok: true, n, entries: lines.slice(-n).reverse() };
 }
 
+let hintWriteQueue = Promise.resolve();
+function queueHintMutation(task) {
+  const run = hintWriteQueue.then(task, task);
+  hintWriteQueue = run.catch(() => {});
+  return run;
+}
+
+function hintDuplicateKey(hint) {
+  const domain = String(hint?.domain || "").toLowerCase();
+  const pathPattern = hint?.pathPattern || "/**";
+  return `${domain}|${pathPattern}`;
+}
+
+function findHintDuplicate(hints, hint, excludeIndex) {
+  const key = hintDuplicateKey(hint);
+  for (let index = 0; index < hints.length; index += 1) {
+    if (index === excludeIndex) continue;
+    const entry = hints[index];
+    if (!entry || typeof entry !== "object") continue;
+    if (hintDuplicateKey(entry) === key) {
+      const entryHint = entry;
+      return { index, key, label: `${entryHint.domain || "?"} ${entryHint.pathPattern || "/**"}` };
+    }
+  }
+  return null;
+}
+
+async function createHint(hintsPath, rawHint) {
+  if (!rawHint || typeof rawHint !== "object" || Array.isArray(rawHint)) {
+    return { ok: false, error: "hint must be an object" };
+  }
+  const hint = { ...rawHint };
+  if (hint.pathPattern === undefined || hint.pathPattern === null || hint.pathPattern === "") {
+    hint.pathPattern = "/**";
+  }
+  const validation = validateHintRule(hint, { scope: "static" });
+  if (validation.errors.length) {
+    return { ok: false, error: "invalid hint", validation };
+  }
+  return queueHintMutation(async () => {
+    const hints = await loadRawDomainHints(hintsPath);
+    const duplicate = findHintDuplicate(hints, hint, -1);
+    if (duplicate) {
+      return { ok: false, error: `duplicate hint: ${hint.domain} ${hint.pathPattern} collides with #${duplicate.index} (${duplicate.label})`, validation: { errors: [{ field: "pathPattern", message: `collides with hint #${duplicate.index} (${duplicate.label})` }], warnings: [] } };
+    }
+    hints.push(hint);
+    const save = await saveDomainHints(hints, hintsPath);
+    if (!save.ok) return save;
+    return { ok: true, index: hints.length - 1, hint, hintsPath: save.hintsPath };
+  });
+}
+
+async function updateHint(hintsPath, index, rawHint) {
+  if (!Number.isInteger(index) || index < 0) {
+    return { ok: false, error: "invalid index" };
+  }
+  if (!rawHint || typeof rawHint !== "object" || Array.isArray(rawHint)) {
+    return { ok: false, error: "hint must be an object" };
+  }
+  const hint = { ...rawHint };
+  if (hint.pathPattern === undefined || hint.pathPattern === null || hint.pathPattern === "") {
+    hint.pathPattern = "/**";
+  }
+  const validation = validateHintRule(hint, { scope: "static" });
+  if (validation.errors.length) {
+    return { ok: false, error: "invalid hint", validation };
+  }
+  return queueHintMutation(async () => {
+    const hints = await loadRawDomainHints(hintsPath);
+    if (index >= hints.length) {
+      return { ok: false, error: `index ${index} out of range (${hints.length} hints)` };
+    }
+    const duplicate = findHintDuplicate(hints, hint, index);
+    if (duplicate) {
+      return { ok: false, error: `duplicate hint: ${hint.domain} ${hint.pathPattern} collides with #${duplicate.index} (${duplicate.label})`, validation: { errors: [{ field: "pathPattern", message: `collides with hint #${duplicate.index} (${duplicate.label})` }], warnings: [] } };
+    }
+    hints[index] = hint;
+    const save = await saveDomainHints(hints, hintsPath);
+    if (!save.ok) return save;
+    return { ok: true, index, hint, hintsPath: save.hintsPath };
+  });
+}
+
 const LOG_MAP = {
   booting:               ["🚀", "Server starting"],
   "boot.config":         ["⚙️",  (p) => `Search route warmup engines: ${p?.searchRouteWarmupEngines?.join(", ") || "?"}`],
@@ -1192,6 +1276,11 @@ function formatOpenPageResponse(payload) {
     if (entry?.url) {
       lines.push(`- URL: ${entry.url}`);
     }
+    if (entry?.warnings?.length) {
+      for (const warning of entry.warnings) {
+        lines.push(`- ⚠ ${warning}`);
+      }
+    }
     if (entry?.error) {
       lines.push(`- Error: ${entry.error}`);
       return;
@@ -1337,14 +1426,18 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-async function openTargetsParallel(targetUrls, maxParallel, includeSeoAnalysis = false, debug = false) {
+async function openTargetsParallel(targetUrls, maxParallel, includeSeoAnalysis = false, debug = false, opts = {}) {
   const opened = await mapWithConcurrency(
     targetUrls,
     maxParallel,
     async (targetUrl, index) => {
       const tUrl = debug ? performance.now() : 0;
       try {
-        const page = await browserOpenAndExtract({ url: targetUrl, includeSeoAnalysis });
+        const page = await browserOpenAndExtract({
+          url: targetUrl,
+          includeSeoAnalysis,
+          hintOverride: opts?.hintOverride || null
+        });
         if (debug) console.log(`[web_fetch] [${targetUrl}] openTargetsParallel process (post-extract): ${Math.round(performance.now() - tUrl)}ms`);
         const result = {
           index,
@@ -2701,6 +2794,57 @@ async function maybeStartHttpServer(managerOverride) {
         return;
       }
 
+      if (url.pathname === "/console/api/hints" || url.pathname.startsWith("/console/api/hints/")) {
+        if (!manager.config.enableWebConsole) {
+          sendJson(res, 404, { ok: false, error: "Web console not available" });
+          return;
+        }
+        const hintsPath = manager.config.domainHintsPath;
+        try {
+          if (method === "GET" && url.pathname === "/console/api/hints") {
+            const hints = await loadRawDomainHints(hintsPath);
+            logEvent("http.request", { method, path: url.pathname });
+            sendJson(res, 200, { ok: true, hintsPath, count: hints.length, hints });
+            return;
+          }
+          if (method === "POST" && url.pathname === "/console/api/hints/validate") {
+            const body = await readJsonBody(req);
+            const scope = body?.scope === "test" ? "test" : "static";
+            const validation = validateHintRule(body?.hint, { scope });
+            sendJson(res, 200, { ok: true, valid: validation.errors.length === 0, ...validation });
+            return;
+          }
+          if (method === "POST" && url.pathname === "/console/api/hints") {
+            const body = await readJsonBody(req);
+            const result = await createHint(hintsPath, body?.hint);
+            if (!result.ok) {
+              sendJson(res, 400, result);
+              return;
+            }
+            logEvent("http.request", { method, path: url.pathname, hint: result.hint?.domain });
+            sendJson(res, 200, result);
+            return;
+          }
+          const updateMatch = url.pathname.match(/^\/console\/api\/hints\/(\d+)$/);
+          if (method === "PUT" && updateMatch) {
+            const index = Number(updateMatch[1]);
+            const body = await readJsonBody(req);
+            const result = await updateHint(hintsPath, index, body?.hint);
+            if (!result.ok) {
+              sendJson(res, 400, result);
+              return;
+            }
+            logEvent("http.request", { method, path: url.pathname, hint: result.hint?.domain });
+            sendJson(res, 200, result);
+            return;
+          }
+          sendJson(res, 405, { ok: false, error: "Method not allowed" });
+        } catch (error) {
+          sendJson(res, 400, { ok: false, error: String(error?.message || error) });
+        }
+        return;
+      }
+
       if (url.pathname === "/console" || url.pathname.startsWith("/console/") || url.pathname === "/ui" || url.pathname === "/dashboard") {
         if (!manager.config.enableWebConsole) {
           sendJson(res, 404, { ok: false, error: "Web console not available" });
@@ -2801,10 +2945,29 @@ async function maybeStartHttpServer(managerOverride) {
         mark = timer.step("resolve_targets", mark);
 
         const maxChars = parseMaxChars(url.searchParams.get("maxChars"), DEFAULT_MAX_CHARS);
+        let hintOverride = null;
+        const hintParam = url.searchParams.get("hint");
+        if (hintParam) {
+          let candidate;
+          try {
+            candidate = JSON.parse(hintParam);
+          } catch {
+            recordActivityRequest("http:/extract", false, "invalid hint param (bad JSON)");
+            sendJson(res, 400, { ok: false, error: "hint param must be URL-encoded JSON" });
+            return;
+          }
+          const validation = validateHintRule(candidate, { scope: "test" });
+          if (validation.errors.length) {
+            recordActivityRequest("http:/extract", false, "invalid hint param");
+            sendJson(res, 400, { ok: false, error: "invalid hint", validation });
+            return;
+          }
+          hintOverride = candidate;
+        }
         let payload;
         try {
           payload = await runWithHangGuard("http:/extract", () =>
-            openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug)
+            openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug, { hintOverride })
           );
         } catch (error) {
           recordActivityRequest("http:/extract", false, error?.message || String(error));

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Testville Times — breaking news ticker and more</title>
+  <meta name="author" content="News Desk">
+  <meta name="description" content="Breaking news, local reporting, and a live ticker from Testville.">
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #222; line-height: 1.6; }
+    header { background: #111; color: #fff; padding: 14px 28px; }
+    header h1 { margin: 0; font-size: 1.6em; }
+    header .mast { font-size: 0.75em; color: #999; letter-spacing: 2px; text-transform: uppercase; }
+    nav { background: #b3541e; padding: 8px 28px; }
+    nav a { color: #fff; margin-right: 16px; text-decoration: none; font-size: 0.9em; }
+    .ticker { background: #fffbe6; border-bottom: 2px solid #e6a700; padding: 7px 28px; font-size: 0.85em; color: #7a5d00; overflow: hidden; white-space: nowrap; }
+    .ticker b { color: #c00; }
+    .ticker span { margin-right: 40px; }
+    main { max-width: 760px; margin: 24px auto; padding: 0 20px; }
+    .lead { border-bottom: 3px solid #111; padding-bottom: 14px; margin-bottom: 18px; }
+    .lead h2 { font-size: 1.7em; margin: 6px 0; }
+    .kicker { color: #b3541e; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; font-size: 0.8em; }
+    .byline { color: #777; font-size: 0.85em; }
+    article.story { border-bottom: 1px solid #eee; padding: 14px 0; }
+    article.story h3 { margin: 4px 0; }
+    .author-box { display: flex; gap: 12px; background: #f5f5f5; border-radius: 8px; padding: 12px 14px; margin: 18px 0; font-size: 0.9em; }
+    .author-box .av { width: 42px; height: 42px; border-radius: 50%; background: #b3541e; color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: bold; }
+    .related { background: #eef4fb; padding: 14px 16px; border-radius: 8px; margin-top: 20px; }
+    footer { background: #f2f2f2; padding: 14px 28px; margin-top: 30px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Testville Times</h1>
+    <span class="mast">Independent · since 1904</span>
+  </header>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/news/">News</a>
+    <a href="#">Local</a>
+    <a href="#">Sports</a>
+    <a href="#">Business</a>
+    <a href="#">Opinion</a>
+    <a href="/chaos/">Chaos</a>
+  </nav>
+  <div class="ticker" id="ticker">
+    <b>BREAKING</b> <span id="ticker-msg">Fountain vote resumes this afternoon after overnight recount</span>
+  </div>
+
+  <main>
+    <article class="lead">
+      <p class="kicker">Local News</p>
+      <h2>Local Library Reopens After Six-Month Renovation</h2>
+      <p class="byline">By News Desk · Published 2026-08-02 · Updated 2026-08-03</p>
+      <p>TESTVILLE — The Central Testville Library reopened its doors on Monday after a six-month renovation that added a new reading hall, a children's wing, and a digital media lab.</p>
+      <p>Hundreds of residents lined up outside the century-old building for the ribbon-cutting ceremony. The mayor called the reopening "a new chapter" for the community and praised the library staff for working through the construction.</p>
+      <h3>What changed</h3>
+      <ul>
+        <li>Two new floors of reading space</li>
+        <li>A dedicated children's area with story-time rooms</li>
+        <li>A digital media lab with free computers</li>
+        <li>Extended evening hours from 8am to 10pm</li>
+      </ul>
+      <blockquote style="border-left:4px solid #b3541e;margin:14px 0;padding:8px 16px;background:#faf5ee;">"The building is newer, but the mission is the same." — Head Librarian Jane Doe</blockquote>
+      <p>The library is open Monday through Saturday from 8am to 10pm and Sundays from 10am to 6pm. Entry is free and no membership is required to browse.</p>
+    </article>
+
+    <div class="author-box">
+      <div class="av">ND</div>
+      <div><b>News Desk</b> — the collective byline of the Times newsroom. We verify twice and publish once, most of the time.</div>
+    </div>
+
+    <article class="story">
+      <p class="kicker">Environment</p>
+      <h3><a href="/readability-good/article/">City Completes Solar Streetlight Rollout on River Avenue</a></h3>
+      <p class="byline">By Mira Patel · Aug 6, 2026</p>
+      <p>The final 340 lights went live this week, finishing the pilot phase six weeks early. Public Works says the avenue is now 15% brighter and costs 40% less to run.</p>
+    </article>
+
+    <article class="story">
+      <p class="kicker">Transport</p>
+      <h3><a href="#">New East Side Bridge Clears Final Inspection</a></h3>
+      <p class="byline">By Diego Ramos · Aug 5, 2026</p>
+      <p>Engineers signed off on the structural report Tuesday, clearing the way for the bridge to open to traffic next month — eleven months behind schedule and over budget, as tradition requires.</p>
+    </article>
+
+    <article class="story">
+      <p class="kicker">Community</p>
+      <h3><a href="#">Market Vendors Report Record Summer Crowds</a></h3>
+      <p class="byline">By Aisha Khan · Aug 4, 2026</p>
+      <p>Sunday footfall at the River Avenue market hit 18,000, a record. Vendors credit the good weather, the street art, and, inexplicably, the geese.</p>
+    </article>
+
+    <section class="related">
+      <h3>More from the Times</h3>
+      <ul>
+        <li><a href="/news/">City Announces New Park Opening Next Month</a></li>
+        <li><a href="/post/">Why Test Pages Matter</a></li>
+        <li><a href="/live/">Live: council meeting day</a></li>
+        <li><a href="/">Back to home</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>Testville Times · news@testvilletimes.example · © 2026</footer>
+
+  <script>
+    // Simulated breaking-news ticker that rotates headlines.
+    (function () {
+      var headlines = [
+        'Fountain vote resumes this afternoon after overnight recount',
+        'Heat advisory issued for Friday — city opens cooling centers',
+        'Drone bread deliveries continue; origin still unknown',
+        'River levels stable after overnight rain',
+        'Geese relocate to the new fountain plaza, officials confirm'
+      ];
+      var i = 0;
+      var el = document.getElementById('ticker-msg');
+      setInterval(function () {
+        i = (i + 1) % headlines.length;
+        el.textContent = headlines[i];
+      }, 4000);
+    })();
+  </script>
+</body>
+</html>

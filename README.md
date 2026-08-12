@@ -167,9 +167,11 @@ search engines and circuit breakers, runtime stats, recent errors, and the
 parsed environment config (defaults / env / effective). The **Manage** tab
 lists every supported env variable with its default, current `.env` value, and
 live effective value, plus whether it hot-applies or needs a container
-recreate. The **VNC** control opens the live browser screen via noVNC (the
-display stack starts at boot when `ENABLE_VNC=1`; runtime enable/disable
-ships in a later phase).
+recreate. The **Domain hints** tab lists, edits, and creates extraction hints
+with live validation and test-before-save (run a candidate hint against a real
+page before committing it). The **VNC** control opens the live browser screen
+via noVNC (the display stack starts at boot when `ENABLE_VNC=1`; runtime
+enable/disable ships in a later phase).
 
 `/ui` and `/dashboard` are aliases. Disable with `ENABLE_WEB_CONSOLE=0`.
 

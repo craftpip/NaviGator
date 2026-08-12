@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Testville Ledger — a blog that feels real</title>
+  <meta name="description" content="Long-form essays, tutorials, and opinion from Testville's busiest writers.">
+  <style>
+    body { font-family: Georgia, 'Times New Roman', serif; margin: 0; color: #222; background: #fcfcf7; line-height: 1.65; }
+    header.site { background: #2b2b2b; color: #fff; padding: 18px 28px; }
+    header.site h1 { margin: 0; font-size: 1.7em; font-style: italic; }
+    nav { background: #fff; border-bottom: 1px solid #e2e2da; padding: 10px 28px; font-family: Arial, sans-serif; font-size: 0.9em; }
+    nav a { color: #555; margin-right: 18px; text-decoration: none; }
+    nav a:hover { color: #b3541e; }
+    .layout { max-width: 1000px; margin: 24px auto; padding: 0 20px; display: flex; gap: 30px; }
+    .content { flex: 1; min-width: 0; }
+    .sidebar { width: 260px; flex-shrink: 0; font-family: Arial, sans-serif; font-size: 0.9em; }
+    .featured { background: #fff; border: 1px solid #e2e2da; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .featured .tag { background: #b3541e; color: #fff; font-size: 0.7em; padding: 3px 8px; border-radius: 3px; text-transform: uppercase; letter-spacing: 1px; }
+    article.card { background: #fff; border: 1px solid #e2e2da; border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+    article.card h2 { margin: 6px 0 4px; font-size: 1.25em; }
+    article.card .meta { color: #888; font-size: 0.82em; }
+    article.card .excerpt { margin: 8px 0; }
+    .cat { color: #b3541e; font-size: 0.8em; text-transform: uppercase; letter-spacing: 1px; }
+    .tags a { color: #6a6a6a; background: #f0f0e8; border-radius: 3px; padding: 2px 7px; margin-right: 5px; font-size: 0.8em; text-decoration: none; }
+    .sidebox { background: #fff; border: 1px solid #e2e2da; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+    .sidebox h3 { margin-top: 0; font-size: 1em; font-family: Georgia, serif; }
+    .sidebox ul { margin: 0; padding-left: 18px; }
+    .sidebox li { margin-bottom: 6px; }
+    .newsletter { background: #fff8ec; border: 1px solid #e8cf9a; border-radius: 10px; padding: 14px 16px; }
+    .newsletter input { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin: 6px 0; }
+    .newsletter button { background: #b3541e; color: #fff; border: 0; border-radius: 4px; padding: 8px 14px; cursor: pointer; }
+    .pagination { text-align: center; font-family: Arial, sans-serif; font-size: 0.9em; margin: 20px 0; }
+    .pagination a { margin: 0 8px; color: #b3541e; }
+    .popup { position: fixed; bottom: 20px; right: 20px; background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 16px 18px; width: 280px; box-shadow: 0 8px 30px rgba(0,0,0,0.2); display: none; z-index: 40; font-family: Arial, sans-serif; }
+    .popup.show { display: block; }
+    .popup h4 { margin: 0 0 6px; }
+    .popup input { width: 100%; box-sizing: border-box; padding: 7px; margin: 4px 0; border: 1px solid #ccc; border-radius: 4px; }
+    .popup button { background: #b3541e; color: #fff; border: 0; border-radius: 4px; padding: 7px 12px; cursor: pointer; }
+    .popup .close { float: right; cursor: pointer; color: #999; }
+    footer { border-top: 1px solid #e2e2da; margin-top: 30px; padding: 16px 28px; font-family: Arial, sans-serif; font-size: 0.8em; color: #777; text-align: center; }
+  </style>
+</head>
+<body>
+  <header class="site"><h1>The Testville Ledger</h1></header>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/blog/">Latest</a>
+    <a href="#">Essays</a>
+    <a href="#">Tutorials</a>
+    <a href="#">Opinion</a>
+    <a href="#">About</a>
+    <a href="#">Contact</a>
+  </nav>
+
+  <div class="layout">
+    <div class="content">
+      <div class="featured">
+        <span class="tag">Featured essay</span>
+        <h2><a href="/blog/article/">The Year I Stopped Clicking "Accept"</a></h2>
+        <p class="meta">By Maya Chen · Aug 10, 2026 · 12 min read</p>
+        <p>A year spent refusing every cookie banner, every newsletter popup, and every "one quick question" survey — and what it taught me about the shape of the modern web.</p>
+        <a href="/blog/article/">Continue reading →</a>
+      </div>
+
+      <article class="card">
+        <span class="cat">Tutorial</span>
+        <h2><a href="/blog/article/">Build a To-Do App in 200 Lines (You Won't Need a Framework)</a></h2>
+        <p class="meta">By Dev O'Brien · Aug 8, 2026 · 9 min read</p>
+        <p class="excerpt">Before you reach for the latest 400KB dependency, consider this: a functional to-do list is just an array and a render function. We walk through it with nothing but vanilla JavaScript.</p>
+        <div class="tags"><a href="#">vanilla-js</a> <a href="#">beginner</a> <a href="#">dom</a></div>
+      </article>
+
+      <article class="card">
+        <span class="cat">Opinion</span>
+        <h2><a href="/blog/article/">Geese Are Plotting Something, and the Council Knows</a></h2>
+        <p class="meta">By Opal Reyes · Aug 5, 2026 · 6 min read</p>
+        <p class="excerpt">The fountain debate. The missing bread. The suspicious alignment of the birds on River Avenue. Coincidence? I don't think so, and neither should you.</p>
+        <div class="tags"><a href="#">testville</a> <a href="#">geese</a> <a href="#">satire</a></div>
+      </article>
+
+      <article class="card">
+        <span class="cat">Tutorial</span>
+        <h2><a href="/blog/article/">Reading a Payslip: What Each Line Actually Means</a></h2>
+        <p class="meta">By Anika Rao · Aug 2, 2026 · 11 min read</p>
+        <p class="excerpt">Gross. Net. Provident fund. The mystery deductions. We translate the entire document into plain English so you can finally understand where your money goes.</p>
+        <div class="tags"><a href="#">finance</a> <a href="#">guide</a></div>
+      </article>
+
+      <article class="card">
+        <span class="cat">Essay</span>
+        <h2><a href="/blog/article/">On Keeping a Notebook in the Age of Everything</a></h2>
+        <p class="meta">By Tomas Lindqvist · Jul 29, 2026 · 8 min read</p>
+        <p class="excerpt">Paper doesn't update, doesn't ping, and doesn't need a subscription. A meditation on the last offline tool most of us still own.</p>
+        <div class="tags"><a href="#">analog</a> <a href="#">mindfulness</a></div>
+      </article>
+
+      <div class="pagination">
+        <a href="#">« Newer</a>
+        <a href="#"><b>1</b></a>
+        <a href="#">2</a>
+        <a href="#">3</a>
+        <a href="#">4</a>
+        <a href="#">Older »</a>
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <div class="sidebox">
+        <h3>About the Ledger</h3>
+        <p>Independent writing from Testville since 2019. No paywalls, no trackers, no geese — we checked.</p>
+      </div>
+      <div class="sidebox">
+        <h3>Recent posts</h3>
+        <ul>
+          <li><a href="/blog/article/">The Year I Stopped Clicking "Accept"</a></li>
+          <li><a href="/blog/article/">Build a To-Do App in 200 Lines</a></li>
+          <li><a href="/blog/article/">Geese Are Plotting Something</a></li>
+          <li><a href="/blog/article/">Reading a Payslip</a></li>
+          <li><a href="/blog/article/">On Keeping a Notebook</a></li>
+        </ul>
+      </div>
+      <div class="sidebox">
+        <h3>Topics</h3>
+        <div class="tags">
+          <a href="#">testville</a> <a href="#">vanilla-js</a> <a href="#">finance</a>
+          <a href="#">satire</a> <a href="#">guides</a> <a href="#">analog</a>
+          <a href="#">fountain-gate</a> <a href="#">drone-bread</a>
+        </div>
+      </div>
+      <div class="newsletter">
+        <h3>The Daily Ledger</h3>
+        <p>One email a day. Usually true. Sometimes on time.</p>
+        <input type="email" placeholder="you@example.com">
+        <button>Subscribe</button>
+      </div>
+    </aside>
+  </div>
+
+  <div class="popup" id="nl-popup">
+    <span class="close" id="nl-close">✕</span>
+    <h4>Wait, before you go…</h4>
+    <p>Get the Daily Ledger — one email, usually true, sometimes on time.</p>
+    <input type="email" placeholder="you@example.com">
+    <button>Subscribe free</button>
+    <p style="font-size:0.75em;color:#999;">(Simulated exit-intent popup)</p>
+  </div>
+
+  <footer>The Testville Ledger · © 2026 · written by people, edited by people</footer>
+
+  <script>
+    // Unpredictable: exit-intent popup after a random delay (60% chance)
+    if (Math.random() < 0.6) {
+      setTimeout(function () { document.getElementById('nl-popup').classList.add('show'); }, 3000 + Math.random() * 4000);
+    }
+    document.getElementById('nl-close').onclick = function () {
+      document.getElementById('nl-popup').classList.remove('show');
+    };
+  </script>
+</body>
+</html>

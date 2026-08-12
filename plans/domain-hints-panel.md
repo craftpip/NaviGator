@@ -2,22 +2,22 @@
 
 ## Plan Status
 
-**Status: NOT STARTED** — created 2026-08-12. No hint-management API exists today: the
-only writers of `domain-hints.json` are humans editing the file by hand, and the only
-read paths are `getDomainHints()` (load) and `findDomainHint()` (match). There is no
-`/console/hints` route, no `Hints` mode in the console (`modeFromPath` at
-`web-console/src/main.jsx:100` knows only `status`/`manage`/`tools`/`keys`), and
-`clearDomainHintCache()` has zero callers.
+**Status: IMPLEMENTED** — created 2026-08-12. All seven checklist items done. The
+console has a Domain hints view (`/console/api/hints`), the `/console/api/hints` REST API is
+live behind `enableWebConsole`, `/extract?hint=` enables test-before-save, and section
+selectors that match 0 elements surface a `⚠` warning in the output. Panel saves are
+atomic + `.bak` + cache-cleared (live without restart). Absorbed into `AGENTS.md`
+Domain Hints Workflow §Panel-first workflow.
 
 ### Checklist
 
-- [ ] 1. Add `validateHintRule()` + `saveDomainHints()` to `src/domain-hints.js` (port validation from `tests/domain-hints.test.js`).
-- [ ] 2. Add `hint` override param to `GET /extract` (test-before-save) and thread it through `openTargetsParallel()` → `browserOpenAndExtract()`.
-- [ ] 3. Add `/console/hints` GET list + validate + create + update endpoints in `src/mcp-server.js`, gated by `enableWebConsole`.
-- [ ] 4. Add `hints` mode to the console: nav button, `HintsView` list, `HintEditor` (Form+JSON), `HintTestPanel` (live browser test).
-- [ ] 5. Rebuild console (`npm run console:build`), lint, run tests.
-- [ ] 6. Update `AGENTS.md` Domain Hints Workflow, `docs/domain-hints.md`, README.
-- [ ] 7. Live verification against the container (create → validate → test-before-save → save → extract without restart → update → cleanup).
+- [x] 1. Add `validateHintRule()` + `saveDomainHints()` to `src/domain-hints.js` (port validation from `tests/domain-hints.test.js`).
+- [x] 2. Add `hint` override param to `GET /extract` (test-before-save) and thread it through `openTargetsParallel()` → `browserOpenAndExtract()`.
+- [x] 3. Add `/console/api/hints` GET list + validate + create + update endpoints in `src/mcp-server.js`, gated by `enableWebConsole`.
+- [x] 4. Add `hints` mode to the console: nav button, `HintsView` list, `HintEditor` (Form+JSON), `HintTestPanel` (live browser test).
+- [x] 5. Rebuild console (`npm run console:build`), lint, run tests.
+- [x] 6. Update `AGENTS.md` Domain Hints Workflow, `docs/domain-hints.md`, README.
+- [x] 7. Live verification against the container (create → validate → test-before-save → save → extract without restart → update → cleanup).
 
 ---
 
@@ -32,7 +32,7 @@ read paths are `getDomainHints()` (load) and `findDomainHint()` (match). There i
 
 ## 2. Goal
 
-A new **Domain Hints** view in the web console (`/console/hints`) that replaces the
+A new **Domain Hints** view in the web console (`/console/api/hints`) that replaces the
 hand-editing workflow (`edit domain-hints.json` → `docker cp` → `docker restart` →
 `curl /extract`). From the panel an operator can:
 
@@ -111,10 +111,10 @@ fresh result.
 
 | Method & Path | Body / Params | Response |
 |---|---|---|
-| `GET /console/hints` | — | `{ ok, hintsPath, count, hints: [...] }` — the full ordered list |
-| `POST /console/hints/validate` | `{ hint }` | `{ ok, valid, errors: [{field, message}], warnings: [] }` — pure validation, no write, no navigation |
-| `POST /console/hints` | `{ hint }` | validate → duplicate check → append → save → `{ ok, index, hint, hintsPath }` |
-| `PUT /console/hints/:index` | `{ hint }` | validate → duplicate check excluding self → replace → save → `{ ok, index, hint, hintsPath }` |
+| `GET /console/api/hints` | — | `{ ok, hintsPath, count, hints: [...] }` — the full ordered list |
+| `POST /console/api/hints/validate` | `{ hint }` | `{ ok, valid, errors: [{field, message}], warnings: [] }` — pure validation, no write, no navigation |
+| `POST /console/api/hints` | `{ hint }` | validate → duplicate check → append → save → `{ ok, index, hint, hintsPath }` |
+| `PUT /console/api/hints/:index` | `{ hint }` | validate → duplicate check excluding self → replace → save → `{ ok, index, hint, hintsPath }` |
 | `GET /extract` | existing + `hint=<urlencoded-json>` + `bypassCache=1` | unchanged markdown response; candidate hint applied for this request only |
 
 Gating: same guard used by `/console/config`, `/console/api-keys`, `/console/logs`
@@ -197,7 +197,7 @@ reusable, runtime-safe functions (jsdom is a runtime dependency, see `package.js
 
 Note: `getDomainHints()` filters out entries without a `string` domain at load
 (`src/domain-hints.js:72`) — a broken entry written by a future non-panel process
-would silently vanish from matching. The panel's `GET /console/hints` reads the **raw**
+would silently vanish from matching. The panel's `GET /console/api/hints` reads the **raw**
 loaded file (not the filtered cache) so broken entries still appear in the list and can
 be opened and fixed in the editor, instead of hiding them.
 
@@ -207,7 +207,7 @@ be opened and fixed in the editor, instead of hiding them.
 
 ### 8.1 Navigation
 
-- Add `hints` mode: `modeFromPath` (`/console/hints`) + `pathForMode` (lines 100-112).
+- Add `hints` mode: `modeFromPath` (`/console/api/hints`) + `pathForMode` (lines 100-112).
 - New nav button **Domain hints** in `Layout`'s `.mode-switch` (line 159-186), placed
   after **Manage**.
 - Mode is rendered like the other views inside `App`'s switch; the polled telemetry
@@ -227,7 +227,7 @@ be opened and fixed in the editor, instead of hiding them.
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Rows from `GET /console/hints`: index, domain, pageType, pathPattern (mono), comment,
+- Rows from `GET /console/api/hints`: index, domain, pageType, pathPattern (mono), comment,
   testUrls count.
 - Row actions: **Test** (opens the editor with the testing panel for the *saved* hint);
   **Edit** (opens the editor pre-filled with the hint). Header: **+ New hint** and a
@@ -273,9 +273,9 @@ left, live browser output on the right.
   - Flags: 4 checkboxes (`authWall`, `visualOnly`, `botProtected`, `requiresChromium`).
 - **JSON** — raw textarea of the current hint (`JSON.stringify(hint, null, 2)`),
   round-trips with the Form tab; switching tabs re-parses and re-validates.
-- **Actions:** **Validate** → `POST /console/hints/validate`, inline field-level errors
-  (Save is blocked while errors exist). **Save** → `POST /console/hints` (new) or
-  `PUT /console/hints/:index` (edit) → refresh list, close. **Cancel** → discard.
+- **Actions:** **Validate** → `POST /console/api/hints/validate`, inline field-level errors
+  (Save is blocked while errors exist). **Save** → `POST /console/api/hints` (new) or
+  `PUT /console/api/hints/:index` (edit) → refresh list, close. **Cancel** → discard.
 
 **Right pane — `HintTestPanel`:** a dedicated component that runs the current
 candidate hint (form state, not the saved file) against the real browser:
@@ -330,7 +330,7 @@ automatically.
 3. `src/mcp-server.js`:
    - `openTargetsParallel(..., opts)` — forward `hintOverride`, honor `bypassCache`.
    - `/extract` handler — parse + validate `hint`, pass through (§6.1).
-   - New `/console/hints` routes (§5): GET list, POST validate, POST create, PUT update —
+   - New `/console/api/hints` routes (§5): GET list, POST validate, POST create, PUT update —
      with `enableWebConsole` gating and save-time duplicate check.
 
 ### Console
@@ -361,7 +361,7 @@ automatically.
    cache (subsequent `getDomainHints` re-reads), and errors cleanly on `/dev/null`.
 
 ### HTTP API tests (`tests/domain-hints-api.test.js`, temp hints file)
-4. `GET /console/hints` returns the ordered list; 403 when console disabled.
+4. `GET /console/api/hints` returns the ordered list; 403 when console disabled.
 5. Create → appended at end; duplicate key → 400 naming the collision; invalid selector → 400.
 6. Update replaces in place; out-of-range index → 400.
 7. `/extract?hint=` returns validation 400 for a bad candidate and applies a good
@@ -371,7 +371,7 @@ automatically.
 9. `npm run lint` clean; `npm run console:build` succeeds.
 
 ### Live verification
-1. Open `/console/hints`; confirm list matches `domain-hints.json`.
+1. Open `/console/api/hints`; confirm list matches `domain-hints.json`.
 2. Create a hint for `example.com` with `waitForSelector: "p"` — validation clean,
    duplicate-free, appended to the file.
 3. In the two-pane editor, **Run test** against `https://example.com` before saving →

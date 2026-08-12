@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import logo from "./navigator.png";
@@ -90,11 +90,33 @@ function classifyError(entry) {
       : "System";
   return { family, expected, critical: !expected && family === "System" };
 }
+function errorLogKey(entry) {
+  const firstLine = String(entry?.error || entry?.message || "")
+    .split("\n")[0]
+    .slice(0, 120);
+  return `${entry?.tool || ""}\u0000${firstLine}`;
+}
+function mergeErrorLogs(fileLogs, recentErrors) {
+  const seen = new Set(fileLogs.map(errorLogKey));
+  const requestErrors = (recentErrors || []).map((entry) => ({
+    ts: new Date(Date.now() - (entry.minutesAgo || 0) * 60000).toISOString(),
+    level: "request_error",
+    transport: "requestLog",
+    tool: entry.tool,
+    error: entry.error,
+  }));
+  return [...fileLogs, ...requestErrors.filter((entry) => !seen.has(errorLogKey(entry)))].sort(
+    (a, b) => String(b.ts).localeCompare(String(a.ts)),
+  );
+}
 async function request(path, options) {
   const response = await fetch(path, { cache: "no-store", ...options });
   const data = await response.json();
-  if (!response.ok || data.ok === false)
-    throw new Error(data.error || "Request failed");
+  if (!response.ok || data.ok === false) {
+    const error = new Error(data.error || "Request failed");
+    if (data.validation) error.validation = data.validation;
+    throw error;
+  }
   return data;
 }
 function modeFromPath(pathname) {
@@ -102,12 +124,21 @@ function modeFromPath(pathname) {
     return "tools";
   if (pathname === "/console/manage") return "manage";
   if (pathname === "/console/keys") return "keys";
+  if (pathname === "/console/hints" || pathname.startsWith("/console/hints/"))
+    return "hints";
   return "status";
+}
+function editorFromPath(pathname) {
+  if (pathname === "/console/hints/new") return { index: null };
+  const match = pathname.match(/^\/console\/hints\/edit\/(\d+)$/);
+  if (match) return { index: Number(match[1]) };
+  return null;
 }
 function pathForMode(mode) {
   if (mode === "tools") return "/console/tools";
   if (mode === "manage") return "/console/manage";
   if (mode === "keys") return "/console/keys";
+  if (mode === "hints") return "/console/hints";
   return "/console";
 }
 
@@ -196,6 +227,12 @@ function Layout({
                 onClick={() => setMode("keys")}
               >
                 API keys
+              </button>
+              <button
+                className={mode === "hints" ? "active" : ""}
+                onClick={() => setMode("hints")}
+              >
+                Domain hints
               </button>
             </div>
           ) : (
@@ -421,8 +458,8 @@ function RequestActivityTrend({ trend, range, error, setRange }) {
 function computeStatus(health, stats, ok) {
   const issues = [];
   let level = "ok";
-  const mark = (next, text) => {
-    issues.push({ level: next, text });
+  const mark = (next, text, extra) => {
+    issues.push({ level: next, text, ...(extra || {}) });
     if (
       { ok: 0, degraded: 1, critical: 2 }[next] >
       { ok: 0, degraded: 1, critical: 2 }[level]
@@ -446,7 +483,9 @@ function computeStatus(health, stats, ok) {
     (entry) => WEB_TOOLS.has(entry.tool) && !classifyError(entry).expected,
   );
   if (errors.length)
-    mark("degraded", `${errors.length} recent web browsing error(s)`);
+    mark("degraded", `${errors.length} recent web browsing error(s)`, {
+      detail: errors,
+    });
   return { level, issues };
 }
 
@@ -455,6 +494,7 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy, feed, trend, trendR
   const instances = stats.instances || [];
   const engines = config.engines || [];
   const state = computeStatus(health, stats, ok);
+  const [expandedIssue, setExpandedIssue] = useState(null);
   const usage = stats.usage || {};
   return (
     <>
@@ -513,11 +553,43 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy, feed, trend, trendR
           <strong>
             {state.level === "critical" ? "Action needed" : "Heads up"}
           </strong>
-          <div>
-            {state.issues
-              .slice(0, 4)
-              .map((issue) => issue.text)
-              .join(" · ")}
+          <div className="attention-items">
+            {state.issues.slice(0, 4).map((issue, index) => (
+              <div
+                className={`attention-item${issue.detail?.length ? " expandable" : ""}`}
+                key={`${issue.text}-${index}`}
+              >
+                {issue.detail?.length ? (
+                  <button
+                    className="attention-toggle"
+                    aria-expanded={expandedIssue === index}
+                    onClick={() =>
+                      setExpandedIssue(expandedIssue === index ? null : index)
+                    }
+                  >
+                    <span className="attention-caret">
+                      {expandedIssue === index ? "▾" : "▸"}
+                    </span>
+                    {issue.text}
+                  </button>
+                ) : (
+                  issue.text
+                )}
+                {expandedIssue === index && issue.detail?.length ? (
+                  <div className="attention-detail">
+                    {issue.detail.map((entry, j) => (
+                      <div className="attention-error" key={j}>
+                        <span className="attention-error-tool">{entry.tool}</span>
+                        <span className="attention-error-time">
+                          {entry.minutesAgo}m ago
+                        </span>
+                        <div className="attention-error-msg">{entry.error}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
           </div>
         </section>
       )}
@@ -2040,9 +2112,1088 @@ function Keys() {
   );
 }
 
+/* ---------- Domain hints panel ---------- */
+
+const HINT_PRIORITIES = ["high", "medium", "low"];
+const HINT_FORMATS = ["markdown", "text", "list"];
+const HINT_FLAGS = ["authWall", "visualOnly", "botProtected", "requiresChromium"];
+const HINT_FLAG_LABELS = {
+  authWall: "Auth wall",
+  visualOnly: "Visual only",
+  botProtected: "Bot protected",
+  requiresChromium: "Needs Chromium",
+};
+
+function emptyHint() {
+  return {
+    domain: "",
+    pathPattern: "/**",
+    comment: "",
+    testUrls: [],
+    waitForSelector: [],
+    skipSelectors: [],
+    preferReadability: true,
+    tableExtraction: "",
+    stabilizeStrategy: "",
+    contentSelectors: [],
+    flags: {},
+    content: { sections: [] },
+  };
+}
+
+function hintKey(hint) {
+  return `${hint?.domain || "?"} ${hint?.pathPattern || "/**"}`;
+}
+
+function hintMeta(hint) {
+  const parts = [];
+  if (hint?.pageType) parts.push(hint.pageType);
+  const sectionCount = hint?.content?.sections?.length || 0;
+  if (sectionCount) parts.push(`${sectionCount} section${sectionCount === 1 ? "" : "s"}`);
+  const flags = HINT_FLAGS.filter((flag) => hint?.flags?.[flag]);
+  if (flags.length) parts.push(`flags: ${flags.join(",")}`);
+  return parts.join(" · ");
+}
+
+async function fetchHintText(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  const body = await response.text();
+  if (response.ok) return { ok: true, text: body };
+  let error = body || `HTTP ${response.status}`;
+  let validation = null;
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed?.error) error = parsed.error;
+    validation = parsed?.validation || null;
+  } catch {
+    /* non-JSON error body */
+  }
+  return { ok: false, error, validation };
+}
+
+function HintFieldGroup({ title, accent, children }) {
+  return (
+    <fieldset className={`hint-group${accent ? " hint-group-accent" : ""}`}>
+      <legend>{title}</legend>
+      {children}
+    </fieldset>
+  );
+}
+
+function HintField({ label, meta, help, children }) {
+  return (
+    <label className="hint-field">
+      <span>
+        {label}
+        {meta ? <em className="hint-meta-badge">{meta}</em> : null}
+      </span>
+      {children}
+      {help ? <em className="hint-field-help">{help}</em> : null}
+    </label>
+  );
+}
+
+function LineListEditor({ label, values, onChange, placeholder, mono, help }) {
+  const lines = (values || []).join("\n");
+  return (
+    <label className="hint-field">
+      <span>{label}</span>
+      <textarea
+        className={mono ? "mono" : ""}
+        rows={Math.max(2, Math.min(6, (values || []).length + 1))}
+        placeholder={placeholder}
+        value={lines}
+        onChange={(event) =>
+          onChange(
+            event.target.value
+              .split("\n")
+              .map((line) => line.trim())
+              .filter(Boolean),
+          )
+        }
+      />
+      {help ? <em className="hint-field-help">{help}</em> : null}
+    </label>
+  );
+}
+
+function UrlListEditor({ label, values, onChange, meta, help }) {
+  const items = values?.length ? values : [""];
+  const setItem = (index, value) => {
+    const next = [...(values || [])];
+    while (next.length <= index) next.push("");
+    next[index] = value;
+    onChange(next.filter((item) => item.trim()));
+  };
+  const removeItem = (index) => onChange((values || []).filter((_, i) => i !== index));
+  return (
+    <div className="hint-field hint-urls">
+      <span>
+        {label}
+        {meta ? <em className="hint-meta-badge">{meta}</em> : null}
+      </span>
+      {help ? <em className="hint-field-help">{help}</em> : null}
+      {items.map((item, index) => (
+        <div className="hint-url-row" key={`${index}-${item}`}>
+          <input
+            type="url"
+            className="mono"
+            placeholder="https://example.com/page"
+            value={item}
+            onChange={(event) => setItem(index, event.target.value)}
+          />
+          {(values?.length || 0) > 1 && (
+            <button
+              type="button"
+              className="button tiny danger"
+              title="Remove this test URL"
+              onClick={() => removeItem(index)}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      ))}
+      <button type="button" className="button tiny" onClick={() => onChange([...(values || []), ""])}>
+        + Add URL
+      </button>
+    </div>
+  );
+}
+
+function FieldRowEditor({ fields, onChange }) {
+  const setField = (index, key, value) => {
+    const next = [...(fields || [])];
+    next[index] = { ...next[index], [key]: value };
+    onChange(next);
+  };
+  const removeField = (index) => onChange((fields || []).filter((_, i) => i !== index));
+  return (
+    <div className="hint-fields">
+      <div className="hint-fields-head">
+        <span>Fields</span>
+        <button
+          type="button"
+          className="button tiny"
+          onClick={() => onChange([...(fields || []), { selector: "", label: "", format: "text" }])}
+        >
+          + Add field
+        </button>
+      </div>
+      {(fields || []).map((field, index) => (
+        <div className="hint-field-row" key={index}>
+          <input
+            className="mono"
+            placeholder=".js-post-body"
+            value={field.selector || ""}
+            onChange={(event) => setField(index, "selector", event.target.value)}
+          />
+          <input
+            placeholder="label"
+            value={field.label || ""}
+            onChange={(event) => setField(index, "label", event.target.value)}
+          />
+          <select
+            value={field.format || "text"}
+            onChange={(event) => setField(index, "format", event.target.value)}
+          >
+            {HINT_FORMATS.map((format) => (
+              <option key={format} value={format}>
+                {format}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="button tiny danger" onClick={() => removeField(index)}>
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SectionRowEditor({ section, onChange, onRemove }) {
+  const set = (key, value) => onChange({ ...section, [key]: value });
+  return (
+    <div className="hint-section-row">
+      <div className="hint-section-grid">
+        <input
+          className="mono"
+          placeholder="div.content-area"
+          value={section.selector || ""}
+          onChange={(event) => set("selector", event.target.value)}
+        />
+        <input
+          placeholder="label"
+          value={section.label || ""}
+          onChange={(event) => set("label", event.target.value)}
+        />
+        <select value={section.priority || "medium"} onChange={(event) => set("priority", event.target.value)}>
+          {HINT_PRIORITIES.map((priority) => (
+            <option key={priority} value={priority}>
+              {priority}
+            </option>
+          ))}
+        </select>
+        <input
+          placeholder="item label (lists)"
+          value={section.itemLabel || ""}
+          onChange={(event) => set("itemLabel", event.target.value)}
+        />
+        <button type="button" className="button tiny danger" onClick={onRemove}>
+          ✕
+        </button>
+      </div>
+      <FieldRowEditor
+        fields={section.fields || []}
+        onChange={(fields) => set("fields", fields)}
+      />
+    </div>
+  );
+}
+
+function SectionsEditor({ sections, onChange }) {
+  const setSection = (index, section) => {
+    const next = [...(sections || [])];
+    next[index] = section;
+    onChange(next);
+  };
+  const removeSection = (index) => onChange((sections || []).filter((_, i) => i !== index));
+  return (
+    <div className="hint-field">
+      <div className="hint-field-head">
+        <span>Sections (extraction layout)</span>
+        <button
+          type="button"
+          className="button tiny"
+          onClick={() =>
+            onChange([
+              ...(sections || []),
+              { selector: "", label: "", priority: "high", fields: [] },
+            ])
+          }
+        >
+          + Add section
+        </button>
+      </div>
+      {!(sections || []).length && <p className="hint">No sections — the page uses the default Readability path.</p>}
+      {(sections || []).map((section, index) => (
+        <SectionRowEditor
+          key={index}
+          section={section}
+          onChange={(next) => setSection(index, next)}
+          onRemove={() => removeSection(index)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function HintGuide() {
+  return (
+    <details className="hint-guide">
+      <summary>How hint matching works — read before writing a path pattern</summary>
+      <div className="hint-guide-body">
+        <p>
+          A hint is selected by <b>hostname + path only</b>. Comment, page type, and
+          test URLs never affect extraction. The <b>first</b> matching hint in the
+          file wins — list specific patterns before broad ones.
+        </p>
+        <p>
+          <b>Path patterns are globs, not regexes.</b> Only two wildcards exist:{" "}
+          <code>*</code> and <code>**</code>. Everything else (<code>?</code>,{" "}
+          <code>[0-9]</code>, <code>+</code>, <code>.</code>…) is matched literally.
+          URLs are lowercased before matching, so write patterns in lowercase.
+        </p>
+        <table className="hint-guide-table">
+          <thead>
+            <tr>
+              <th>Pattern</th>
+              <th>Matches</th>
+              <th>Does NOT match</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <code>/**</code> or <code>/</code>
+              </td>
+              <td>anything</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td>
+                <code>/*</code>
+              </td>
+              <td>
+                <code>/foo</code>
+              </td>
+              <td>
+                <code>/foo/bar</code>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>/*/*</code>
+              </td>
+              <td>
+                <code>/foo/bar</code>
+              </td>
+              <td>
+                <code>/foo/bar/baz</code>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>/foo/**</code>
+              </td>
+              <td>
+                <code>/foo/bar</code>, <code>/foo/bar/baz</code>
+              </td>
+              <td>
+                <code>/foo</code>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>/foo/*</code>
+              </td>
+              <td>
+                <code>/foo/bar</code>
+              </td>
+              <td>
+                <code>/foo</code>, <code>/foo/bar/baz</code>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>/foo/bar</code>
+              </td>
+              <td>
+                <code>/foo/bar</code> only</td>
+              <td>
+                <code>/foo/BAR</code> (write lowercase)
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>/*/**</code>
+              </td>
+              <td>any path except the root <code>/</code></td>
+              <td>
+                <code>/</code>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="hint-guide-note">
+          <code>*</code> = one path segment (no <code>/</code>). <code>**</code> =
+          anything, including <code>/</code>. Trailing slashes are ignored.
+        </p>
+        <h4 className="hint-guide-subhead">What to enter in each field</h4>
+        <table className="hint-guide-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>What it does</th>
+              <th>Example</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Domain</td>
+              <td>Site the rule applies to (subdomains included)</td>
+              <td>
+                <code>github.com</code>
+              </td>
+            </tr>
+            <tr>
+              <td>Path pattern</td>
+              <td>Which URL paths on that site</td>
+              <td>
+                <code>/*/*</code> (repo pages)
+              </td>
+            </tr>
+            <tr>
+              <td>Wait for selectors</td>
+              <td>Elements that must ALL appear before extracting (SPA sites)</td>
+              <td>
+                <code>turbo-frame#repo-content-turbo-frame</code>
+              </td>
+            </tr>
+            <tr>
+              <td>Skip selectors</td>
+              <td>Noise to remove before extracting (one per line)</td>
+              <td>
+                <code>.navbox</code>, <code>.sidebar</code>
+              </td>
+            </tr>
+            <tr>
+              <td>Wait for content selectors</td>
+              <td>Waits for content to appear in these elements. Usually unneeded.</td>
+              <td>
+                <code>article</code>
+              </td>
+            </tr>
+            <tr>
+              <td>Readability</td>
+              <td>
+                on → auto article extraction (strips nav/ads); off → keep the whole
+                page
+              </td>
+              <td>
+                <code>off</code> for profiles, homepages, data tables
+              </td>
+            </tr>
+            <tr>
+              <td>Table extraction</td>
+              <td>
+                <code>Disabled</code> when tables are layout noise
+              </td>
+              <td>
+                <code>Disabled</code> on Cricbuzz
+              </td>
+            </tr>
+            <tr>
+              <td>Content sections</td>
+              <td>
+                The actual material — pick the exact containers to extract. Selectors
+                must not overlap.
+              </td>
+              <td>
+                <code>article.markdown-body</code>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <h4 className="hint-guide-subhead">A complete example — GitHub repo page</h4>
+        <pre className="hint-guide-code">{`{
+  "domain": "github.com",
+  "pathPattern": "/*/*",            // repo pages, not the profile "/*"
+  "comment": "Repo — README + metadata",
+  "waitForSelector": "turbo-frame#repo-content-turbo-frame",
+  "preferReadability": false,
+  "content": {
+    "sections": [
+      { "selector": "article.markdown-body", "label": "README", "priority": "high" }
+    ]
+  }
+}`}</pre>
+        <p className="hint-guide-note">
+          The Test pane on the right runs this exact hint against a real page, so
+          you can iterate until the output is clean — no need to save first.
+        </p>
+      </div>
+    </details>
+  );
+}
+
+function Hints() {
+  const [state, setState] = useState(null);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [editor, setEditor] = useState(() => editorFromPath(location.pathname));
+  const scrollRef = useRef(0);
+  const load = async () => {
+    try {
+      const data = await request("/console/api/hints");
+      setState(data);
+      setError("");
+    } catch (err) {
+      setError(err.message || "Request failed");
+    }
+  };
+  useEffect(() => {
+    load();
+  }, []);
+  useEffect(() => {
+    const sync = () => {
+      const next = editorFromPath(location.pathname);
+      setEditor(next);
+      if (next === null) {
+        const y = scrollRef.current;
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => window.scrollTo(0, y)),
+        );
+      }
+    };
+    window.addEventListener("popstate", sync);
+    window.addEventListener("navigator:pathchange", sync);
+    return () => {
+      window.removeEventListener("popstate", sync);
+      window.removeEventListener("navigator:pathchange", sync);
+    };
+  }, []);
+  const openEditor = (index) => {
+    scrollRef.current = window.scrollY;
+    const path = index === null ? "/console/hints/new" : `/console/hints/edit/${index}`;
+    if (location.pathname !== path) window.history.pushState({}, "", path);
+    setEditor({ index });
+  };
+  const closeEditor = (reload) => {
+    setEditor(null);
+    if (location.pathname !== "/console/hints")
+      window.history.replaceState({}, "", "/console/hints");
+    if (reload) load();
+    const y = scrollRef.current;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => window.scrollTo(0, y)),
+    );
+  };
+  const editingHint =
+    editor === null
+      ? null
+      : editor.index === null
+        ? emptyHint()
+        : state?.hints?.[editor.index];
+  useEffect(() => {
+    if (editor && editor.index !== null && state && editingHint === undefined) {
+      setEditor(null);
+      if (location.pathname !== "/console/hints")
+        window.history.replaceState({}, "", "/console/hints");
+    }
+  }, [editor, state, editingHint]);
+  const q = query.trim().toLowerCase();
+  const rows = (state?.hints || [])
+    .map((hint, index) => ({ index, hint }))
+    .filter(({ hint }) => {
+      if (!q) return true;
+      const haystack = `${hint.domain} ${hint.pathPattern} ${hint.pageType} ${hint.comment}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  if (editor && state && editingHint !== undefined && editingHint !== null) {
+    return (
+      <HintEditorPane
+        key={editor.index === null ? "new" : editor.index}
+        index={editor.index}
+        initial={editingHint}
+        onClose={() => closeEditor(false)}
+        onSaved={() => closeEditor(true)}
+      />
+    );
+  }
+  return (
+    <section className="panel hints">
+      <h2>
+        [ Domain hints — extraction rules ]{" "}
+        <span className="sub">
+          {state ? `${state.hintsPath} · ${state.count} hint${state.count === 1 ? "" : "s"}` : "loading…"}
+        </span>
+      </h2>
+      <HintGuide />
+      <div className="manage-toolbar">
+        <input
+          className="manage-search"
+          type="search"
+          placeholder="Search domains, paths, page types, comments…"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <button
+          className="button"
+          onClick={() => openEditor(null)}
+        >
+          + New hint
+        </button>
+      </div>
+      {error ? (
+        <Empty>{error}</Empty>
+      ) : !state ? (
+        <Empty>Loading hints…</Empty>
+      ) : (
+        <div className="hints-list">
+          <div className="hints-row hints-heading">
+            <span>#</span>
+            <span>Domain</span>
+            <span>Page type</span>
+            <span>Path</span>
+            <span>Comment</span>
+            <span>Test</span>
+            <span />
+          </div>
+          {rows.length ? (
+            rows.map(({ index, hint }) => (
+              <div className="hints-row" key={index}>
+                <span className="mono">{index}</span>
+                <b className="mono">{hint.domain || "—"}</b>
+                <span>{hint.pageType || "—"}</span>
+                <code>{hint.pathPattern || "/**"}</code>
+                <span className="hints-comment" title={hint.comment || ""}>
+                  {hint.comment || "—"}
+                </span>
+                <span>
+                  {hint.testUrls?.length
+                    ? `${hint.testUrls.length} url${hint.testUrls.length === 1 ? "" : "s"}`
+                    : "—"}
+                </span>
+                <span className="hints-actions">
+                  <button
+                    className="button tiny"
+                    title="Edit this hint"
+                    onClick={() => openEditor(index)}
+                  >
+                    Edit
+                  </button>
+                </span>
+              </div>
+            ))
+          ) : (
+            <Empty>No hints match your search.</Empty>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HintEditorPane({ index, initial, onClose, onSaved }) {
+  const [tab, setTab] = useState("form");
+  const [hint, setHint] = useState(initial);
+  const [json, setJson] = useState(JSON.stringify(initial, null, 2));
+  const [jsonError, setJsonError] = useState("");
+  const [validation, setValidation] = useState(null);
+  const [validating, setValidating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState({ kind: "", text: "" });
+  const patch = (updates) => {
+    const next = { ...hint, ...updates };
+    setHint(next);
+    setJson(JSON.stringify(next, null, 2));
+  };
+  const patchContent = (content) => patch({ content });
+  const applyJson = (text) => {
+    setJson(text);
+    setJsonError("");
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        setHint(parsed);
+        setValidation(null);
+      } else {
+        setJsonError("Must be a JSON object.");
+      }
+    } catch (err) {
+      setJsonError(err.message || "Invalid JSON.");
+    }
+  };
+  const validate = async () => {
+    setValidating(true);
+    setMessage({ kind: "", text: "" });
+    try {
+      const result = await request("/console/api/hints/validate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ hint }),
+      });
+      setValidation(result);
+      setMessage({
+        kind: result.valid ? "ok" : "err",
+        text: result.valid ? "Validation passed." : `${result.errors.length} error(s) found.`,
+      });
+    } catch (err) {
+      setMessage({ kind: "err", text: err.message });
+    } finally {
+      setValidating(false);
+    }
+  };
+  const save = async () => {
+    setSaving(true);
+    setMessage({ kind: "", text: "" });
+    try {
+      const options = {
+        method: index === null ? "POST" : "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ hint }),
+      };
+      await request(index === null ? "/console/api/hints" : `/console/api/hints/${index}`, options);
+      onSaved();
+    } catch (err) {
+      setMessage({ kind: "err", text: err.message });
+      if (err.validation) setValidation(err.validation);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const errors = validation?.errors || [];
+  const canSave = !saving && !errors.length && !jsonError;
+  const isNew = index === null;
+  return (
+    <section className="panel hints">
+      <h2>
+        [ {isNew ? "New hint" : `Edit — ${hintKey(hint)}`} ]{" "}
+        <span className="sub">
+          backend: {hintMeta(hint) || "no sections"}
+        </span>
+      </h2>
+      <div className="hints-two-pane">
+        <div className="hints-pane hints-editor-pane">
+          <div className="hint-tabs" role="tablist">
+            <button
+              className={tab === "form" ? "active" : ""}
+              role="tab"
+              onClick={() => setTab("form")}
+            >
+              Form
+            </button>
+            <button
+              className={tab === "json" ? "active" : ""}
+              role="tab"
+              onClick={() => setTab("json")}
+            >
+              JSON
+            </button>
+          </div>
+          {tab === "json" ? (
+            <label className="hint-field">
+              <span>Hint JSON</span>
+              <textarea
+                className="mono hint-json"
+                rows={20}
+                spellCheck="false"
+                value={json}
+                onChange={(event) => applyJson(event.target.value)}
+              />
+              {jsonError && <div className="field-error">{jsonError}</div>}
+            </label>
+          ) : (
+            <div className="hint-form">
+              <HintFieldGroup title="Target — which page this rule applies to">
+                <HintField
+                  label="Domain"
+                  help="Site hostname, e.g. github.com. Matches subdomains too — github.com also covers gist.github.com."
+                >
+                  <input
+                    className="mono"
+                    placeholder="example.com"
+                    value={hint.domain || ""}
+                    onChange={(event) => patch({ domain: event.target.value.trim() })}
+                  />
+                </HintField>
+                <HintField
+                  label="Path pattern"
+                  help="URL path glob, NOT a regex. /* = one segment, /** = everything, /foo/** = everything under /foo. Lowercase only. Full reference in the guide on the list page."
+                >
+                  <input
+                    className="mono"
+                    placeholder="/**"
+                    value={hint.pathPattern || ""}
+                    onChange={(event) => patch({ pathPattern: event.target.value })}
+                  />
+                </HintField>
+              </HintFieldGroup>
+              <HintFieldGroup title="Extraction options">
+                <div className="hint-options-grid">
+                  <div className="hint-option">
+                    <span className="hint-option-name">Readability</span>
+                    <label className="hint-check hint-option-check">
+                      <input
+                        type="checkbox"
+                        checked={hint.preferReadability !== false}
+                        onChange={(event) => patch({ preferReadability: event.target.checked })}
+                      />
+                      <span className="hint-option-hint">
+                        {hint.preferReadability === false
+                          ? "off → raw HTML-to-markdown keeps everything"
+                          : "on → strips nav, ads, sidebar"}
+                      </span>
+                    </label>
+                  </div>
+                  <div className="hint-option">
+                    <span className="hint-option-name">Table extraction</span>
+                    <select
+                      value={hint.tableExtraction || ""}
+                      onChange={(event) => patch({ tableExtraction: event.target.value })}
+                    >
+                      <option value="">Default</option>
+                      <option value="content">Content tables only</option>
+                      <option value="disabled">Disabled</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="hint-options-head">Page flags</div>
+                <div className="hint-flags">
+                  {HINT_FLAGS.map((flag) => (
+                    <label className="hint-check" key={flag}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(hint.flags?.[flag])}
+                        onChange={(event) => {
+                          const nextFlags = { ...(hint.flags || {}), [flag]: event.target.checked };
+                          patch({ flags: nextFlags });
+                        }}
+                      />
+                      {HINT_FLAG_LABELS[flag]}
+                    </label>
+                  ))}
+                </div>
+              </HintFieldGroup>
+              <HintFieldGroup title="Content — what actually gets extracted" accent>
+                <SectionsEditor
+                  sections={hint.content?.sections || []}
+                  onChange={(sections) => patchContent({ sections })}
+                />
+              </HintFieldGroup>
+              <HintFieldGroup title="Page load">
+                <LineListEditor
+                  label="Wait for selectors (one per line)"
+                  help="Waits until ALL of these elements appear (up to 20s) before extracting. Use only when the content loads after the page — e.g. SPA sites."
+                  values={Array.isArray(hint.waitForSelector) ? hint.waitForSelector : hint.waitForSelector ? [hint.waitForSelector] : []}
+                  onChange={(waitForSelector) => patch({ waitForSelector })}
+                  placeholder={"turbo-frame#repo-content-turbo-frame"}
+                  mono
+                />
+                <div className="hint-option">
+                  <span className="hint-option-name">Stabilize strategy</span>
+                  <select
+                    value={hint.stabilizeStrategy || ""}
+                    onChange={(event) => patch({ stabilizeStrategy: event.target.value })}
+                  >
+                    <option value="">Default (network_idle — 500ms no network traffic)</option>
+                    <option value="network_idle">network_idle (500ms no network traffic)</option>
+                    <option value="content_idle">content_idle (waits for rendered text)</option>
+                    <option value="mutation">mutation (waits for DOM to stop changing)</option>
+                  </select>
+                  <span className="hint-option-hint">
+                    Always runs after Wait for selector (or alone when none is set).
+                    network_idle = 500ms of no network traffic · content_idle = wait
+                    for rendered text · mutation = wait for DOM changes.
+                  </span>
+                </div>
+                <LineListEditor
+                  label="Wait for content selectors (one per line)"
+                  help="Waits for content to appear in these selectors — so if the content is lazy-loaded, the page keeps waiting until it's there. Only needed when your content container isn't already covered (main, article, .content…)."
+                  values={hint.contentSelectors || []}
+                  onChange={(contentSelectors) => patch({ contentSelectors })}
+                  placeholder={"article\n[data-testid=\"content\"]"}
+                  mono
+                />
+              </HintFieldGroup>
+              <HintFieldGroup title="Selectors">
+                <LineListEditor
+                  label="Skip selectors (one per line)"
+                  help="Elements to strip before extraction — one CSS selector per line. e.g. .navbox, .sidebar"
+                  values={hint.skipSelectors || []}
+                  onChange={(skipSelectors) => patch({ skipSelectors })}
+                  placeholder={".navbox\n.sidebar"}
+                  mono
+                />
+              </HintFieldGroup>
+              <HintFieldGroup title="Testing">
+                <UrlListEditor
+                  label="Test URLs"
+                  meta="test only — no effect on extraction"
+                  help="Real https:// URLs to test this hint against. The Test pane runs them live."
+                  values={hint.testUrls || []}
+                  onChange={(testUrls) => patch({ testUrls })}
+                />
+              </HintFieldGroup>
+              <HintFieldGroup title="Notes — display only, no effect on extraction">
+                <HintField
+                  label="Comment"
+                  meta="display only"
+                  help="Human note only. What this page type is and what makes extraction tricky."
+                >
+                  <textarea
+                    rows={3}
+                    placeholder="Describe this page type and what matters for extraction (for humans only)."
+                    value={hint.comment || ""}
+                    onChange={(event) => patch({ comment: event.target.value })}
+                  />
+                </HintField>
+              </HintFieldGroup>
+            </div>
+          )}
+          {(errors.length > 0 || validation?.warnings?.length > 0) && (
+            <div className="hint-validation">
+              {errors.map((item, index) => (
+                <div className="hint-validation-error" key={`e-${index}`}>
+                  <code>{item.field || "hint"}</code> {item.message}
+                </div>
+              ))}
+              {(validation?.warnings || []).map((item, index) => (
+                <div className="hint-validation-warning" key={`w-${index}`}>
+                  <code>{item.field || "hint"}</code> {item.message}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="hints-form-actions">
+            <button className="button" disabled={validating} onClick={validate}>
+              {validating ? "Validating…" : "Validate"}
+            </button>
+            <button className="button primary" disabled={!canSave} onClick={save}>
+              {saving ? "Saving…" : isNew ? "Create hint" : "Save"}
+            </button>
+            <button className="button" disabled={saving} onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+          {message.text && <p className={`message ${message.kind}`}>{message.text}</p>}
+        </div>
+        <div className="hints-pane hints-test-pane">
+          <HintTestPanel hint={hint} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HintTestPanel({ hint }) {
+  const [testUrl, setTestUrl] = useState(hint?.testUrls?.[0] || "");
+  const [rerun, setRerun] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState(null);
+  const [showScreenshot, setShowScreenshot] = useState(false);
+  const [screenshot, setScreenshot] = useState("");
+  const runningRef = useRef(false);
+  const lastHintSigRef = useRef("");
+  const hintSig = JSON.stringify(hint);
+  const runTest = useCallback(async () => {
+    if (!testUrl || runningRef.current) return;
+    runningRef.current = true;
+    setRunning(true);
+    try {
+      const url = `/extract?url=${encodeURIComponent(testUrl)}&maxChars=8000&hint=${encodeURIComponent(JSON.stringify(hint))}`;
+      const response = await fetchHintText(url);
+      if (response.ok) {
+        const tables = (response.text.match(/^- Tables extracted: (\d+)$/gm) || []).reduce(
+          (sum, line) => sum + Number(line.match(/(\d+)/)[1]),
+          0,
+        );
+        const warnings = (response.text.match(/^[-·] ⚠ (.+)$/gm) || []).map((line) =>
+          line.replace(/^[-·] ⚠ /, ""),
+        );
+        setResult({
+          ok: true,
+          text: response.text,
+          chars: response.text.length,
+          tables,
+          warnings,
+        });
+      } else {
+        setResult({ ok: false, error: response.error, validation: response.validation, text: "" });
+      }
+    } catch (err) {
+      setResult({ ok: false, error: err.message, text: "" });
+    } finally {
+      lastHintSigRef.current = JSON.stringify(hint);
+      runningRef.current = false;
+      setRunning(false);
+    }
+  }, [hint, testUrl]);
+  useEffect(() => {
+    if (!rerun || !testUrl || runningRef.current) return undefined;
+    if (lastHintSigRef.current === hintSig) return undefined;
+    const timer = setTimeout(() => runTest(), 800);
+    return () => clearTimeout(timer);
+  }, [rerun, hintSig, testUrl, runTest]);
+  useEffect(() => {
+    if (!showScreenshot || !testUrl || !result?.ok) return undefined;
+    let cancelled = false;
+    const loadScreenshot = async () => {
+      try {
+        const response = await fetch(
+          `/screenshot?url=${encodeURIComponent(testUrl)}&format=jpeg&quality=low&fullPage=false`,
+          { cache: "no-store" },
+        );
+        const body = await response.text();
+        if (!cancelled) {
+          const match = body.match(/data:image\/[a-z0-9+.-]+;base64,[A-Za-z0-9+/=]+/);
+          setScreenshot(match ? match[0] : "");
+        }
+      } catch {
+        if (!cancelled) setScreenshot("");
+      }
+    };
+    loadScreenshot();
+    return () => {
+      cancelled = true;
+    };
+  }, [showScreenshot, testUrl, result?.ok]);
+  const warnings = result?.warnings || [];
+  return (
+    <div className="hint-test">
+      <h3 className="hint-test-head">Test on page</h3>
+      <div className="hint-test-controls">
+        <input
+          className="mono"
+          type="url"
+          placeholder="https://example.com/page"
+          value={testUrl}
+          onChange={(event) => {
+            setTestUrl(event.target.value);
+            setResult(null);
+            setScreenshot("");
+          }}
+        />
+        <button className="button primary" disabled={!testUrl || running} onClick={runTest}>
+          {running ? "Running…" : "▶ Run test"}
+        </button>
+      </div>
+      <label className="hint-check">
+        <input type="checkbox" checked={rerun} onChange={(event) => setRerun(event.target.checked)} />
+        Auto re-run on edit
+      </label>
+      {!testUrl && <p className="hint">Add a test URL to run the hint against a real page.</p>}
+      {result && (
+        <div className="hint-test-result">
+          <div className={`hint-test-status ${result.ok ? "ok" : "error"}`}>
+            {result.ok
+              ? `✓ ${result.chars} chars · ${result.tables} table${result.tables === 1 ? "" : "s"} · source: override`
+              : `✕ ${result.error}`}
+          </div>
+          {!result.ok && result.validation?.errors?.length > 0 && (
+            <div className="hint-validation">
+              {result.validation.errors.map((item, index) => (
+                <div className="hint-validation-error" key={index}>
+                  <code>{item.field || "hint"}</code> {item.message}
+                </div>
+              ))}
+            </div>
+          )}
+          {warnings.length > 0 && (
+            <div className="hint-zero-match">
+              {warnings.map((warning, index) => (
+                <div key={index}>
+                  ⚠ {warning} — check the selector against the page structure.
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="hint-output-tabs">
+            <button
+              className={!showScreenshot ? "active" : ""}
+              onClick={() => setShowScreenshot(false)}
+            >
+              Text
+            </button>
+            <button
+              className={showScreenshot ? "active" : ""}
+              onClick={() => setShowScreenshot(true)}
+            >
+              Screenshot
+            </button>
+          </div>
+          {showScreenshot ? (
+            screenshot ? (
+              <img className="preview" src={screenshot} alt="Page screenshot" />
+            ) : (
+              <p className="hint">No screenshot available.</p>
+            )
+          ) : (
+            <pre className="hint-output">{result.text}</pre>
+          )}
+        </div>
+      )}
+      <p className="note">
+        Runs against the real browser with this candidate hint (not the saved file).
+      </p>
+    </div>
+  );
+}
+
 function App() {
-  const [mode, setMode] = useState(() => modeFromPath(location.pathname));
-  const [trendRange, setTrendRange] = useState(() => {
+  const [mode, setMode] = useState(() => modeFromPath(location.pathname));  const [trendRange, setTrendRange] = useState(() => {
     const range = new URLSearchParams(location.search).get("range");
     return ["minutes", "hour", "day", "week"].includes(range) ? range : "hour";
   });
@@ -2061,7 +3212,10 @@ function App() {
   const feedOpsSince = useRef(0);
   const navigate = (next) => {
     const path = pathForMode(next);
-    if (location.pathname !== path) window.history.pushState({}, "", path);
+    if (location.pathname !== path) {
+      window.history.pushState({}, "", path);
+      window.dispatchEvent(new Event("navigator:pathchange"));
+    }
     setMode(next);
   };
   const updateTrendQuery = (nextRange) => {
@@ -2102,7 +3256,7 @@ function App() {
         health,
         stats,
         config,
-        logs: logPayload.entries || [],
+        logs: mergeErrorLogs(logPayload.entries || [], stats.requests?.recentErrors || []),
         ok: true,
       });
       setHistory((current) => ({
@@ -2199,6 +3353,8 @@ function App() {
         <Tools />
       ) : mode === "keys" ? (
         <Keys />
+      ) : mode === "hints" ? (
+        <Hints />
       ) : (
         <StatusView
           snapshot={snapshot}

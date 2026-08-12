@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PremiumBeat — A Paywalled Article</title>
+  <style>
+    body { font-family: Georgia, serif; margin: 0; color: #222; line-height: 1.6; }
+    header { background: #111; color: #fff; padding: 16px 24px; }
+    header h1 { margin: 0; font-size: 1.4em; }
+    main { max-width: 720px; margin: 30px auto; padding: 0 20px; position: relative; }
+    .locked { filter: blur(6px); user-select: none; pointer-events: none; opacity: 0.7; }
+    .paywall { position: absolute; top: 140px; left: 0; right: 0; background: #fff; border: 2px solid #b3541e; border-radius: 10px; padding: 26px; text-align: center; box-shadow: 0 6px 30px rgba(0,0,0,0.25); }
+    .paywall h2 { margin-top: 0; color: #b3541e; }
+    .paywall button { background: #b3541e; color: #fff; border: 0; border-radius: 6px; padding: 10px 22px; font-size: 15px; cursor: pointer; }
+    .free { font-size: 0.9em; color: #777; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+    footer { background: #f2f2f2; padding: 14px 24px; margin-top: 40px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header><h1>PremiumBeat</h1><span style="font-size:12px;color:#aaa;">independent deep reporting</span></header>
+  <main>
+    <p class="free">This is the free preview paragraph. Paywalled outlets show you a teaser, then block the rest with a subscription prompt like the one below.</p>
+
+    <div id="article-body" class="locked">
+      <h1>The Hidden Cost of Cheap Solar Panels</h1>
+      <p>Three years after Testville switched its streetlights to solar, a new report reveals that the bargain panels bought in the first phase are failing at twice the expected rate.</p>
+      <h2>The investigation</h2>
+      <p>PremiumBeat reviewed maintenance logs for 900 of the 4,300 installed units. Among first-phase panels from the low-cost supplier, 14% needed replacement within 24 months — versus 6% for the premium brand.</p>
+      <h2>What the city says</h2>
+      <p>Public Works insists the warranty covers the failures, but residents are worried about the $400,000 replacement bill that could land on the next budget cycle. Full subscriber analysis includes the complete dataset table and interviews with three former inspectors.</p>
+    </div>
+
+    <div class="paywall" id="paywall">
+      <h2>This story is for subscribers</h2>
+      <p>Subscribe for $9/month to read the full article, including the failure-rate dataset table and inspector interviews.</p>
+      <button id="unlock-btn">I'm a subscriber — reveal article</button>
+      <p style="font-size:12px;color:#888;">(Simulated: clicking reveals the article text.)</p>
+    </div>
+  </main>
+  <footer>PremiumBeat · contact@premiumbeat.example · © 2026</footer>
+  <script>
+    document.getElementById('unlock-btn').addEventListener('click', function () {
+      document.getElementById('article-body').classList.remove('locked');
+      var pw = document.getElementById('paywall');
+      pw.style.display = 'none';
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SlowServe — a page that loads in stages</title>
+  <meta name="description" content="Content appears progressively, like a slow backend, to test extractor timeouts.">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; color: #222; background: #fff; }
+    header { background: #7c2d12; color: #fff; padding: 16px 24px; }
+    main { max-width: 680px; margin: 20px auto; padding: 0 18px; }
+    .loader { display: flex; align-items: center; gap: 10px; color: #94a3b8; margin: 14px 0; }
+    .spinner { width: 16px; height: 16px; border: 2px solid #ddd; border-top-color: #7c2d12; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .stage { display: none; }
+    .stage.show { display: block; }
+    .stage h2 { margin-top: 24px; }
+    footer { text-align: center; color: #aaa; font-size: 12px; padding: 20px; }
+    .countdown { position: fixed; top: 12px; right: 16px; background: #7c2d12; color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <header><strong>SlowServe</strong> — server feels slow, on purpose</header>
+  <div class="countdown" id="timer">—</div>
+  <main>
+    <h1>Performance Report — July 2026</h1>
+    <p>This page deliberately reveals its sections in stages with random delays, mimicking a slow or overloaded backend. A fast extractor might capture only the first section; a patient one waits for everything.</p>
+
+    <div class="loader" id="loader1"><div class="spinner"></div> loading section 1…</div>
+    <section class="stage" id="stage1">
+      <h2>Summary</h2>
+      <p>The service handled 2.1 million requests in July with a 99.4% success rate. Median latency was 210 ms, up from 190 ms the month before. The biggest contributor was the new image pipeline, which now accounts for 40% of all traffic.</p>
+    </section>
+
+    <div class="loader" id="loader2"><div class="spinner"></div> loading section 2…</div>
+    <section class="stage" id="stage2">
+      <h2>Regional breakdown</h2>
+      <ul>
+        <li>North region: 720,000 requests, 99.6% success</li>
+        <li>South region: 640,000 requests, 99.2% success</li>
+        <li>East region: 410,000 requests, 99.1% success</li>
+        <li>West region: 330,000 requests, 99.7% success</li>
+      </ul>
+    </section>
+
+    <div class="loader" id="loader3"><div class="spinner"></div> loading section 3…</div>
+    <section class="stage" id="stage3">
+      <h2>Incidents</h2>
+      <p>Three incidents were recorded in July. One cache outage lasted 42 minutes, one database migration overran by two hours, and one load balancer was rebooted "as a precaution" after an unexplained packet storm. The packet storm remains unexplained.</p>
+    </section>
+
+    <div class="loader" id="loader4"><div class="spinner"></div> loading section 4…</div>
+    <section class="stage" id="stage4">
+      <h2>Next steps</h2>
+      <table style="border-collapse:collapse;width:100%">
+        <thead><tr><th style="border:1px solid #ccc;padding:8px">Action</th><th style="border:1px solid #ccc;padding:8px">Owner</th><th style="border:1px solid #ccc;padding:8px">Due</th></tr></thead>
+        <tbody>
+          <tr><td style="border:1px solid #ccc;padding:8px">Move images to CDN</td><td style="border:1px solid #ccc;padding:8px">Platform team</td><td style="border:1px solid #ccc;padding:8px">Sep 1</td></tr>
+          <tr><td style="border:1px solid #ccc;padding:8px">Database read replicas</td><td style="border:1px solid #ccc;padding:8px">Data team</td><td style="border:1px solid #ccc;padding:8px">Oct 15</td></tr>
+          <tr><td style="border:1px solid #ccc;padding:8px">Investigate the packet storm</td><td style="border:1px solid #ccc;padding:8px">??</td><td style="border:1px solid #ccc;padding:8px">?</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <footer>SlowServe · deliberately slow · © 2026</footer>
+
+  <script>
+    (function () {
+      var t0 = Date.now();
+      var timer = document.getElementById('timer');
+      setInterval(function () {
+        timer.textContent = ((Date.now() - t0) / 1000).toFixed(1) + 's';
+      }, 100);
+
+      var stages = [
+        { loader: 'loader1', stage: 'stage1', delay: 500 },
+        { loader: 'loader2', stage: 'stage2', delay: 1800 },
+        { loader: 'loader3', stage: 'stage3', delay: 3600 },
+        { loader: 'loader4', stage: 'stage4', delay: 6000 }
+      ];
+      var wait = 0;
+      stages.forEach(function (s) {
+        wait += s.delay;
+        setTimeout(function () {
+          document.getElementById(s.loader).style.display = 'none';
+          document.getElementById(s.stage).classList.add('show');
+        }, wait);
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SlowScroller — lazy loading demo</title>
+  <meta name="description" content="Images and content that only load when you scroll to them.">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; color: #222; background: #fff; }
+    header { background: #14532d; color: #fff; padding: 16px 24px; }
+    main { max-width: 700px; margin: 20px auto; padding: 0 18px; }
+    .img-ph { height: 320px; border-radius: 10px; margin: 18px 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; background: #e2e8f0; color: #64748b; transition: background 0.4s, color 0.4s; }
+    .img-ph.loaded { color: #fff; }
+    .img-ph[data-name="sunset"] { background: #b45309; }
+    .img-ph[data-name="bridge"] { background: #1d4ed8; }
+    .img-ph[data-name="park"] { background: #15803d; }
+    .img-ph[data-name="market"] { background: #be123c; }
+    .img-ph[data-name="dam"] { background: #0e7490; }
+    .img-ph[data-name="field"] { background: #a16207; }
+    .fade { opacity: 0; transform: translateY(12px); transition: opacity 0.6s, transform 0.6s; margin: 14px 0; }
+    .fade.in { opacity: 1; transform: none; }
+    .load-note { text-align: center; color: #94a3b8; font-size: 13px; padding: 10px; }
+    footer { text-align: center; color: #aaa; font-size: 12px; padding: 20px; }
+  </style>
+</head>
+<body>
+  <header><strong>SlowScroller</strong> — nothing loads until you look at it</header>
+  <main>
+    <h1>Testville in pictures</h1>
+    <p>On this page, the first image is in the HTML. Every other image below is a placeholder until it scrolls into view — just like a real image-heavy site that lazy-loads. Paragraphs fade in as you reach them too.</p>
+
+    <div class="img-ph loaded" data-name="sunset">Image 1 — River Avenue sunset (loaded immediately)</div>
+
+    <p class="fade in">Scroll down to trigger the rest. Watch the placeholders below populate as they enter the viewport.</p>
+
+    <div class="img-ph" data-src="market">Image 2 — loading on scroll…</div>
+    <p class="fade">The weekly market fills River Avenue every Sunday. Vendors set up before dawn and pack down by early evening, and the smell of fried dough follows you all the way to the river.</p>
+
+    <div class="img-ph" data-src="bridge">Image 3 — loading on scroll…</div>
+    <p class="fade">The old iron bridge, freshly painted beige after the citywide vote. Engineers insist it is structurally sound. Residents insist it is beige.</p>
+
+    <div class="img-ph" data-src="park">Image 4 — loading on scroll…</div>
+    <p class="fade">Central Park in autumn. The oaks turn first, then the maples, then, inevitably, the geese relocate to the fountain.</p>
+
+    <div class="img-ph" data-src="dam">Image 5 — loading on scroll…</div>
+    <p class="fade">The Testville Dam, completed in 1948. It ended the spring floods and gave the town its favorite walking route on sunny days.</p>
+
+    <div class="img-ph" data-src="field">Image 6 — loading on scroll…</div>
+    <p class="fade">The sunflower fields east of town. In July they draw more visitors than the museum, and nobody minds.</p>
+
+    <div class="load-note" id="stats">0 images loaded by scroll</div>
+  </main>
+  <footer>SlowScroller · a lazy-loading test page</footer>
+
+  <script>
+    (function () {
+      var loaded = 0;
+      var stats = document.getElementById('stats');
+      var imgs = document.querySelectorAll('.img-ph[data-src]');
+      var fades = document.querySelectorAll('.fade');
+
+      if ('IntersectionObserver' in window) {
+        var io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting && e.target.classList.contains('img-ph')) {
+              loadImg(e.target);
+              io.unobserve(e.target);
+            }
+          });
+        }, { rootMargin: '200px' });
+        imgs.forEach(function (im) { io.observe(im); });
+
+        var io2 = new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) { e.target.classList.add('in'); io2.unobserve(e.target); }
+          });
+        }, { rootMargin: '100px' });
+        fades.forEach(function (f) { io2.observe(f); });
+      } else {
+        imgs.forEach(loadImg);
+        fades.forEach(function (f) { f.classList.add('in'); });
+      }
+
+      function loadImg(im) {
+        var name = im.getAttribute('data-src');
+        setTimeout(function () {
+          im.className = 'img-ph loaded';
+          im.textContent = 'Image — ' + name + ' (loaded by scroll)';
+          loaded++;
+          stats.textContent = loaded + ' image(s) loaded by scroll';
+        }, 300 + Math.random() * 700);
+      }
+    })();
+  </script>
+</body>
+</html>

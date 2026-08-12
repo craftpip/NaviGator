@@ -23,6 +23,7 @@ export default [
         localStorage: "readonly",
         MutationObserver: "readonly",
         IntersectionObserver: "readonly",
+        ResizeObserver: "readonly",
         requestAnimationFrame: "readonly",
         Element: "readonly",
         Node: "readonly",

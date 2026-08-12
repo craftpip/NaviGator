@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monthly Sales Report — Tables</title>
+  <meta name="description" content="A sample page full of HTML tables for extraction testing.">
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #222; }
+    header { background: #33475b; color: #fff; padding: 20px 30px; }
+    nav a { color: #ffd166; margin-right: 14px; text-decoration: none; }
+    main { max-width: 900px; margin: 30px auto; padding: 0 20px; }
+    table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+    th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+    th { background: #33475b; color: #fff; }
+    tr:nth-child(even) { background: #f4f7fa; }
+    h2 { margin-top: 40px; }
+    footer { background: #f2f2f2; padding: 15px 30px; margin-top: 40px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Example Test Site</h1>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/post/">Blog Post</a>
+      <a href="/profile/">Profile</a>
+      <a href="/news/">News</a>
+      <a href="/table/">Tables</a>
+      <a href="/interactive/">Interactive</a>
+      <a href="/chaos/">Chaos</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Monthly Sales Report</h1>
+    <p>July 2026 — prepared by the Data Team. This page contains several HTML tables to exercise the extractor's table parsing.</p>
+
+    <h2>Table 1: Sales by product</h2>
+    <table>
+      <thead>
+        <tr><th>Product</th><th>Category</th><th>Units sold</th><th>Revenue (USD)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Widget A</td><td>Hardware</td><td>1,240</td><td>24,800</td></tr>
+        <tr><td>Widget B</td><td>Hardware</td><td>980</td><td>29,400</td></tr>
+        <tr><td>Gadget X</td><td>Electronics</td><td>1,560</td><td>78,000</td></tr>
+        <tr><td>Gadget Y</td><td>Electronics</td><td>720</td><td>43,200</td></tr>
+        <tr><td>Gizmo Z</td><td>Accessories</td><td>2,100</td><td>12,600</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Table 2: Sales by region</h2>
+    <table>
+      <thead>
+        <tr><th>Region</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>North</td><td>45,000</td><td>52,000</td><td>61,000</td><td>58,000</td></tr>
+        <tr><td>South</td><td>32,000</td><td>35,000</td><td>40,000</td><td>44,000</td></tr>
+        <tr><td>East</td><td>28,000</td><td>31,000</td><td>33,000</td><td>36,000</td></tr>
+        <tr><td>West</td><td>50,000</td><td>48,000</td><td>55,000</td><td>63,000</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Table 3: Top customers</h2>
+    <table>
+      <thead>
+        <tr><th>Rank</th><th>Customer</th><th>Orders</th><th>Lifetime value (USD)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>Acme Corp</td><td>48</td><td>112,000</td></tr>
+        <tr><td>2</td><td>Globex Ltd</td><td>39</td><td>96,500</td></tr>
+        <tr><td>3</td><td>Initech Inc</td><td>35</td><td>84,200</td></tr>
+        <tr><td>4</td><td>Umbrella Co</td><td>22</td><td>61,300</td></tr>
+        <tr><td>5</td><td>Stark Industries</td><td>18</td><td>54,900</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Table 4: Weekly order counts</h2>
+    <table>
+      <thead>
+        <tr><th>Week</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>W1</td><td>12</td><td>15</td><td>9</td><td>18</td><td>22</td></tr>
+        <tr><td>W2</td><td>14</td><td>11</td><td>17</td><td>13</td><td>25</td></tr>
+        <tr><td>W3</td><td>10</td><td>19</td><td>8</td><td>16</td><td>20</td></tr>
+        <tr><td>W4</td><td>13</td><td>17</td><td>12</td><td>15</td><td>28</td></tr>
+      </tbody>
+    </table>
+
+    <p>Summary: total revenue for July 2026 was <strong>$188,000</strong> across 6,600 units. For more content, see <a href="/post/">the blog post</a> or <a href="/">the home page</a>.</p>
+  </main>
+
+  <footer>
+    <p>Example Test Site — made for extraction testing.</p>
+  </footer>
+</body>
+</html>

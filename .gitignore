@@ -13,3 +13,6 @@ doc/
 
 # SQLite activity database
 data/
+
+# Domain hints atomic-write backups
+domain-hints.json.bak

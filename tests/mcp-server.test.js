@@ -897,7 +897,8 @@ describe("mcp-server HTTP endpoints", () => {
       expect(status).toBe(200);
       expect(searchMod.browserOpenAndExtract).toHaveBeenCalledWith({
         url: "https://limits.example.com",
-        includeSeoAnalysis: true
+        includeSeoAnalysis: true,
+        hintOverride: null
       });
     });
 

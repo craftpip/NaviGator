@@ -27,17 +27,26 @@ Hostname of the site. Lowercased before matching.
 
 ### `pathPattern` (optional, default `"/**"`)
 
-URL path glob. Supported patterns:
+URL path **glob — NOT a regex**. Only two wildcards exist: `*` and `**`. All other
+characters (`?`, `.`, `[`, `]`, `+`, `(`, `)`, `{`, `}`, `|`, `^`, `$`) are matched
+**literally** — there are no regex character classes, quantifiers, or anchors. URLs
+are lowercased before matching (`getPathname()` calls `.toLowerCase()`), so write
+patterns in lowercase.
 
-| Pattern | Matches | Example |
-|---------|---------|---------|
-| `"/**"` | Everything (default) | `/foo/bar/baz` |
-| `"/*"` | Single segment | `/foo` not `/foo/bar` |
-| `"/*/*"` | Two segments | `/foo/bar` not `/foo/bar/baz` |
-| `"/wiki/**"` | Path prefix | `/wiki/Hello_World` |
-| `"/watch**"` | Different glob syntax | `/watch?v=abc123` |
+| Pattern | Matches | Does NOT match |
+|---------|---------|----------------|
+| `"/**"` or `"/"` | Everything | — |
+| `"/*"` | `/foo` | `/foo/bar` |
+| `"/*/*"` | `/foo/bar` | `/foo/bar/baz` |
+| `"/foo/**"` | `/foo/bar`, `/foo/bar/baz` | `/foo` |
+| `"/foo/*"` | `/foo/bar` | `/foo`, `/foo/bar/baz` |
+| `"/foo/bar"` | `/foo/bar` exactly | `/foo/BAR` |
+| `"/*/**"` | any path except `/` | `/` |
 
-Internally `*` is `[^/]*` and `**` is `.*`.
+Internally `*` compiles to `[^/]*` (one segment, no slashes) and `**` to `.*`
+(anything, including slashes), wrapped in `^…$`. Trailing slashes are stripped
+before matching. `"/**"` is the default and also matches the bare `/`;
+`"/*/**"` matches everything except `/`.
 
 ### `pageType` (optional, free text)
 
@@ -61,9 +70,19 @@ URLs to test this hint against. Not used by code, but useful when iterating.
 ]
 ```
 
-### `waitForSelector` (optional)
+### `waitForSelector` (optional) — string or array of strings
 
-CSS selector to wait for before extracting. The browser calls `page.waitForSelector()` with a 20s timeout. Use this for SPAs that render content asynchronously (`src/search.js:2173-2176`).
+CSS selector(s) to wait for before extracting. The browser calls `page.waitForSelector()`
+with a 20s timeout for each selector. Use this for SPAs that render content
+asynchronously (`src/search.js:2173-2176`).
+
+**Multiple selectors:** pass an array — the engine waits until **all** of them are
+present (`Promise.all`), timing out at 20s if any never appears. A single string
+still works.
+
+```json
+"waitForSelector": ["turbo-frame#repo-content-turbo-frame", "div.react-app"]
+```
 
 For GitHub issue/PR list pages you need `turbo-frame#repo-content-turbo-frame`. For NSE option chain it's `table#optionChainTable-indices`.
 
@@ -74,6 +93,10 @@ For GitHub issue/PR list pages you need `turbo-frame#repo-content-turbo-frame`. 
 **Caveat:** If the selector doesn't exist on the page, it silently times out at 20s. Be specific — use a selector that only exists when the content is ready.
 
 ### `navigationWait` (optional, default `2000`)
+
+> **Not implemented.** This property is documented for completeness only — the engine
+> never reads `navigationWait`. The web console panel does not offer it. Use
+> `waitForSelector` + `stabilizeStrategy` for post-load delays instead.
 
 Extra milliseconds to wait after the page loads (after network idle + waitForSelector). Useful when content loads outside the main navigation lifecycle — Turbo frames, lazy-loaded sections, post-hydration rendering (`src/search.js:2188-2191`).
 
@@ -163,7 +186,10 @@ Each section has:
 - Use specific containers. Instead of `div.h-card` (may include block/report buttons), use `div.js-profile-editable-area` (bio, stats, details).
 - For lists (`<ol>`/`<ul>`), select the container directly. The extraction renders each `<li>` as a separate block with blank line separation.
 - For single text items, pick the most specific container (`h1.vcard-names`, `div.p-note`).
-- Sections that produce no output are silently skipped.
+- Sections that produce no output are silently skipped. Since 2026-08, a section
+  selector that matches **0 elements** also emits a `⚠ section selector "…" matched
+  0 elements` warning line in the fetch output (visible in the panel's test pane and
+  in `/extract` responses) so stale selectors are easy to spot.
 
 #### Section extraction flow
 
@@ -486,6 +512,15 @@ FUNCTION browserOpenAndExtract(url, maxChars = DEFAULT_MAX_CHARS)
 
 ## Authoring hints
 
+**Recommended path:** use the **Domain hints** panel in the web console
+(`/console/hints`). It lists every hint, lets you create/edit hints with live
+validation, and **test-before-save** — run a candidate hint against a real page in
+the two-pane editor (with auto re-run while you type selectors, and an optional
+screenshot) before committing it. Saving is atomic, writes a `.bak`, and the change
+is live immediately (no `docker cp`, no restart).
+
+If you prefer the CLI, the manual workflow below still works.
+
 1. **Check if you even need one** — Test the page with `web_fetch` first. If the output is clean, no hint needed.
 
 2. **Open the page** in a persistent browser tab and inspect the DOM with the devtools tools.
@@ -496,11 +531,22 @@ FUNCTION browserOpenAndExtract(url, maxChars = DEFAULT_MAX_CHARS)
 
 5. **Test incrementally** — Use `curl "http://localhost:3000/extract?url=..."` to test without going through MCP.
 
+   To test an **unsaved** candidate hint (test-before-save), pass it as a URL-encoded
+   JSON `hint` param — `domain`/`pathPattern` are optional for testing, and it fully
+   replaces the resolved static hint for that one request:
+
+   ```bash
+   curl "http://localhost:3000/extract?url=https://example.com&hint=%7B%22waitForSelector%22%3A%22p%22%2C%22preferReadability%22%3Afalse%7D"
+   ```
+
 6. **Order matters** — The first matching hint wins. Put more specific patterns before less specific ones.
 
 ### Path pattern gotchas
 
-`/*` means one segment (`/boniface`), not anything (`/boniface/repo`). Use `/**` for everything. Hints are matched in order — list specific patterns first.
+Path patterns are **globs, not regexes** — only `*` and `**` are special, all other
+characters are literal. `/*` means one segment (`/boniface`), not anything
+(`/boniface/repo`). Use `/**` for everything. Hints are matched in order — list
+specific patterns first. URLs are lowercased, so patterns must be lowercase.
 
 ### Common patterns by page type
 

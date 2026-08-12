@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RecipeNest — River Avenue Banana Bread</title>
+  <style>
+    body { font-family: Georgia, serif; margin: 0; color: #222; line-height: 1.6; }
+    header { background: #7a5c3e; color: #fff; padding: 14px 24px; }
+    main { max-width: 720px; margin: 24px auto; padding: 0 20px; }
+    h1 { font-size: 1.9em; }
+    .meta { color: #777; font-size: 0.9em; }
+    ul.ingredients { background: #faf6f0; padding: 14px 14px 14px 34px; border-radius: 8px; }
+    ol.steps { padding-left: 22px; }
+    #cookie-banner { position: fixed; bottom: 0; left: 0; right: 0; background: #222; color: #eee; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 14px; z-index: 10; }
+    #cookie-banner button { background: #e6a700; border: 0; border-radius: 6px; padding: 8px 16px; cursor: pointer; }
+    footer { background: #f2f2f2; padding: 14px 24px; margin-top: 30px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header><strong>RecipeNest</strong> — home cooking, tested twice</header>
+  <main>
+    <h1>River Avenue Banana Bread</h1>
+    <p class="meta">By Grandma Test · 12 reviews · 45 min total</p>
+    <p>A soft, spiced banana bread adapted from the original 1948 Testville Junior League cookbook. The article text below is fully readable — the only obstruction is the cookie banner fixed at the bottom of the screen.</p>
+
+    <h2>Ingredients</h2>
+    <ul class="ingredients">
+      <li>3 ripe bananas, mashed</li>
+      <li>½ cup (115 g) butter, melted</li>
+      <li>¾ cup (150 g) brown sugar</li>
+      <li>2 large eggs</li>
+      <li>1 tsp vanilla extract</li>
+      <li>1½ cups (190 g) all-purpose flour</li>
+      <li>1 tsp baking soda</li>
+      <li>1 tsp cinnamon</li>
+      <li>½ tsp salt</li>
+      <li>¾ cup (90 g) walnuts, chopped</li>
+    </ul>
+
+    <h2>Steps</h2>
+    <ol class="steps">
+      <li>Preheat oven to 175°C (350°F). Grease a 9×5-inch loaf pan.</li>
+      <li>Whisk the mashed bananas with the melted butter.</li>
+      <li>Beat in the sugar, eggs, and vanilla.</li>
+      <li>Fold in the flour, baking soda, cinnamon, and salt until just combined.</li>
+      <li>Stir in the walnuts, then pour into the pan.</li>
+      <li>Bake 55–60 minutes, until a skewer comes out clean.</li>
+      <li>Cool 15 minutes in the pan, then transfer to a rack.</li>
+    </ol>
+
+    <h2>Notes</h2>
+    <p>Dark, spotty bananas make the best bread. The loaf keeps at room temperature for 4 days, wrapped in foil, or freeze for up to 3 months.</p>
+  </main>
+  <div id="cookie-banner">
+    <span>We use cookies to improve your experience. By continuing you agree to our <a href="#" style="color:#ffd166;">cookie policy</a>.</span>
+    <button id="accept-cookies">Accept</button>
+  </div>
+  <footer>RecipeNest · contact@recipenest.example · © 2026</footer>
+  <script>
+    document.getElementById('accept-cookies').addEventListener('click', function () {
+      document.getElementById('cookie-banner').style.display = 'none';
+    });
+  </script>
+</body>
+</html>

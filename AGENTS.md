@@ -323,11 +323,34 @@ Default on; independent of `DEBUG` (error logs exist in production). Implementat
 
 ## Known Issues
 
+- **"Heads up: N recent web browsing error(s)" banner is cryptic for `http:/extract` errors (TODO — handle in future).** The status banner counts `stats.requests.recentErrors` filtered to `WEB_TOOLS` non-expected errors. `http:/extract` is NOT an MCP tool — it's the internal label for the HTTP test endpoint `GET /extract?url=…&hint=<json>` used by the Domain hints editor's Test pane (`HintTestPanel`, main.jsx:2840-2845 auto re-runs 800ms after every keystroke). A half-typed hint draft yields `invalid hint param` (server logs it via `recordActivityRequest("http:/extract", …)` at src/mcp-server.js:2955/2961 — generic message, no detail on which field failed). Those errors live ONLY in the in-memory `requestLog` (never written to `logs/tool-errors.log`, so they vanish on restart or when 8 newer errors push them out of `recentErrors`). Partially fixed 2026-08-12: the console banner item is now expandable (click to see tool/time/message) and the "Recent errors" panel merges `recentErrors` into `logs` via `mergeErrorLogs()` (dedup key = tool + first line, e.g. devtools errors exist in both sources). **Still TODO:** (1) make the server error message human-readable — `hint param must be URL-encoded JSON` / name the failing field from `validateHintRule()` instead of the generic "invalid hint param"; (2) the Test pane should debounce/skip invalid JSON drafts before firing; (3) consider labeling the tool in the banner as `hint test` instead of `http:/extract`. A container restart clears stale in-memory errors and the banner.
+
 - SSE streams die after ~5 min if there is no keepalive traffic. The MCP SDK writes to SSE only when there is actual JSON-RPC data. Any idle connection gets killed by TCP keepalive, Docker networking, or upstream proxies. Fixed with 30s SSE comment keepalive (`: keepalive\n\n`) written directly to each active stream controller via `_streamMapping`, HTTP server timeouts (`keepAliveTimeout: 300s`, `headersTimeout: 300s`, `timeout: 0`), and `retryInterval: 30000` on the transport. The SDK's `StreamableHTTPServerTransport` wraps `WebStandardStreamableHTTPServerTransport` — the internal `_streamMapping` holds all active SSE controllers (standalone GET and POST response streams). SSE comments are ignored by spec-compliant clients but keep TCP/proxy idle timers alive.
 
 ## Domain Hints Workflow
 
 Creating extraction hints for a website is an iterative process. One site at a time, one page type at a time.
+
+### Panel-first workflow (recommended)
+
+The web console **Domain hints** view (`/console/hints`, `enableWebConsole`) is the
+recommended authoring path — it replaces the hand-edit → `docker cp` → restart loop:
+
+1. **List** — every hint is shown (including broken entries the cache filters out),
+   with domain, page type, path, comment, and test URLs.
+2. **Edit / create** in the two-pane editor (Form + JSON tabs), validated against the
+   schema live (`POST /console/api/hints/validate`); Save is blocked while errors exist.
+3. **Test-before-save** — the right pane runs the *candidate* hint against the real
+   browser on a real URL (`/extract?hint=<urlencoded-json>`), with auto re-run while
+   you type, a status bar (chars/tables/override source), Text output, an optional
+   screenshot, and prominent `⚠ section selector "…" matched 0 elements` warnings.
+4. **Save** — atomic write + `.bak`, `clearDomainHintCache()`, live immediately, no
+   restart. Server endpoints: `GET /console/api/hints`, `POST /console/api/hints`,
+   `PUT /console/api/hints/:index` (duplicate `domain|pathPattern` rejected with a 400
+   naming the collision). No delete/reorder in v1.
+
+The manual CLI/DOM exploration routine below is still the way to *discover* the
+right selectors for a tricky page; the panel is where you iterate and commit them.
 
 ### Routine (per page type)
 

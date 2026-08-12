@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
+import { mkdtempSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
-import { findDomainHint, loadDomainHints } from "../src/domain-hints.js";
+import { findDomainHint, getDomainHints, loadDomainHints, loadRawDomainHints, saveDomainHints, validateHintRule } from "../src/domain-hints.js";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hintsPath = path.join(projectRoot, "domain-hints.json");
@@ -104,5 +106,150 @@ describe("domain hints", () => {
   it("does not contain duplicate domain and path-pattern entries", () => {
     const keys = rawHints.map((hint) => `${hint.domain}|${hint.pathPattern}`);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("validateHintRule", () => {
+  const validHint = {
+    domain: "example.com",
+    pathPattern: "/**",
+    pageType: "page",
+    comment: "test",
+    testUrls: ["https://example.com"],
+    waitForSelector: "main",
+    skipSelectors: [".ads"],
+    preferReadability: false,
+    tableExtraction: "content",
+    stabilizeStrategy: "network_idle",
+    flags: { authWall: false, requiresChromium: true },
+    content: {
+      sections: [
+        { selector: "main article", label: "Article", priority: "high", itemLabel: "Post", fields: [{ selector: "h1", label: "Title", format: "text" }] }
+      ]
+    }
+  };
+
+  it("accepts a valid full hint", () => {
+    expect(validateHintRule(validHint)).toEqual({ errors: [], warnings: [] });
+  });
+
+  it("rejects a bad domain and a non-slash pathPattern", () => {
+    const { errors } = validateHintRule({ domain: "BAD.DOMAIN!", pathPattern: "nope" });
+    const fields = errors.map((e) => e.field);
+    expect(fields).toContain("domain");
+    expect(fields).toContain("pathPattern");
+  });
+
+  it("requires domain and pathPattern in static scope", () => {
+    const { errors } = validateHintRule({ pageType: "page", comment: "x" });
+    const fields = errors.map((e) => e.field);
+    expect(fields).toContain("domain");
+    expect(fields).toContain("pathPattern");
+  });
+
+  it("allows omitting domain and pathPattern in test scope", () => {
+    const { errors } = validateHintRule({ waitForSelector: "main p" }, { scope: "test" });
+    expect(errors).toEqual([]);
+  });
+
+  it("accepts waitForSelector as an array of selectors", () => {
+    const { errors } = validateHintRule(
+      { waitForSelector: ["main p", ".react-app", "#content"] },
+      { scope: "test" }
+    );
+    expect(errors).toEqual([]);
+  });
+
+  it("rejects an invalid selector inside a waitForSelector array", () => {
+    const { errors } = validateHintRule(
+      { waitForSelector: ["main p", "a["] },
+      { scope: "test" }
+    );
+    expect(errors.map((e) => e.field)).toContain("waitForSelector[1]");
+  });
+
+  it("rejects invalid CSS in waitForSelector, skipSelectors, sections, and fields", () => {
+    const bad = {
+      ...validHint,
+      waitForSelector: "a[",
+      skipSelectors: ["div["],
+      content: { sections: [{ ...validHint.content.sections[0], selector: "b[", fields: [{ selector: "c[", label: "x", format: "text" }] }] }
+    };
+    const { errors } = validateHintRule(bad);
+    const fields = errors.map((e) => e.field);
+    expect(fields).toContain("waitForSelector");
+    expect(fields).toContain("skipSelectors[0]");
+    expect(fields).toContain("content.sections[0].selector");
+    expect(fields).toContain("content.sections[0].fields[0].selector");
+  });
+
+  it("rejects a bad section priority and bad field format", () => {
+    const bad = {
+      ...validHint,
+      content: { sections: [{ selector: "main", label: "A", priority: "urgent", fields: [{ selector: "h1", label: "T", format: "pdf" }] }] }
+    };
+    const { errors } = validateHintRule(bad);
+    const fields = errors.map((e) => e.field);
+    expect(fields).toContain("content.sections[0].priority");
+    expect(fields).toContain("content.sections[0].fields[0].format");
+  });
+
+  it("rejects non-boolean flags and warns on unknown flags", () => {
+    const { errors, warnings } = validateHintRule({ ...validHint, flags: { authWall: "yes", mysteryFlag: true } });
+    expect(errors.map((e) => e.field)).toContain("flags.authWall");
+    expect(warnings.map((w) => w.field)).toContain("flags.mysteryFlag");
+  });
+
+  it("warns on unknown top-level keys", () => {
+    const { errors, warnings } = validateHintRule({ ...validHint, bogusField: 1 });
+    expect(errors).toEqual([]);
+    expect(warnings.map((w) => w.field)).toContain("bogusField");
+  });
+});
+
+describe("saveDomainHints and loadRawDomainHints", () => {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), "hints-unit-"));
+  const hintsPath = path.join(tmpDir, "domain-hints.json");
+
+  it("writes atomically, backs up the previous file, and clears the cache", async () => {
+    await fs.writeFile(hintsPath, JSON.stringify([{ domain: "a.com", pathPattern: "/**", pageType: "p", comment: "one" }], null, 2) + "\n");
+    const config = { domainHintsPath: hintsPath };
+
+    const before = await getDomainHints(config);
+    expect(before).toHaveLength(1);
+
+    const next = [
+      { domain: "a.com", pathPattern: "/**", pageType: "p", comment: "one" },
+      { domain: "b.com", pathPattern: "/**", pageType: "p", comment: "two" }
+    ];
+    const saved = await saveDomainHints(next, hintsPath);
+    expect(saved.ok).toBe(true);
+    expect(saved.count).toBe(2);
+
+    const backup = JSON.parse(await fs.readFile(`${hintsPath}.bak`, "utf8"));
+    expect(backup).toHaveLength(1);
+
+    const after = await getDomainHints(config);
+    expect(after).toHaveLength(2);
+    expect(after[1].domain).toBe("b.com");
+  });
+
+  it("refuses to write to /dev/null", async () => {
+    const result = await saveDomainHints([], "/dev/null");
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/\/dev\/null/);
+  });
+
+  it("returns an error rather than throwing on a bad hints argument", async () => {
+    const result = await saveDomainHints({ not: "an array" }, hintsPath);
+    expect(result.ok).toBe(false);
+  });
+
+  it("loadRawDomainHints returns entries unfiltered, including broken ones", async () => {
+    await fs.writeFile(hintsPath, JSON.stringify([{ domain: "good.com", pathPattern: "/**", pageType: "p", comment: "ok" }, { pathPattern: "/**", pageType: "p", comment: "no domain" }]));
+    const raw = await loadRawDomainHints(hintsPath);
+    expect(raw).toHaveLength(2);
+    const filtered = await loadDomainHints(hintsPath);
+    expect(filtered).toHaveLength(1);
   });
 });
