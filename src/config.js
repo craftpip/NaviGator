@@ -233,7 +233,8 @@ export const DEFAULT_SEARCH_ENABLED_ENGINES = Object.freeze([
   "google_ch",
   "duckduckgo_ch",
   "mojeek_lp",
-  "yahoo_cb"
+  "yahoo_cb",
+  "startpage_cb"
 ]);
 
 export async function loadConfig() {

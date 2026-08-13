@@ -34,13 +34,14 @@ afterEach(() => {
 });
 
 describe("engine registry", () => {
-  it("registers all 11 internal routes", () => {
+  it("registers all 12 internal routes", () => {
     expect([...SUPPORTED_ENGINES]).toEqual([
       "bing_cb", "bing_lp",
       "brave_cb",
       "duckduckgo_api", "duckduckgo_cb", "duckduckgo_ch",
       "google_cb", "google_ch", "google_lp",
       "mojeek_lp",
+      "startpage_cb",
       "yahoo_cb",
     ]);
   });
@@ -191,6 +192,28 @@ describe("browser driver extraction", () => {
       url: "https://example.com/six",
       snippet: "Yahoo snippet six.",
       answer: "Yahoo card answer.",
+    },
+    startpage_cb: {
+      html: `
+        <main>
+          <div class="result">
+            <div class="upper"><a class="wgl-site-title"><span class="link-text">Example</span></a></div>
+            <a class="result-link" href="https://example.com/seven"><h2 class="wgl-title">Startpage Example Seven</h2></a>
+            <p class="description">Startpage snippet seven.</p>
+          </div>
+          <div class="result" data-testid="wiki qi see more container">
+            <div class="headline"><a href="https://en.wikipedia.org/wiki/Answer">Answer</a></div>
+            <p class="extract">Startpage wiki answer text.</p>
+          </div>
+          <div data-testid="gcsa-top" class="gcsa-container">
+            <div class="result"><div class="headline"><a href="https://ad.example">Ad</a></div></div>
+          </div>
+        </main>
+      `,
+      title: "Startpage Example Seven",
+      url: "https://example.com/seven",
+      snippet: "Startpage snippet seven.",
+      answer: "Answer Startpage wiki answer text.",
     },
   };
 
@@ -412,6 +435,72 @@ describe("browser driver block detection", () => {
     } finally {
       dom.window.close();
     }
+  });
+
+  it("startpage_cb throws on a CAPTCHA/verification page", async () => {
+    const dom = domFromHtml('<title>Blocked</title><p>Please verify you are human — captcha required.</p>');
+    try {
+      const driver = getEngineDriver("startpage_cb", {});
+      const page = makeFakePage(dom, "https://www.startpage.com/sp/search?query=test");
+      await expect(driver.assertNotBlocked(page)).rejects.toThrow(/blocked/);
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it("startpage_cb passes on a normal results page", async () => {
+    const dom = domFromHtml('<main><div class="result"><a class="result-link" href="https://s.example"><h2 class="wgl-title">s</h2></a></div></main>');
+    try {
+      const driver = getEngineDriver("startpage_cb", {});
+      const page = makeFakePage(dom, "https://www.startpage.com/sp/search?query=test");
+      await expect(driver.assertNotBlocked(page)).resolves.toBeUndefined();
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it("startpage_cb retries a transient execution-context-destroyed error", async () => {
+    const dom = domFromHtml('<main><div class="result"><a class="result-link" href="https://s.example"><h2 class="wgl-title">s</h2></a></div></main>');
+    try {
+      const driver = getEngineDriver("startpage_cb", { browserOpTimeoutMs: 5000 });
+      let calls = 0;
+      const page = {
+        async evaluate(fn) {
+          calls += 1;
+          if (calls === 1) throw new Error("Execution context was destroyed, most likely because of a navigation.");
+          return dom.window.eval(`(${fn.toString()})()`);
+        },
+        url: () => "https://www.startpage.com/sp/search?query=test",
+      };
+      const { results } = await driver.extract(page);
+      expect(calls).toBe(2);
+      expect(results[0].engine).toBe("startpage_cb");
+      expect(results[0].title).toBe("s");
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it("startpage_cb does not retry non-navigation errors", async () => {
+    const driver = getEngineDriver("startpage_cb", { browserOpTimeoutMs: 5000 });
+    let calls = 0;
+    const page = {
+      async evaluate() {
+        calls += 1;
+        throw new Error("random failure");
+      },
+      url: () => "https://www.startpage.com/sp/search?query=test",
+    };
+    await expect(driver.extract(page)).rejects.toThrow(/random failure/);
+    expect(calls).toBe(1);
+  });
+});
+
+describe("startpage_cb search URL", () => {
+  it("builds a query-encoded /sp/search URL", () => {
+    const driver = getEngineDriver("startpage_cb", {});
+    expect(driver.searchUrl("test query")).toBe("https://www.startpage.com/sp/search?query=test%20query");
+    expect(driver.searchUrl("a+b&c")).toBe("https://www.startpage.com/sp/search?query=a%2Bb%26c");
   });
 });
 

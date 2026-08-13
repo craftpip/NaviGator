@@ -180,6 +180,7 @@ mcp-server --> engines
 
 - `BrowserSearchDriver.submit()` = goto → body wait → 500ms settle → `waitForAnySelector` with before/after `assertNotBlocked`.
 - DuckDuckGo overrides `submit()` (set the form value, wait for form-submission navigation). Google and Mojeek override `assertNotBlocked()` for their block checks.
+- Startpage overrides `submit()` and `extract()` to wrap them in `withNavigationRetry()` (retries on `Execution context was destroyed` / `Target closed` / `Cannot find context with specified id` up to 3×, 400ms apart). Startpage fires a transient client-side navigation ~1.4s after load that destroys the execution context exactly when the unguarded `assertNotBlocked` evaluate runs — without the retry the first search on a cold window trips the circuit breaker.
 - `ApiSearchDriver` is a convenience base for API routes — no fake `homeUrl`, never browser-warmed or pooled.
 - Driver `extract()` functions are plain functions referencing global `document`; tests run them via jsdom `eval` with `runScripts: "outside-only"`.
 
