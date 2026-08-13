@@ -817,13 +817,13 @@ function Engines({ config, health, stats }) {
                 </div>
                 <div className="engine-inline-meta"><span className="feed-backend">{formatBackend(engine.backend)}</span> · {role}</div>
                 <div className="ordering-factors">
-                  <span><b>{schedulerState.replace("_", " ")}</b> eligibility</span>
-                  <span className={profile.consecutiveFailures ? "score-error" : ""}><b>{profile.consecutiveFailures || 0}</b> failure streak</span>
-                  <span><b>{profile.medianLatencyMs ? formatMs(profile.medianLatencyMs) : "unmeasured"}</b> latency/{profile.latencySamples?.length || 0}</span>
-                  <span><b>{dispatchWaitMs ? formatCountdown(dispatchWaitMs) : "now"}</b> dispatch wait</span>
-                  {schedulerState === "cooling_down" && <span className="score-error"><b>{formatCountdown(profile.remainingMs)}</b> retry wait</span>}
-                  <span><b>{stat.ok || 0}/{stat.fail || 0}/{stat.skip || 0}</b> ok/fail/skip</span>
-                  <span><b>{attempted ? `${pct}%` : "-"}</b> · 24h</span>
+                  <span title="Scheduler eligibility state — ready means the route can be dispatched right now"><b>{schedulerState.replace("_", " ")}</b> eligibility</span>
+                  <span className={profile.consecutiveFailures ? "score-error" : ""} title="Consecutive failed attempts since the last success"><b>{profile.consecutiveFailures || 0}</b> failure streak</span>
+                  <span title={`Median latency of the last ${profile.latencySamples?.length || 0} sample(s)`}><b>{profile.medianLatencyMs ? formatMs(profile.medianLatencyMs) : "unmeasured"}</b> latency/{profile.latencySamples?.length || 0}</span>
+                  <span title="Time until this route can be dispatched again (pacing gap)"><b>{dispatchWaitMs ? formatCountdown(dispatchWaitMs) : "now"}</b> dispatch wait</span>
+                  {schedulerState === "cooling_down" && <span className="score-error" title="Time remaining before this cooling-down route can retry"><b>{formatCountdown(profile.remainingMs)}</b> retry wait</span>}
+                  <span title="Attempt tallies: ok = returned results, fail = errored or zero results, skip = never tried (e.g. circuit open)"><b>{stat.ok || 0}/{stat.fail || 0}/{stat.skip || 0}</b> ok/fail/skip</span>
+                  <span title={attempted ? `${pct}% success rate over the last 24 hours` : "No search attempts recorded in the last 24 hours"}><b>{attempted ? `${pct}%` : "-"}</b> · 24h</span>
                 </div>
                 {errMsg && schedulerState !== "ready" && (
                   <div className="engine-route-error" title={errMsg}>{errMsg}</div>

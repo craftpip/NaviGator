@@ -840,12 +840,12 @@ p,
 }
 .ordering-factors {
   display: grid;
-  grid-template-columns: repeat(2, max-content);
+  grid-template-columns: repeat(3, max-content);
   gap: 4px 16px;
   margin-top: 7px;
   color: var(--muted);
-  font: 11px var(--sans);
-  line-height: 10px;
+  font: 12px var(--sans);
+  line-height: 12px;
 }
 .ordering-factors b {
   color: var(--text);
