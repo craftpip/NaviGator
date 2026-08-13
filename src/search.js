@@ -426,13 +426,13 @@ function collectCandidateBlocks(doc) {
     for (const node of nodes) {
       const text = cleanWhitespace(node.textContent || "");
       if (!text) continue;
-      candidates.push({ text, score: scoreTextBlock(text) });
+      candidates.push({ element: node, text, score: scoreTextBlock(text) });
     }
   }
 
   if (!candidates.length && doc.body?.textContent) {
     const bodyText = cleanWhitespace(doc.body.textContent);
-    candidates.push({ text: bodyText, score: scoreTextBlock(bodyText) });
+    candidates.push({ element: doc.body, text: bodyText, score: scoreTextBlock(bodyText) });
   }
 
   return candidates.sort((a, b) => b.score - a.score);
@@ -1001,55 +1001,73 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       return { title: cleanWhitespace(doc.title || fallbackTitle || ""), url, text: "", textOriginalLength: 0 };
     }
 
+    /* ==================== Default extraction (no hint content) ==================== */
+    if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: default extraction (no hint blocks/sections)`);
+
+    // Tables are always extracted from the whole document and removed from the DOM
+    // before Readability / raw-HTML rendering so they don't leak as tab-separated noise.
     const globalTables = extractTablesFromDocument(doc);
     for (const t of globalTables) {
       t.node?.remove();
     }
     const tables = globalTables.map(({ node, ...rest }) => rest);
 
-    const skipReadability = hint?.preferReadability === false;
-    let article = null;
-    if (!skipReadability) {
+    // Readability path (on by default) — extracts a clean article from the whole doc.
+    // Turn it off with preferReadability: false → the raw HTML→markdown path below keeps everything.
+    if (hint?.preferReadability !== false) {
+      let article = null;
       try {
         const reader = new Readability(dom.window.document);
         article = reader.parse();
       } catch {
         article = null;
       }
-    }
 
-    if (article?.textContent?.trim()) {
-      if (debug) console.log(">>> Readability SUCCEEDED, textContent length:", article.textContent.trim().length);
-      const articleLines = toLines(article.textContent);
-      if (debug) console.log(">>> articleLines count:", articleLines.length, "first 5 lines:", JSON.stringify(articleLines.slice(0,5)));
-      if (debug) console.log(">>> browserText exists:", !!browserText, "type:", typeof browserText, "length:", browserText?.length);
+      if (article?.textContent?.trim()) {
+        if (debug) console.log(">>> Readability SUCCEEDED, textContent length:", article.textContent.trim().length);
+        const articleLines = toLines(article.textContent);
+        if (debug) console.log(">>> articleLines count:", articleLines.length, "first 5 lines:", JSON.stringify(articleLines.slice(0,5)));
+        if (debug) console.log(">>> browserText exists:", !!browserText, "type:", typeof browserText, "length:", browserText?.length);
 
-      if (browserText) {
-        const articleLen = article.textContent.trim().length;
-        const browserLen = browserText.trim().length;
-        if (debug) console.log(">>> browserText check:", {articleLen, browserLen, condition: browserLen > articleLen * 1.5 && browserLen - articleLen > 200});
-        if (browserLen > articleLen * 1.5 && browserLen - articleLen > 200) {
-          const fullMarkdown = htmlToMarkdown(doc.body.innerHTML, { baseUrl: url });
-          if (debug) console.log(">>> Using htmlToMarkdown(doc.body.innerHTML), length:", fullMarkdown.length, "preview:", fullMarkdown.substring(0,200));
-          if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_htmlToMarkdown: ${Math.round(performance.now() - tFunc)}ms`);
+        if (browserText) {
+          const articleLen = article.textContent.trim().length;
+          const browserLen = browserText.trim().length;
+          if (debug) console.log(">>> browserText check:", {articleLen, browserLen, condition: browserLen > articleLen * 1.5 && browserLen - articleLen > 200});
+          if (browserLen > articleLen * 1.5 && browserLen - articleLen > 200) {
+            const fullMarkdown = htmlToMarkdown(doc.body.innerHTML, { baseUrl: url });
+            if (debug) console.log(">>> Using htmlToMarkdown(doc.body.innerHTML), length:", fullMarkdown.length, "preview:", fullMarkdown.substring(0,200));
+            if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_htmlToMarkdown: ${Math.round(performance.now() - tFunc)}ms`);
+            return {
+              title: cleanWhitespace(article.title || fallbackTitle || ""),
+              url,
+              text: safeTruncateText(fullMarkdown, maxChars),
+              textOriginalLength: fullMarkdown.length,
+              ...(tables.length ? { tables } : {})
+            };
+          }
+        }
+
+        let text;
+        let textOriginalLength;
+        if (article.content) {
+          const raw = htmlToMarkdown(article.content, { baseUrl: url });
+          if (debug) console.log(">>> article.content path, article.content length:", article.content.length, "raw length:", raw.length, "raw preview:", raw.substring(0,300));
+          text = safeTruncateText(raw, maxChars);
+          textOriginalLength = raw.length;
+          if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_content: ${Math.round(performance.now() - tFunc)}ms`);
           return {
             title: cleanWhitespace(article.title || fallbackTitle || ""),
             url,
-            text: safeTruncateText(fullMarkdown, maxChars),
-            textOriginalLength: fullMarkdown.length,
+            text,
+            textOriginalLength,
             ...(tables.length ? { tables } : {})
           };
+        } else {
+          text = buildCleanText(articleLines, maxChars);
+          textOriginalLength = articleLines.join("\n").length;
+          if (debug) console.log(">>> Readability path: using buildCleanText, length:", text?.length, "preview:", text?.substring(0,200));
         }
-      }
-
-      let text;
-      let textOriginalLength;
-      if (article.content) {
-        const raw = htmlToMarkdown(article.content, { baseUrl: url });
-        if (debug) console.log(">>> article.content path, article.content length:", article.content.length, "raw length:", raw.length, "raw preview:", raw.substring(0,300));
-        text = safeTruncateText(raw, maxChars);
-        textOriginalLength = raw.length;
-        if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_content: ${Math.round(performance.now() - tFunc)}ms`);
+        if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_textContent: ${Math.round(performance.now() - tFunc)}ms`);
         return {
           title: cleanWhitespace(article.title || fallbackTitle || ""),
           url,
@@ -1057,31 +1075,26 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
           textOriginalLength,
           ...(tables.length ? { tables } : {})
         };
-      } else {
-        text = buildCleanText(articleLines, maxChars);
-        textOriginalLength = articleLines.join("\n").length;
-        if (debug) console.log(">>> Readability path: using buildCleanText, length:", text?.length, "preview:", text?.substring(0,200));
       }
-      if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_textContent: ${Math.round(performance.now() - tFunc)}ms`);
-      return {
-        title: cleanWhitespace(article.title || fallbackTitle || ""),
-        url,
-        text,
-        textOriginalLength,
-        ...(tables.length ? { tables } : {})
-      };
     }
 
-    let candidates, bestText;
+    // Raw HTML → markdown (Readability off, or it produced nothing).
+    // Convert the best semantic container's innerHTML so headings/paragraphs survive;
+    // a textContent-only dump collapses div-based pages into a single glued line.
+    let candidates, bestText, bestMarkdown = "";
     try {
       candidates = collectCandidateBlocks(doc);
-      bestText = candidates[0]?.text || doc.body?.textContent || "";
-      if (debug) console.log(">>> FALLBACK: collectCandidateBlocks, candidates:", candidates?.length, "bestText length:", bestText?.length, "bestText preview:", bestText?.substring(0,200));
+      const best = candidates[0];
+      if (best?.element) {
+        bestMarkdown = htmlToMarkdown(best.element.innerHTML || "", { baseUrl: url }).trim();
+      }
+      bestText = best?.text || doc.body?.textContent || "";
+      if (debug) console.log(">>> FALLBACK: collectCandidateBlocks, candidates:", candidates?.length, "bestText length:", bestText?.length, "bestMarkdown length:", bestMarkdown?.length, "bestText preview:", bestText?.substring(0,200));
     } catch {
       bestText = doc.body?.textContent || "";
     }
     const lines = toLines(bestText);
-    const fullText = buildCleanText(lines, maxChars);
+    const fullText = bestMarkdown ? safeTruncateText(bestMarkdown, maxChars) : buildCleanText(lines, maxChars);
     if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: fallback: ${Math.round(performance.now() - tFunc)}ms`);
     return {
       title: cleanWhitespace(doc.title || fallbackTitle || ""),

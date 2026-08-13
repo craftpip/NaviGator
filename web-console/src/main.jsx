@@ -2262,11 +2262,23 @@ async function fetchHintText(url) {
   return { ok: false, error, validation };
 }
 
-function HintFieldGroup({ title, accent, children }) {
+function HintFieldGroup({ title, accent, children, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <fieldset className={`hint-group${accent ? " hint-group-accent" : ""}`}>
-      <legend>{title}</legend>
-      {children}
+    <fieldset className={`hint-group${accent ? " hint-group-accent" : ""}${open ? "" : " collapsed"}`}>
+      <legend>
+        <button
+          type="button"
+          className="hint-group-toggle"
+          aria-expanded={open}
+          title={open ? "Collapse section" : "Expand section"}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <span className="hint-group-caret">{open ? "▾" : "▸"}</span>
+          {title}
+        </button>
+      </legend>
+      {open ? children : null}
     </fieldset>
   );
 }
@@ -3358,35 +3370,48 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                   />
                 </HintField>
               </HintFieldGroup>
-              <HintFieldGroup title="Extraction options">
-                <div className="hint-options-grid">
-                  <div className="hint-option">
-                    <span className="hint-option-name">Readability</span>
-                    <label className="hint-check hint-option-check">
-                      <input
-                        type="checkbox"
-                        checked={hint.preferReadability !== false}
-                        onChange={(event) => patch({ preferReadability: event.target.checked })}
-                      />
-                      <span className="hint-option-hint">
-                        {hint.preferReadability === false
-                          ? "off → raw HTML-to-markdown keeps everything"
-                          : "on → strips nav, ads, sidebar"}
-                      </span>
-                    </label>
-                  </div>
-                  <div className="hint-option">
-                    <span className="hint-option-name">Table extraction</span>
-                    <select
-                      value={hint.tableExtraction || ""}
-                      onChange={(event) => patch({ tableExtraction: event.target.value || undefined })}
-                    >
-                      <option value="">Default</option>
-                      <option value="content">Content tables only</option>
-                      <option value="disabled">Disabled</option>
-                    </select>
-                  </div>
+              <HintFieldGroup title="Page load">
+                <LineListEditor
+                  label="Wait for selectors (one per line)"
+                  help="Waits until ALL of these elements appear (up to 20s) before extracting. Use only when the content loads after the page — e.g. SPA sites."
+                  values={Array.isArray(hint.waitForSelector) ? hint.waitForSelector : hint.waitForSelector ? [hint.waitForSelector] : []}
+                  onChange={(waitForSelector) => patch({ waitForSelector })}
+                  placeholder={"turbo-frame#repo-content-turbo-frame"}
+                  mono
+                />
+                <div className="hint-option">
+                  <span className="hint-option-name">Stabilize strategy</span>
+                  <select
+                    value={hint.stabilizeStrategy || ""}
+                    onChange={(event) => patch({ stabilizeStrategy: event.target.value || undefined })}
+                  >
+                    <option value="">Default (network_idle — 500ms no network traffic)</option>
+                    <option value="network_idle">network_idle (500ms no network traffic)</option>
+                    <option value="content_idle">content_idle (waits for rendered text)</option>
+                    <option value="mutation">mutation (waits for DOM to stop changing)</option>
+                  </select>
+                  <span className="hint-option-hint">
+                    Always runs after Wait for selector (or alone when none is set).
+                    network_idle = 500ms of no network traffic · content_idle = wait
+                    for rendered text · mutation = wait for DOM changes.
+                  </span>
                 </div>
+                <LineListEditor
+                  label="Wait for content selectors (one per line)"
+                  help="Waits for content to appear in these selectors — so if the content is lazy-loaded, the page keeps waiting until it's there. Only needed when your content container isn't already covered (main, article, .content…)."
+                  values={hint.contentSelectors || []}
+                  onChange={(contentSelectors) => patch({ contentSelectors })}
+                  placeholder={"article\n[data-testid=\"content\"]"}
+                  mono
+                />
+                <LineListEditor
+                  label="Skip selectors (one per line)"
+                  help="Elements to strip before extraction — one CSS selector per line. e.g. .navbox, .sidebar"
+                  values={hint.skipSelectors || []}
+                  onChange={(skipSelectors) => patch({ skipSelectors })}
+                  placeholder={".navbox\n.sidebar"}
+                  mono
+                />
               </HintFieldGroup>
               <HintFieldGroup title="What gets extracted" accent>
                 <div className="hint-mode-switch" role="tablist">
@@ -3422,14 +3447,42 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                   </button>
                 </div>
                 {mode === "default" ? (
-                  <p className="hint hint-default">
-                    No custom extraction — the page runs the standard pipeline:{" "}
-                    <strong>Readability → tables → links</strong>. Everything you toggle in{" "}
-                    <em>Extraction options</em> and <em>Page load</em> still applies
-                    (Readability on/off, table extraction, waits, skip selectors). Switch to{" "}
-                    <em>Static blocks</em> or <em>Interactive flow</em> to override with your own
-                    layout.
-                  </p>
+                  <>
+                    <p className="hint hint-default">
+                      No custom extraction — the page runs the standard pipeline:{" "}
+                      <strong>Readability → tables → links</strong>. The toggles below (plus{" "}
+                      <em>Page load</em>) apply here. Switch to <em>Static blocks</em> or{" "}
+                      <em>Interactive flow</em> to override with your own layout.
+                    </p>
+                    <div className="hint-options-grid">
+                      <div className="hint-option">
+                        <span className="hint-option-name">Readability</span>
+                        <label className="hint-check hint-option-check">
+                          <input
+                            type="checkbox"
+                            checked={hint.preferReadability !== false}
+                            onChange={(event) => patch({ preferReadability: event.target.checked })}
+                          />
+                          <span className="hint-option-hint">
+                            {hint.preferReadability === false
+                              ? "off → raw HTML-to-markdown keeps everything"
+                              : "on → strips nav, ads, sidebar"}
+                          </span>
+                        </label>
+                      </div>
+                      <div className="hint-option">
+                        <span className="hint-option-name">Table extraction</span>
+                        <select
+                          value={hint.tableExtraction || ""}
+                          onChange={(event) => patch({ tableExtraction: event.target.value || undefined })}
+                        >
+                          <option value="">Default</option>
+                          <option value="content">Content tables only</option>
+                          <option value="disabled">Disabled</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
                 ) : mode === "content" ? (
                   <BlocksEditor
                     blocks={hint.content?.blocks || []}
@@ -3445,51 +3498,6 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                     />
                   </>
                 )}
-              </HintFieldGroup>
-              <HintFieldGroup title="Page load">
-                <LineListEditor
-                  label="Wait for selectors (one per line)"
-                  help="Waits until ALL of these elements appear (up to 20s) before extracting. Use only when the content loads after the page — e.g. SPA sites."
-                  values={Array.isArray(hint.waitForSelector) ? hint.waitForSelector : hint.waitForSelector ? [hint.waitForSelector] : []}
-                  onChange={(waitForSelector) => patch({ waitForSelector })}
-                  placeholder={"turbo-frame#repo-content-turbo-frame"}
-                  mono
-                />
-                <div className="hint-option">
-                  <span className="hint-option-name">Stabilize strategy</span>
-                  <select
-                    value={hint.stabilizeStrategy || ""}
-                    onChange={(event) => patch({ stabilizeStrategy: event.target.value || undefined })}
-                  >
-                    <option value="">Default (network_idle — 500ms no network traffic)</option>
-                    <option value="network_idle">network_idle (500ms no network traffic)</option>
-                    <option value="content_idle">content_idle (waits for rendered text)</option>
-                    <option value="mutation">mutation (waits for DOM to stop changing)</option>
-                  </select>
-                  <span className="hint-option-hint">
-                    Always runs after Wait for selector (or alone when none is set).
-                    network_idle = 500ms of no network traffic · content_idle = wait
-                    for rendered text · mutation = wait for DOM changes.
-                  </span>
-                </div>
-                <LineListEditor
-                  label="Wait for content selectors (one per line)"
-                  help="Waits for content to appear in these selectors — so if the content is lazy-loaded, the page keeps waiting until it's there. Only needed when your content container isn't already covered (main, article, .content…)."
-                  values={hint.contentSelectors || []}
-                  onChange={(contentSelectors) => patch({ contentSelectors })}
-                  placeholder={"article\n[data-testid=\"content\"]"}
-                  mono
-                />
-              </HintFieldGroup>
-              <HintFieldGroup title="Selectors">
-                <LineListEditor
-                  label="Skip selectors (one per line)"
-                  help="Elements to strip before extraction — one CSS selector per line. e.g. .navbox, .sidebar"
-                  values={hint.skipSelectors || []}
-                  onChange={(skipSelectors) => patch({ skipSelectors })}
-                  placeholder={".navbox\n.sidebar"}
-                  mono
-                />
               </HintFieldGroup>
               <HintFieldGroup title="Testing">
                 <UrlListEditor

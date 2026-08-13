@@ -2185,11 +2185,39 @@ select.config-input option {
   gap: 10px;
 }
 .hint-group legend {
-  padding: 0 6px;
+  padding: 0;
   color: var(--muted);
   font: 700 11px var(--sans);
   letter-spacing: 0.3px;
   text-transform: uppercase;
+}
+.hint-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hint-group-toggle:hover .hint-group-caret {
+  color: var(--blue);
+}
+.hint-group-caret {
+  display: inline-block;
+  width: 10px;
+  color: var(--muted);
+  transition: transform 0.12s ease;
+}
+.hint-group.collapsed {
+  gap: 0;
+  padding-bottom: 8px;
 }
 .hint-group-accent {
   border: 1px solid var(--blue);

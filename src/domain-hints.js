@@ -10,6 +10,11 @@ function escapeRegex(str) {
 }
 
 function compileGlob(pattern) {
+  if (pattern.endsWith("/**")) {
+    const prefix = escapeRegex(pattern.slice(0, -3));
+    const regex = new RegExp(`^${prefix}(?:/.*)?$`);
+    return (pathname) => regex.test(pathname);
+  }
   const parts = pattern.split(/(\*\*|\*)/);
   let regexStr = "^";
   for (const part of parts) {

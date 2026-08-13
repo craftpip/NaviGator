@@ -110,15 +110,12 @@
   },
   {
     "domain": "10.69.1.164",
-    "pathPattern": "/**",
-    "comment": "",
+    "pathPattern": "/chaos/**",
+    "pageType": "chaos-article",
+    "comment": "ChaosHub fake article — sections + comments list. Content randomized per visit; ignore fake bot-check/popup.",
     "testUrls": [
-      "http://10.69.1.164:32768/chaos/",
-      "http://10.69.1.164:32768/table/"
+      "http://10.69.1.164:32768/chaos/"
     ],
-    "waitForSelector": [],
-    "skipSelectors": [],
-    "preferReadability": true,
-    "contentSelectors": []
+    "preferReadability": false
   }
 ]
