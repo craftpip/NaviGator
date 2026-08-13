@@ -26,7 +26,9 @@ function parseWithType(type, entry, raw) {
       return { valid: value !== undefined && value >= (entry.min ?? 1), value };
     }
     case "engines": {
-      const value = parseEngines(String(raw), null);
+      const text = String(raw ?? "").trim();
+      if (!text) return { valid: true, value: [] };
+      const value = parseEngines(text, null);
       return { valid: value !== null, value };
     }
     case "toolList":

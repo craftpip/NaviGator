@@ -327,7 +327,9 @@ export async function loadConfig() {
     disableTools: parseToolList(process.env.DISABLE_TOOLS),
     domainHintsPath,
     stabilizeStrategy: parseStabilizeStrategy(process.env.STABILIZE_STRATEGY, "network_idle"),
-    searchRouteWarmupEngines: parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, ["brave_cb", "duckduckgo_api", "duckduckgo_cb"]),
+    searchRouteWarmupEngines: process.env.SEARCH_ROUTE_WARMUP_ENGINES === undefined
+      ? ["brave_cb", "duckduckgo_api", "duckduckgo_cb"]
+      : parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, []),
     searchEnabledEngines: parseEngines(
       process.env.SEARCH_ENABLED_ENGINES,
       DEFAULT_SEARCH_ENABLED_ENGINES

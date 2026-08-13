@@ -154,6 +154,14 @@ describe("loadConfig (parse engine behavior)", () => {
     expect(config.searchRouteWarmupEngines).toEqual(["google_cb", "bing_lp"]);
   });
 
+  it("allows an explicitly empty SEARCH_ROUTE_WARMUP_ENGINES (no warmup)", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("SEARCH_ROUTE_WARMUP_ENGINES", "");
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.searchRouteWarmupEngines).toEqual([]);
+  });
+
   it("parses SEARCH_ENABLED_ENGINES correctly", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
     vi.stubEnv("SEARCH_ENABLED_ENGINES", "duckduckgo_api,google_ch");
