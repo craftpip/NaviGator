@@ -49,20 +49,20 @@ Opens pages and returns cleaned, readable text content.
 - `maxChars: number` (default `8000`) — Maximum characters per page
 - `maxTableRows: number` (optional) — Maximum number of rows per extracted table
 
-**Output:** Per-item success/error with SEO metadata. Tables are always extracted and appended as clean pipe-separated tables. Links are always extracted and shown inline as `[text][ref_id]` — use `web_page_links(ref_id: link_ref_id)` to resolve a link ref_id to its URL. The LLM calls `web_fetch(ref_id: link_ref_id)` to visit a link.
+**Output:** Per-item success/error with SEO metadata. Tables are always extracted and appended as clean pipe-separated tables. Links are always extracted and shown inline as `[text](ref_id)` (the ref_id is the markdown link destination) — use `web_page_links(ref_id: link_ref_id)` to resolve a link ref_id to its URL. The LLM calls `web_fetch(ref_id: link_ref_id)` to visit a link.
 
 ---
 
 ### `web_page_links`
 
-Resolves one or more link ref_ids to their full URLs. Each link in the `## Links` section of a `web_fetch` result has a `[ref_id]` marker. Feed that ref_id here to get the actual URL.
+Resolves one or more link ref_ids to their full URLs. Each inline link in a `web_fetch` result renders as `[text](ref_id)` — the parenthesized number is the link ref_id. Feed that ref_id here to get the actual URL.
 
 **Input** (choose one mode):
 
 - `ref_id: number` — Single link ref_id to resolve
 - `ref_ids: number[]` — Multiple link ref_ids to resolve in one call
 
-**Output:** `- [ref_id]: url` lines for each resolved ref_id.
+**Output:** `- (ref_id): url` lines for each resolved ref_id.
 
 ---
 
@@ -758,21 +758,25 @@ Hermes agent reported browser tools disappearing after ~5 min. Container logs sh
 
 ---
 
-### `[text][ref_id]` Format Ambiguity With Numeric Link Text
+### `[text][ref_id]` Format Ambiguity With Numeric Link Text — RESOLVED
 
 **Created:** 2026-07-28
+**Resolved:** 2026-08-14 — inline refs now render as `[text](ref_id)` (see plan `plans/18_markdown-link-ref-format.md`).
 
-**What:** The `[text][ref_id]` inline format is ambiguous when link text is numeric.
+**What (was):** The `[text][ref_id]` inline format was ambiguous when link text is numeric.
 `Python [5][88] [1][89]` — the LLM can't tell whether `[1]`, `[5]`, `[20]` etc. are
 link text or ref_id markers. Both are just `[number]`. The ref_id registry also has
 nav-chrome links (ref_id 1 = page URL, ref_id 20 = `https://github.com/features`)
 which match the numeric text values, so guessing wrong resolves to the wrong URL.
 
-**Trigger:** Debugging web_fetch output for `https://github.com/craftpip` — spent
+**Trigger (was):** Debugging web_fetch output for `https://github.com/craftpip` — spent
 too long analyzing code paths instead of reading the output the user showed.
 
-**Impact:** Any page with numbers as link text (star counts, fork counts, follower
-counts) produces unparseable output for LLMs.
+**Resolution:** The ref_id is now the destination of a proper Markdown link —
+`[text](ref_id)` — so `[5][88]`-style collisions become `[documentation](88)`. Numeric
+link text is enriched with the anchor text (`isNumeric && enriched` in `openTargetsParallel`).
+Search result labels and page headers follow the same form: `- **Title** [domain](ref)`,
+`### [Title](ref)`, `web_page_links` → `- (ref): url`.
 
 ---
 

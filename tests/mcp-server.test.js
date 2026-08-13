@@ -951,9 +951,9 @@ describe("mcp-server HTTP endpoints", () => {
       expect(body.result.content).toBeDefined();
       const text = body.result.content[0].text;
       expect(text).toContain("Vitest Guide");
-      expect(text).toMatch(/- \*\*Vitest Guide\*\* \[\d+\] \(vitest.dev\)/);
+      expect(text).toMatch(/- \*\*Vitest Guide\*\* \[vitest\.dev\]\(\d+\)/);
       expect(text).not.toContain("https://vitest.dev/guide");
-      expect(text).toContain("*Square brackets contain ref_ids.*");
+      expect(text).toContain("*Link destinations in parentheses are ref_ids.*");
     });
 
     it("handles web_fetch with url", async () => {
@@ -975,7 +975,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(status).toBe(200);
       const text = body.result.content[0].text;
       expect(text).toContain("Example Page");
-      expect(text).toContain("### [");
+      expect(text).toMatch(/### \[Example Page\]\(\d+\)/);
       expect(text).toContain("page content here");
       expect(text).not.toContain("  - page content here");
     });
@@ -1058,7 +1058,7 @@ describe("mcp-server HTTP endpoints", () => {
 
       expect(fetchResponse.status).toBe(200);
       const text = fetchResponse.body.result.content[0].text;
-      const linkRef = text.match(/\[documentation\]\[(\d+)\]/)?.[1];
+      const linkRef = text.match(/\[documentation\]\((\d+)\)/)?.[1];
       expect(linkRef).toBeTruthy();
       expect(text).not.toContain("[documentation](https://docs.example.com/guide)");
 
@@ -1067,7 +1067,7 @@ describe("mcp-server HTTP endpoints", () => {
         params: { name: "web_page_links", arguments: { ref_id: Number(linkRef) } }
       });
       expect(linksResponse.status).toBe(200);
-      expect(linksResponse.body.result.content[0].text).toContain("https://docs.example.com/guide");
+      expect(linksResponse.body.result.content[0].text).toContain(`- (${linkRef}): https://docs.example.com/guide`);
     });
 
     it("handles web_fetch with urls array", async () => {
@@ -1199,7 +1199,7 @@ describe("mcp-server HTTP endpoints", () => {
         jsonrpc: "2.0", id: 57, method: "tools/call",
         params: { name: "web_search", arguments: { query: "single fetch target" } }
       });
-      const refId = Number(searchResponse.body.result.content[0].text.match(/\[(\d+)\]/)?.[1]);
+      const refId = Number(searchResponse.body.result.content[0].text.match(/\[[^\]]+\]\((\d+)\)/)?.[1]);
       expect(refId).toBeGreaterThan(0);
 
       searchMod.browserOpenAndExtract.mockResolvedValueOnce({

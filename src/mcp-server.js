@@ -943,8 +943,8 @@ function extractDomains(text) {
     if (m && !domains.includes(m[2])) domains.push(m[2]);
   }
   if (!domains.length) {
-    const m = text.match(/\[\d+\].*?\]\s+(https?:\/\/([^/\s]+))/);
-    if (m && !domains.includes(m[2])) domains.push(m[2]);
+    const m = text.match(/\[([^\]\s/]+)\]\(\d+\)/);
+    if (m && m[1] && !domains.includes(m[1])) domains.push(m[1]);
   }
   return domains.join(", ");
 }
@@ -957,7 +957,7 @@ function mcpResponseSummary(resp) {
   if (result.isError) return "error";
   const text = result?.content?.[0]?.text || "";
   if (!text) return "ok";
-  const refs = text.match(/^\s*- \*\*.+?\*\* \[\d+\]/gm);
+  const refs = text.match(/^\s*- \*\*.+?\*\* \[[^\]]+\]\(\d+\)/gm);
   if (refs) {
     const hint = firstResultTitle(text);
     const domains = extractDomains(text);
@@ -1113,7 +1113,7 @@ function decorateResultLinks(results) {
     if (!rawUrl) return item;
 
     const ref = rememberLink(rawUrl);
-    const display = `[${ref}] ${truncateLink(rawUrl, 50)}`;
+    const display = `[${truncateLink(rawUrl, 50)}](${ref})`;
     const domain = getDomain(rawUrl);
 
     return {
@@ -1168,18 +1168,18 @@ function formatSearchMarkdown(payload) {
         lines.push("", `**Results (${results.length}):**`);
         results.forEach((result, index) => {
           const refId = result?.ref_id;
-          const refLabel = refId ? `[${refId}]` : `${index + 1}.`;
           const titleText = cleanTitle(result?.title || "");
           const title = titleText ? `**${titleText}**` : "Untitled";
+          const linkText = result?.domain || titleText || "link";
+          const refLabel = refId ? `[${linkText}](${refId})` : `${index + 1}.`;
           const snippet = truncateForDisplay(result?.snippet || "", 450);
           const queryVariants = Array.isArray(result?.queryVariants) && result.queryVariants.length
             ? ` _(queries: ${result.queryVariants.join(", ")})_`
             : queryLabel
               ? ` _(queries: ${queryLabel})_`
               : "";
-          const domain = result?.domain ? ` (${result.domain})` : "";
 
-          const bullet = `- ${title} ${refLabel}${domain}${queryVariants}`;
+          const bullet = `- ${title} ${refLabel}${queryVariants}`;
           lines.push(bullet.trim());
           if (snippet) {
             lines.push(`  - ${snippet}`);
@@ -1198,7 +1198,7 @@ function formatSearchMarkdown(payload) {
       }
     });
 
-    lines.push("", "*Square brackets contain ref_ids.*");
+    lines.push("", "*Link destinations in parentheses are ref_ids.*");
     return lines.filter(Boolean).join("\n");
   }
 
@@ -1222,22 +1222,22 @@ function formatSearchMarkdown(payload) {
     lines.push("", `**Results (${results.length}):**`);
     results.forEach((result, index) => {
       const refId = result?.ref_id;
-      const refLabel = refId ? `[${refId}]` : `${index + 1}.`;
       const titleText = cleanTitle(result?.title || "");
       const title = titleText ? `**${titleText}**` : "Untitled";
+      const linkText = result?.domain || titleText || "link";
+      const refLabel = refId ? `[${linkText}](${refId})` : `${index + 1}.`;
       const snippet = truncateForDisplay(result?.snippet || "", 450);
       const queryVariants = Array.isArray(result?.queryVariants) && result.queryVariants.length
         ? ` _(queries: ${result.queryVariants.join(", ")})_`
         : "";
-      const domain = result?.domain ? ` (${result.domain})` : "";
 
-      const bullet = `- ${title} ${refLabel}${domain}${queryVariants}`;
+      const bullet = `- ${title} ${refLabel}${queryVariants}`;
       lines.push(bullet.trim());
       if (snippet) {
         lines.push(`  - ${snippet}`);
       }
     });
-    lines.push("", "*Square brackets contain ref_ids.*");
+    lines.push("", "*Link destinations in parentheses are ref_ids.*");
   } else {
     lines.push("", "No results returned.");
   }
@@ -1351,9 +1351,9 @@ function formatOpenPageResponse(payload) {
   const lines = [`Processed ${total} page(s); ${successCount} succeeded.`];
 
   entries.forEach((entry, index) => {
-    const refLabel = entry?.ref_id ? `[${entry.ref_id}]` : `#${index + 1}`;
     const title = entry?.title || entry?.url || `Page ${index + 1}`;
-    lines.push("", `### ${refLabel} ${title}`);
+    const refLabel = entry?.ref_id ? `[${title}](${entry.ref_id})` : `#${index + 1} ${title}`;
+    lines.push("", `### ${refLabel}`);
     lines.push(`- Status: ${entry?.ok === false ? "Failed" : "Success"}`);
     if (entry?.url) {
       lines.push(`- URL: ${entry.url}`);
@@ -1389,9 +1389,9 @@ function formatScreenshotResponse(payload) {
   const lines = [`Captured ${total} screenshot(s); ${successCount} succeeded.`];
 
   entries.forEach((entry, index) => {
-    const refLabel = entry?.ref_id ? `[${entry.ref_id}]` : `#${index + 1}`;
     const title = entry?.title || entry?.url || `Screenshot ${index + 1}`;
-    lines.push("", `### ${refLabel} ${title}`);
+    const refLabel = entry?.ref_id ? `[${title}](${entry.ref_id})` : `#${index + 1} ${title}`;
+    lines.push("", `### ${refLabel}`);
     lines.push(`- Status: ${entry?.ok === false ? "Failed" : "Success"}`);
     if (entry?.url) {
       lines.push(`- URL: ${entry.url}`);
@@ -1528,7 +1528,7 @@ async function openTargetsParallel(targetUrls, maxParallel, includeSeoAnalysis =
           ...page
         };
 
-        // Replace markdown links [text](url) with [text][ref_id] inline
+        // Replace markdown links [text](url) with [text](ref_id) inline
         if (page.links?.length && result.text) {
           for (const link of page.links) {
             rememberLink(link.href);
@@ -1542,7 +1542,7 @@ async function openTargetsParallel(targetUrls, maxParallel, includeSeoAnalysis =
             if (!ref) return match;
             const enriched = enrichedTextByUrl.get(url);
             const isNumeric = /^\d+$/.test(text);
-            return `[${isNumeric && enriched ? enriched : text}][${ref}]`;
+            return `[${isNumeric && enriched ? enriched : text}](${ref})`;
           });
         }
 
@@ -1773,7 +1773,7 @@ function getToolsListResponse(allowedTools = null) {
       {
         name: "web_page_links",
         description:
-          "Resolve one or more link ref_ids (shown inline in web_fetch output as [ref_id]) to their full URLs. Returns the URL for each ref_id.",
+          "Resolve one or more link ref_ids (shown inline in web_fetch output as [text](ref_id)) to their full URLs. Returns the URL for each ref_id.",
         inputSchema: {
           type: "object",
           properties: {
@@ -2335,9 +2335,9 @@ async function handleToolCallInner(name, args = {}) {
     for (const id of ids) {
       const url = getUrlForRefId(id);
       if (url) {
-        out.push(`- [${id}]: ${url}`);
+        out.push(`- (${id}): ${url}`);
       } else {
-        out.push(`- [${id}]: (no link registered for this ref_id)`);
+        out.push(`- (${id}): no link registered for this ref_id`);
       }
     }
     timer.step("resolve_links", mark);

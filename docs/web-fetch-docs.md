@@ -113,8 +113,8 @@ web_fetch()
              │  └─ RETURN { title, url, text, textOriginalLength, links?, seo?, tables? }
              │
              └─ Back in openTargetsParallel
-                ├─ rememberLink(targetUrl) → ref_id
-                ├─ Replace markdown links [text](url) → [text][ref_id]
+                 ├─ rememberLink(targetUrl) → ref_id
+                 ├─ Replace markdown links [text](url) → [text](ref_id)
                 └─ RETURN { index, ok, ref_id, title, url, text, ... }
 ```
 
@@ -285,7 +285,7 @@ Tables are **always extracted** — there is no flag to disable this (except via
 
 ## Links
 
-Links are **always extracted** but **never shown in the text output**. They are stored in `pageLinksByPageRef` and accessible via `web_page_links(ref_id)`.
+Links are **always extracted** but **never shown in the text output** — instead each link is rendered inline as `[link text](ref_id)` (the parenthesized number is the link's ref_id). They are stored in `pageLinksByPageRef` and accessible via `web_page_links(ref_id)`.
 
 ### How It Works
 
@@ -295,12 +295,13 @@ Links are **always extracted** but **never shown in the text output**. They are 
 4. Skips: anchor-only links, `javascript:` links, links inside `<td>/<th>`
 5. Deduplicates by URL, keeping most specific heading context
 6. Each link gets its own `ref_id` via `rememberLink()`
+7. `openTargetsParallel()` rewrites `[text](url)` → `[text](ref_id)` in the page text
 
 ### Accessing Links
 
 ```
-web_fetch(url: "https://example.com")  → returns page with Links: N metadata
-web_page_links(ref_id: N)              → lists all links with their ref_ids
+web_fetch(url: "https://example.com")   → links inline as [text](ref_id)
+web_page_links(ref_id: N)               → lists links: - (ref_id): url
 web_fetch(ref_id: link_ref_id)          → fetches a specific link's content
 ```
 

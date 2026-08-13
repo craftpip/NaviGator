@@ -1,0 +1,9 @@
+{
+  "product": "AeroSound ANC 5000",
+  "sellers": [
+    { "name": "AcousticZone", "rating": "4.6", "orders": "12,400", "location": "Testville, IN" },
+    { "name": "SoundBazaar", "rating": "4.3", "orders": "8,120", "location": "Austin, TX" },
+    { "name": "GadgetHub Outlet", "rating": "4.8", "orders": "21,930", "location": "Seattle, WA" },
+    { "name": "Audiophile Corner", "rating": "4.1", "orders": "3,760", "location": "Berlin, DE" }
+  ]
+}

@@ -87,6 +87,14 @@
 
       <h2>Shipping & returns</h2>
       <p>Free standard shipping over $50. 30-day no-questions returns. Ships from warehouse in Testville within 24 hours.</p>
+
+      <h2>Sellers</h2>
+      <p id="sellers-hint" style="color:#555;">This item is available from 4 sellers. Seller names load only when you ask.</p>
+      <button class="btn" id="view-sellers">View sellers</button>
+      <div id="sellers-list" hidden>
+        <p id="sellers-loading" style="color:#777;font-style:italic;">Loading sellers…</p>
+        <ul id="sellers-ul"></ul>
+      </div>
     </div>
 
     <section class="reviews">
@@ -133,6 +141,47 @@
           s.classList.add('sel');
           document.getElementById('color-label').textContent = s.getAttribute('data-color');
         });
+      });
+    })();
+
+    // Sellers are NOT on the page initially. Clicking "View sellers" lazy-loads
+    // them from /ecommerce/sellers.json with a simulated network delay.
+    (function () {
+      var btn = document.getElementById('view-sellers');
+      var list = document.getElementById('sellers-list');
+      var loading = document.getElementById('sellers-loading');
+      var ul = document.getElementById('sellers-ul');
+
+      btn.addEventListener('click', function () {
+        if (btn.disabled) return;
+        btn.disabled = true;
+        btn.textContent = 'Loading sellers…';
+        list.hidden = false;
+        loading.hidden = false;
+
+        setTimeout(function () {
+          fetch('sellers.json')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              loading.hidden = true;
+              btn.textContent = 'Sellers loaded';
+              data.sellers.forEach(function (s) {
+                var li = document.createElement('li');
+                var strong = document.createElement('strong');
+                strong.textContent = s.name;
+                li.appendChild(strong);
+                li.appendChild(document.createTextNode(
+                  ' — ' + s.rating + '★ · ' + s.orders + ' orders · ' + s.location
+                ));
+                ul.appendChild(li);
+              });
+            })
+            .catch(function () {
+              loading.textContent = 'Failed to load sellers. Try again.';
+              btn.disabled = false;
+              btn.textContent = 'View sellers';
+            });
+        }, 700 + Math.random() * 600);
       });
     })();
   </script>

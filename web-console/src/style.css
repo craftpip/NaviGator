@@ -685,9 +685,6 @@ p,
   grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
   gap: 10px;
 }
-.engine-activity > .panel {
-  height: 100%;
-}
 .engine-activity > .panel:last-child {
   display: flex;
   flex-direction: column;
@@ -695,7 +692,12 @@ p,
 .engine-activity > .panel:last-child .feed {
   flex: 1;
   min-height: 0;
-  max-height: 720px;
+}
+.engine-activity > .panel:last-child .empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .list {
   display: flex;

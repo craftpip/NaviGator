@@ -496,7 +496,44 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy, feed, trend, trendR
   const engines = config.engines || [];
   const state = computeStatus(health, stats, ok);
   const [expandedIssue, setExpandedIssue] = useState(null);
+  const [feedMaxHeight, setFeedMaxHeight] = useState(null);
+  const engineActivityRef = useRef(null);
   const usage = stats.usage || {};
+  const syncFeedHeight = useCallback(() => {
+    const wrap = engineActivityRef.current;
+    if (!wrap || wrap.children.length < 2) return;
+    const enginesPanel = wrap.children[0];
+    const livePanel = wrap.children[1];
+    const sideBySide = Math.abs(enginesPanel.getBoundingClientRect().top - livePanel.getBoundingClientRect().top) < 2;
+    if (!sideBySide) {
+      setFeedMaxHeight((prev) => (prev === null ? prev : null));
+      return;
+    }
+    const grid = enginesPanel.querySelector(".engine-grid");
+    const enginesHeight = grid
+      ? grid.getBoundingClientRect().height
+      : enginesPanel.getBoundingClientRect().height;
+    setFeedMaxHeight((prev) => (Math.abs((prev || 0) - enginesHeight) > 1 ? enginesHeight : prev));
+  }, []);
+  useEffect(() => {
+    syncFeedHeight();
+    window.addEventListener("resize", syncFeedHeight);
+    let observer;
+    const wrap = engineActivityRef.current;
+    if (wrap && typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(syncFeedHeight);
+      for (const child of wrap.children) observer.observe(child);
+      const grid = wrap.children[0]?.querySelector(".engine-grid");
+      if (grid) observer.observe(grid);
+    }
+    return () => {
+      window.removeEventListener("resize", syncFeedHeight);
+      observer?.disconnect();
+    };
+  }, [syncFeedHeight]);
+  useEffect(() => {
+    syncFeedHeight();
+  }, [feed, syncFeedHeight]);
   return (
     <>
       <section className="overview">
@@ -595,9 +632,9 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy, feed, trend, trendR
         </section>
       )}
       <section className="content-grid">
-        <div className="engine-activity">
+        <div className="engine-activity" ref={engineActivityRef}>
           <Engines config={config} health={health} stats={stats} />
-          <LiveFeed feed={feed} enabledEngines={engines.map((engine) => engine.id)} />
+          <LiveFeed feed={feed} enabledEngines={engines.map((engine) => engine.id)} feedMaxHeight={feedMaxHeight} />
         </div>
         <Drivers health={health} instances={instances} />
         <Runtime health={health} stats={stats} history={history} />
@@ -949,7 +986,7 @@ function buildFeed(entries, pageOps) {
   }
   return rows.sort((a, b) => Number(b.ts) - Number(a.ts));
 }
-function LiveFeed({ feed, enabledEngines }) {
+function LiveFeed({ feed, enabledEngines, feedMaxHeight }) {
   const [showWeb, setShowWeb] = useState(true);
   const [showDevtools, setShowDevtools] = useState(true);
   const [newKeys, setNewKeys] = useState(() => new Set());
@@ -1004,7 +1041,7 @@ function LiveFeed({ feed, enabledEngines }) {
       }
     >
       {rows.length ? (
-        <div className="feed">
+        <div className="feed" style={feedMaxHeight ? { maxHeight: feedMaxHeight } : undefined}>
           <table className="activity-table">
             <colgroup>
               <col className="activity-time" />
