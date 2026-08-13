@@ -202,6 +202,7 @@ export function getSearchBackendHealth() {
   });
 }
 
+const INSTANT_ANSWER_AWAIT_CAP_MS = 1500;
 const ENGINE_ATTEMPT_LOG_MAX = 20000;
 const ENGINE_ATTEMPT_STATE_PATH = path.join(process.cwd(), ".cache", "search-engine-attempts.json");
 const ENGINE_ATTEMPT_PERIODS = [
@@ -1745,7 +1746,10 @@ export async function browserSearch({ query, queries, limit = 5, engines }) {
           : runFallbackEngineGroups({ manager, query: singleQuery, limit, config: manager.config });
 
         const instantAnswerTask = manager.config.enableInstantAnswers !== false
-          ? fetchDuckDuckGoInstantAnswers(singleQuery, manager.config).catch(() => [])
+          ? Promise.race([
+              fetchDuckDuckGoInstantAnswers(singleQuery, manager.config).catch(() => []),
+              new Promise((resolve) => setTimeout(() => resolve([]), INSTANT_ANSWER_AWAIT_CAP_MS))
+            ])
           : Promise.resolve([]);
 
         const [entry, ddgInstantAnswers] = await Promise.all([
