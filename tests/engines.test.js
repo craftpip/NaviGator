@@ -305,6 +305,28 @@ describe("browser driver block detection", () => {
       dom.window.close();
     }
   });
+
+  it("mojeek_lp throws on a CAPTCHA challenge page", async () => {
+    const dom = domFromHtml('<title>Captcha</title><p>JavaScript is required to complete this challenge. Please enable it and reload the page.</p>');
+    try {
+      const driver = getEngineDriver("mojeek_lp", {});
+      const page = makeFakePage(dom, "https://www.mojeek.com/search?q=test");
+      await expect(driver.assertNotBlocked(page)).rejects.toThrow(/blocked/);
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it("mojeek_lp passes on a normal results page", async () => {
+    const dom = domFromHtml('<ul class="results-standard"><li><h2><a class="title" href="https://z.example">z</a></h2><p class="s">Mojeek snippet.</p></li></ul>');
+    try {
+      const driver = getEngineDriver("mojeek_lp", {});
+      const page = makeFakePage(dom, "https://www.mojeek.com/search?q=test");
+      await expect(driver.assertNotBlocked(page)).resolves.toBeUndefined();
+    } finally {
+      dom.window.close();
+    }
+  });
 });
 
 describe("browser warmup filtering", () => {

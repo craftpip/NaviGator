@@ -37,9 +37,12 @@ export class MojeekLpDriver extends BrowserSearchDriver {
   }
 
   async assertNotBlocked(page) {
-    const text = await page.evaluate(() => document.body?.innerText || document.body?.textContent || "");
-    if (/403\s*-?\s*forbidden|automated queries/i.test(text)) {
-      throw new Error("Mojeek blocked this request as automated traffic");
+    const { title, text } = await page.evaluate(() => ({
+      title: document.title || "",
+      text: document.body?.innerText || document.body?.textContent || ""
+    }));
+    if (/403\s*-?\s*forbidden|automated queries|captcha|complete this challenge/i.test(`${title}\n${text}`)) {
+      throw new Error("Mojeek blocked this request as automated traffic (CAPTCHA)");
     }
   }
 
