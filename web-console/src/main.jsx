@@ -2186,6 +2186,8 @@ function Keys() {
 
 const HINT_PRIORITIES = ["high", "medium", "low"];
 const HINT_FORMATS = ["text", "list", "markdown", "html", "html_to_markdown", "readability_to_markdown"];
+const DEFAULT_PAGE_FORMATS = ["readability_to_markdown", "html_to_markdown", "text"];
+const DEFAULT_TABLES = ["all", "content", "disabled"];
 const HINT_BLOCK_FORMATS = [
   "text",
   "list",
@@ -2211,11 +2213,14 @@ function emptyHint() {
     pathPattern: "/**",
     comment: "",
     testUrls: [],
-    waitForSelector: [],
-    skipSelectors: [],
-    preferReadability: true,
-    contentSelectors: [],
-    content: {},
+    default: {
+      waitForSelector: [],
+      stabilizeStrategy: "",
+      waitForContent: [],
+      skipSelectors: [],
+      format: "readability_to_markdown",
+      tables: "all",
+    },
     flowOptions: {},
   };
 }
@@ -2226,7 +2231,6 @@ function hintKey(hint) {
 
 function modeFromHint(hint) {
   if (hint?.flow?.length) return "flow";
-  if (hint?.content?.blocks?.length || hint?.content?.sections?.length) return "content";
   return "default";
 }
 
@@ -2236,10 +2240,6 @@ function hintMeta(hint) {
   if (hint?.requireSelector) parts.push(`require: ${hint.requireSelector}`);
   if (hint?.flow?.length) {
     parts.push(`flow: ${hint.flow.length} step${hint.flow.length === 1 ? "" : "s"}`);
-  } else if (hint?.content?.blocks?.length) {
-    parts.push(`${hint.content.blocks.length} block${hint.content.blocks.length === 1 ? "" : "s"}`);
-  } else if (hint?.content?.sections?.length) {
-    parts.push(`${hint.content.sections.length} legacy section${hint.content.sections.length === 1 ? "" : "s"}`);
   } else {
     parts.push("default extraction");
   }
@@ -2804,6 +2804,22 @@ function FlowOptionsEditor({ options, onChange }) {
           />
           Continue when an extract returns empty content
         </label>
+        <div className="hint-field hint-narrow">
+          <span>Stabilize strategy</span>
+          <select
+            value={options?.stabilizeStrategy || ""}
+            onChange={(event) => set("stabilizeStrategy", event.target.value || undefined)}
+          >
+            <option value="">Default (network_idle)</option>
+            <option value="network_idle">network_idle (500ms no network traffic)</option>
+            <option value="content_idle">content_idle (waits for rendered text)</option>
+            <option value="mutation">mutation (waits for DOM to stop changing)</option>
+          </select>
+          <span className="hint-option-hint">
+            Applies after click, type (submit), and navigate steps — how long the page
+            must settle before the next step or extract. Same strategies as default extraction.
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -2967,32 +2983,34 @@ function HintGuide() {
               </td>
             </tr>
             <tr>
-              <td>Readability</td>
+              <td>Format (content)</td>
               <td>
-                on → auto article extraction (strips nav/ads); off → keep the whole
-                page
+                <code>readability_to_markdown</code> auto-strips nav/ads/sidebar;
+                <code>html_to_markdown</code> keeps the whole page; <code>text</code> is a
+                flat dump
               </td>
               <td>
-                <code>off</code> for profiles, homepages, data tables
+                <code>html_to_markdown</code> for profiles, homepages, data tables
               </td>
             </tr>
             <tr>
               <td>Table extraction</td>
               <td>
-                <code>Disabled</code> when tables are layout noise
+                <code>all</code> = every table · <code>content</code> = only inside the
+                content node · <code>disabled</code> when tables are layout noise
               </td>
               <td>
-                <code>Disabled</code> on Cricbuzz
+                <code>disabled</code> on Cricbuzz
               </td>
             </tr>
             <tr>
-              <td>Content sections</td>
+              <td>Interactive flow</td>
               <td>
-                The actual material — pick the exact containers to extract. Selectors
-                must not overlap.
+                Replace default extraction with scripted extract / click / type / navigate
+                steps for interactive or multi-page pages
               </td>
               <td>
-                <code>article.markdown-body</code>
+                select a dropdown, wait, then extract the result container
               </td>
             </tr>
           </tbody>
@@ -3003,12 +3021,13 @@ function HintGuide() {
   "pathPattern": "/*/*",            // repo pages, not the profile "/*"
   "comment": "Repo — README + metadata",
   "requireSelector": "article.markdown-body",  // optional: only applies when this element exists
-  "waitForSelector": "turbo-frame#repo-content-turbo-frame",
-  "preferReadability": false,
-  "content": {
-    "sections": [
-      { "selector": "article.markdown-body", "label": "README", "priority": "high" }
-    ]
+  "default": {
+    "waitForSelector": ["turbo-frame#repo-content-turbo-frame"],
+    "stabilizeStrategy": "network_idle",
+    "waitForContent": ["article.markdown-body"],
+    "skipSelectors": [".navbar", ".sidebar"],
+    "format": "readability_to_markdown",  // readability_to_markdown | html_to_markdown | text
+    "tables": "all"                        // all | content | disabled
   }
 }`}</pre>
         <p className="hint-guide-note">
@@ -3226,19 +3245,19 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
     setHint(next);
     setJson(JSON.stringify(next, null, 2));
   };
-  const patchContent = (content) => patch({ content });
-  const switchToDefault = () => setMode("default");
-  const switchToContent = () => setMode("content");
+  const patchDefault = (updates) => patch({ default: { ...(hint.default || {}), ...updates } });
+  const switchToDefault = () => {
+    if (hint.default === undefined) patch({ default: { ...emptyHint().default } });
+    setMode("default");
+  };
   const switchToFlow = () => {
     if (!hint.flow?.length) patch({ flow: [emptyFlowStep("extract")] });
     setMode("flow");
   };
   const cleanedHint =
     mode === "flow"
-      ? hint
-      : mode === "content"
-        ? { ...hint, flow: undefined }
-        : { ...hint, content: undefined, flow: undefined, flowOptions: undefined };
+      ? { ...hint, default: undefined }
+      : { ...hint, flow: undefined, flowOptions: undefined };
   const applyJson = (text) => {
     setJson(text);
     setJsonError("");
@@ -3370,49 +3389,6 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                   />
                 </HintField>
               </HintFieldGroup>
-              <HintFieldGroup title="Page load">
-                <LineListEditor
-                  label="Wait for selectors (one per line)"
-                  help="Waits until ALL of these elements appear (up to 20s) before extracting. Use only when the content loads after the page — e.g. SPA sites."
-                  values={Array.isArray(hint.waitForSelector) ? hint.waitForSelector : hint.waitForSelector ? [hint.waitForSelector] : []}
-                  onChange={(waitForSelector) => patch({ waitForSelector })}
-                  placeholder={"turbo-frame#repo-content-turbo-frame"}
-                  mono
-                />
-                <div className="hint-option">
-                  <span className="hint-option-name">Stabilize strategy</span>
-                  <select
-                    value={hint.stabilizeStrategy || ""}
-                    onChange={(event) => patch({ stabilizeStrategy: event.target.value || undefined })}
-                  >
-                    <option value="">Default (network_idle — 500ms no network traffic)</option>
-                    <option value="network_idle">network_idle (500ms no network traffic)</option>
-                    <option value="content_idle">content_idle (waits for rendered text)</option>
-                    <option value="mutation">mutation (waits for DOM to stop changing)</option>
-                  </select>
-                  <span className="hint-option-hint">
-                    Always runs after Wait for selector (or alone when none is set).
-                    network_idle = 500ms of no network traffic · content_idle = wait
-                    for rendered text · mutation = wait for DOM changes.
-                  </span>
-                </div>
-                <LineListEditor
-                  label="Wait for content selectors (one per line)"
-                  help="Waits for content to appear in these selectors — so if the content is lazy-loaded, the page keeps waiting until it's there. Only needed when your content container isn't already covered (main, article, .content…)."
-                  values={hint.contentSelectors || []}
-                  onChange={(contentSelectors) => patch({ contentSelectors })}
-                  placeholder={"article\n[data-testid=\"content\"]"}
-                  mono
-                />
-                <LineListEditor
-                  label="Skip selectors (one per line)"
-                  help="Elements to strip before extraction — one CSS selector per line. e.g. .navbox, .sidebar"
-                  values={hint.skipSelectors || []}
-                  onChange={(skipSelectors) => patch({ skipSelectors })}
-                  placeholder={".navbox\n.sidebar"}
-                  mono
-                />
-              </HintFieldGroup>
               <HintFieldGroup title="What gets extracted" accent>
                 <div className="hint-mode-switch" role="tablist">
                   <button
@@ -3423,17 +3399,7 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                     onClick={switchToDefault}
                   >
                     Default extraction
-                    <em>standard pipeline — your toggles apply</em>
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === "content"}
-                    className={mode === "content" ? "active" : ""}
-                    onClick={switchToContent}
-                  >
-                    Static blocks
-                    <em>one pass over the loaded page</em>
+                    <em>standard pipeline — all settings live here</em>
                   </button>
                   <button
                     type="button"
@@ -3449,46 +3415,97 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                 {mode === "default" ? (
                   <>
                     <p className="hint hint-default">
-                      No custom extraction — the page runs the standard pipeline:{" "}
-                      <strong>Readability → tables → links</strong>. The toggles below (plus{" "}
-                      <em>Page load</em>) apply here. Switch to <em>Static blocks</em> or{" "}
-                      <em>Interactive flow</em> to override with your own layout.
+                      The page runs the standard pipeline:{" "}
+                      <strong>page load → Readability → tables → links</strong>. Everything
+                      that tunes default extraction — load behavior, content format, tables —
+                      lives here. Switch to <em>Interactive flow</em> to script your own steps.
                     </p>
+                    <HintFieldGroup title="Page load">
+                      <LineListEditor
+                        label="Wait for selectors (one per line)"
+                        help="Waits until ALL of these elements appear (up to 20s) before extracting. Use only when the content loads after the page — e.g. SPA sites."
+                        values={
+                          Array.isArray(hint.default?.waitForSelector)
+                            ? hint.default.waitForSelector
+                            : hint.default?.waitForSelector
+                              ? [hint.default.waitForSelector]
+                              : []
+                        }
+                        onChange={(waitForSelector) => patchDefault({ waitForSelector })}
+                        placeholder={"turbo-frame#repo-content-turbo-frame"}
+                        mono
+                      />
+                      <div className="hint-option">
+                        <span className="hint-option-name">Stabilize strategy</span>
+                        <select
+                          value={hint.default?.stabilizeStrategy || ""}
+                          onChange={(event) => patchDefault({ stabilizeStrategy: event.target.value || undefined })}
+                        >
+                          <option value="">Default (network_idle — 500ms no network traffic)</option>
+                          <option value="network_idle">network_idle (500ms no network traffic)</option>
+                          <option value="content_idle">content_idle (waits for rendered text)</option>
+                          <option value="mutation">mutation (waits for DOM to stop changing)</option>
+                        </select>
+                        <span className="hint-option-hint">
+                          Always runs after Wait for selector (or alone when none is set).
+                          network_idle = 500ms of no network traffic · content_idle = wait
+                          for rendered text · mutation = wait for DOM changes.
+                        </span>
+                      </div>
+                      <LineListEditor
+                        label="Wait for content selectors (one per line)"
+                        help="Waits for content to appear in these selectors — so if the content is lazy-loaded, the page keeps waiting until it's there. Only needed when your content container isn't already covered (main, article, .content…)."
+                        values={hint.default?.waitForContent || []}
+                        onChange={(waitForContent) => patchDefault({ waitForContent })}
+                        placeholder={"article\n[data-testid=\"content\"]"}
+                        mono
+                      />
+                      <LineListEditor
+                        label="Skip selectors (one per line)"
+                        help="Elements to strip before extraction — one CSS selector per line. e.g. .navbox, .sidebar"
+                        values={hint.default?.skipSelectors || []}
+                        onChange={(skipSelectors) => patchDefault({ skipSelectors })}
+                        placeholder={".navbox\n.sidebar"}
+                        mono
+                      />
+                    </HintFieldGroup>
                     <div className="hint-options-grid">
                       <div className="hint-option">
-                        <span className="hint-option-name">Readability</span>
-                        <label className="hint-check hint-option-check">
-                          <input
-                            type="checkbox"
-                            checked={hint.preferReadability !== false}
-                            onChange={(event) => patch({ preferReadability: event.target.checked })}
-                          />
-                          <span className="hint-option-hint">
-                            {hint.preferReadability === false
-                              ? "off → raw HTML-to-markdown keeps everything"
-                              : "on → strips nav, ads, sidebar"}
-                          </span>
-                        </label>
+                        <span className="hint-option-name">Format (content)</span>
+                        <select
+                          value={hint.default?.format || "readability_to_markdown"}
+                          onChange={(event) => patchDefault({ format: event.target.value })}
+                          title="How the page content is rendered. readability_to_markdown strips nav/ads/sidebar; html_to_markdown keeps everything; text is a flat text dump."
+                        >
+                          {DEFAULT_PAGE_FORMATS.map((format) => (
+                            <option key={format} value={format}>
+                              {format}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="hint-option-hint">
+                          readability_to_markdown = Readability (strips nav, ads, sidebar) ·
+                          html_to_markdown = raw HTML-to-markdown keeps everything · text =
+                          flat text dump.
+                        </span>
                       </div>
                       <div className="hint-option">
                         <span className="hint-option-name">Table extraction</span>
                         <select
-                          value={hint.tableExtraction || ""}
-                          onChange={(event) => patch({ tableExtraction: event.target.value || undefined })}
+                          value={hint.default?.tables || "all"}
+                          onChange={(event) => patchDefault({ tables: event.target.value })}
                         >
-                          <option value="">Default</option>
+                          <option value="all">All tables</option>
                           <option value="content">Content tables only</option>
                           <option value="disabled">Disabled</option>
                         </select>
+                        <span className="hint-option-hint">
+                          all = every table on the page · content = only tables inside the
+                          rendered content node · disabled = no table extraction.
+                        </span>
                       </div>
                     </div>
                   </>
-                ) : mode === "content" ? (
-                  <BlocksEditor
-                    blocks={hint.content?.blocks || []}
-                    onChange={(blocks) => patchContent({ blocks })}
-                    legacySectionCount={hint.content?.sections?.length || 0}
-                  />
                 ) : (
                   <>
                     <FlowEditor flow={hint.flow || []} onChange={(flow) => patch({ flow })} />

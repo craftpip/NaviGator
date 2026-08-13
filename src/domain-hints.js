@@ -75,7 +75,16 @@ export async function loadDomainHints(hintsPath) {
   const raw = await fs.readFile(resolvedPath, "utf8");
   const entries = JSON.parse(raw);
   if (!Array.isArray(entries)) return [];
-  return entries.filter((e) => e && typeof e.domain === "string");
+  const migrated = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry.domain !== "string") continue;
+    const { hint, warnings } = migrateHintShape(entry);
+    if (warnings.length) {
+      console.warn(`[domain-hints] migrated hint for ${entry.domain}: ${warnings.join("; ")}`);
+    }
+    migrated.push(hint);
+  }
+  return migrated;
 }
 
 export function findMatchingHints(urlStr, hints) {
@@ -105,6 +114,89 @@ export function clearDomainHintCache() {
   loadedPath = null;
 }
 
+export function getExtractionMethod(hint) {
+  if (Array.isArray(hint?.flow) && hint.flow.length > 0) return "flow";
+  if (hint?.default !== undefined) return "default";
+  return null;
+}
+
+export function migrateHintShape(hint) {
+  if (!hint || typeof hint !== "object" || Array.isArray(hint)) return { hint, warnings: [] };
+  const warnings = [];
+  const out = { ...hint };
+
+  if (out.content !== undefined) {
+    const content = out.content || {};
+    const blocks = (Array.isArray(content.blocks) ? content.blocks : []).concat(
+      (Array.isArray(content.sections) ? content.sections : []).map((section) => ({
+        ...section,
+        format: out.preferReadability === false ? "html_to_markdown" : "readability_to_markdown"
+      }))
+    );
+    if (blocks.length) {
+      const steps = [];
+      if (out.waitForSelector) {
+        steps.push({ action: "wait", selector: out.waitForSelector, timeoutMs: 10000 });
+      }
+      steps.push({
+        action: "extract",
+        label: out.pageType || "Page content",
+        content: { blocks }
+      });
+      out.flow = steps;
+      warnings.push("static blocks (content) migrated to a single-extract-step flow");
+    }
+    delete out.content;
+  }
+
+  if (out.flow === undefined && out.default === undefined) {
+    const legacy = {
+      waitForSelector: out.waitForSelector,
+      stabilizeStrategy: out.stabilizeStrategy,
+      contentSelectors: out.contentSelectors,
+      skipSelectors: out.skipSelectors,
+      tableExtraction: out.tableExtraction,
+      preferReadability: out.preferReadability
+    };
+    const hasLegacy = Object.values(legacy).some((value) => value !== undefined && value !== "");
+    if (hasLegacy) {
+      out.default = {};
+      warnings.push("top-level page-load / extraction fields migrated to default");
+      if (out.preferReadability !== undefined) {
+        out.default.format = out.preferReadability === false ? "html_to_markdown" : "readability_to_markdown";
+      }
+      if (out.tableExtraction !== undefined) {
+        out.default.tables = out.tableExtraction === "disabled" ? "disabled" : out.tableExtraction === "content" ? "content" : "all";
+      }
+      if (out.waitForSelector !== undefined) out.default.waitForSelector = out.waitForSelector;
+      if (out.stabilizeStrategy !== undefined) out.default.stabilizeStrategy = out.stabilizeStrategy;
+      if (out.contentSelectors !== undefined) out.default.waitForContent = out.contentSelectors;
+      if (out.skipSelectors !== undefined) out.default.skipSelectors = out.skipSelectors;
+    }
+  }
+
+  if (out.default !== undefined && typeof out.default === "object" && !Array.isArray(out.default)) {
+    const def = out.default;
+    if (def.readability !== undefined) {
+      if (def.format === undefined) {
+        def.format = def.readability === false ? "html_to_markdown" : "readability_to_markdown";
+      }
+      delete def.readability;
+    }
+    if (def.format === undefined) def.format = "readability_to_markdown";
+    if (def.tables === undefined) def.tables = "all";
+  }
+
+  delete out.preferReadability;
+  delete out.contentSelectors;
+  delete out.skipSelectors;
+  delete out.waitForSelector;
+  delete out.stabilizeStrategy;
+  delete out.tableExtraction;
+
+  return { hint: out, warnings };
+}
+
 export function validateSelector(selector) {
   const dom = new JSDOM("<body></body>");
   try {
@@ -127,6 +219,8 @@ export const BLOCK_FORMATS = [
   "table_json",
   "table_csv"
 ];
+
+export const DEFAULT_FORMATS = ["readability_to_markdown", "html_to_markdown", "text"];
 
 const LEGACY_MARKDOWN_FORMAT = "markdown";
 
@@ -389,8 +483,11 @@ function validateFlowOptions(hint, errors, warnings) {
   if (flowOptions.continueOnEmptyExtract !== undefined && typeof flowOptions.continueOnEmptyExtract !== "boolean") {
     errors.push({ field: "flowOptions.continueOnEmptyExtract", message: "must be a boolean" });
   }
+  if (flowOptions.stabilizeStrategy !== undefined && flowOptions.stabilizeStrategy !== "" && !STABILIZE_STRATEGIES.includes(flowOptions.stabilizeStrategy)) {
+    errors.push({ field: "flowOptions.stabilizeStrategy", message: `must be one of ${STABILIZE_STRATEGIES.map((s) => `"${s}"`).join(", ")}` });
+  }
   for (const key of Object.keys(flowOptions)) {
-    if (!["totalTimeoutMs", "continueOnEmptyExtract"].includes(key)) {
+    if (!["totalTimeoutMs", "continueOnEmptyExtract", "stabilizeStrategy"].includes(key)) {
       warnings.push({ field: `flowOptions.${key}`, message: "unknown field (ignored)" });
     }
   }
@@ -438,6 +535,83 @@ function validateSection(section, errors, fieldPrefix) {
   }
 }
 
+const DEFAULT_TABLES = ["all", "content", "disabled"];
+const STABILIZE_STRATEGIES = ["network_idle", "content_idle", "mutation"];
+const TOP_LEVEL_KEYS = [
+  "domain", "pathPattern", "pageType", "comment", "testUrls",
+  "requireSelector", "default", "flow", "flowOptions"
+];
+const LEGACY_TOP_LEVEL_KEYS = {
+  waitForSelector: "moved into default.waitForSelector",
+  stabilizeStrategy: "moved into default.stabilizeStrategy",
+  contentSelectors: "moved into default.waitForContent",
+  skipSelectors: "moved into default.skipSelectors",
+  preferReadability: 'moved into default.format (see the format dropdown)',
+  tableExtraction: "moved into default.tables",
+  content: 'removed — static blocks now live inside a flow as a single "extract" step'
+};
+
+function validateSelectorArray(hint, key, errors) {
+  if (!Array.isArray(hint[key])) {
+    errors.push({ field: `default.${key}`, message: "must be an array of CSS selectors" });
+    return;
+  }
+  hint[key].forEach((selector, index) => {
+    const field = `default.${key}[${index}]`;
+    if (typeof selector !== "string") {
+      errors.push({ field, message: "must be a string" });
+      return;
+    }
+    const selectorError = validateSelector(selector);
+    if (selectorError) errors.push({ field, message: `invalid CSS selector: ${selectorError}` });
+  });
+}
+
+function validateDefault(defaultBlock, errors, warnings) {
+  if (!defaultBlock || typeof defaultBlock !== "object" || Array.isArray(defaultBlock)) {
+    errors.push({ field: "default", message: "must be an object" });
+    return;
+  }
+
+  if (defaultBlock.waitForSelector !== undefined) {
+    const selectors = Array.isArray(defaultBlock.waitForSelector)
+      ? defaultBlock.waitForSelector
+      : [defaultBlock.waitForSelector];
+    selectors.forEach((selector, index) => {
+      const field = Array.isArray(defaultBlock.waitForSelector)
+        ? `default.waitForSelector[${index}]`
+        : "default.waitForSelector";
+      if (typeof selector !== "string") {
+        errors.push({ field, message: "must be a string" });
+      } else if (selector.trim()) {
+        const selectorError = validateSelector(selector);
+        if (selectorError) errors.push({ field, message: `invalid CSS selector: ${selectorError}` });
+      }
+    });
+  }
+
+  if (defaultBlock.stabilizeStrategy !== undefined && defaultBlock.stabilizeStrategy !== "" && !STABILIZE_STRATEGIES.includes(defaultBlock.stabilizeStrategy)) {
+    errors.push({ field: "default.stabilizeStrategy", message: `must be one of ${STABILIZE_STRATEGIES.map((s) => `"${s}"`).join(", ")}` });
+  }
+  if (defaultBlock.waitForContent !== undefined) validateSelectorArray(defaultBlock, "waitForContent", errors);
+  if (defaultBlock.skipSelectors !== undefined) validateSelectorArray(defaultBlock, "skipSelectors", errors);
+
+  if (defaultBlock.format !== undefined && !DEFAULT_FORMATS.includes(defaultBlock.format)) {
+    errors.push({ field: "default.format", message: `must be one of ${DEFAULT_FORMATS.map((f) => `"${f}"`).join(", ")}` });
+  }
+  if (defaultBlock.tables !== undefined && defaultBlock.tables !== "" && !DEFAULT_TABLES.includes(defaultBlock.tables)) {
+    errors.push({ field: "default.tables", message: `must be one of ${DEFAULT_TABLES.map((t) => `"${t}"`).join(", ")}` });
+  }
+  if (defaultBlock.readability !== undefined) {
+    warnings.push({ field: "default.readability", message: 'replaced by "format" — use "readability_to_markdown" or "html_to_markdown"' });
+  }
+  for (const key of Object.keys(defaultBlock)) {
+    if (!["waitForSelector", "stabilizeStrategy", "waitForContent", "skipSelectors", "format", "tables"].includes(key)) {
+      warnings.push({ field: `default.${key}`, message: "unknown field (ignored)" });
+    }
+  }
+}
+
 export function validateHintRule(hint, { scope = "static" } = {}) {
   const errors = [];
   const warnings = [];
@@ -477,23 +651,6 @@ export function validateHintRule(hint, { scope = "static" } = {}) {
     }
   }
 
-  if (hint.waitForSelector !== undefined) {
-    const selectors = Array.isArray(hint.waitForSelector)
-      ? hint.waitForSelector
-      : [hint.waitForSelector];
-    selectors.forEach((selector, index) => {
-      const field = Array.isArray(hint.waitForSelector)
-        ? `waitForSelector[${index}]`
-        : "waitForSelector";
-      if (typeof selector !== "string") {
-        errors.push({ field, message: "must be a string" });
-      } else {
-        const selectorError = validateSelector(selector);
-        if (selectorError) errors.push({ field, message: `invalid CSS selector: ${selectorError}` });
-      }
-    });
-  }
-
   if (hint.requireSelector !== undefined) {
     if (typeof hint.requireSelector !== "string") {
       errors.push({ field: "requireSelector", message: "must be a string" });
@@ -503,55 +660,30 @@ export function validateHintRule(hint, { scope = "static" } = {}) {
     }
   }
 
-  if (hint.skipSelectors !== undefined) {
-    if (!Array.isArray(hint.skipSelectors)) {
-      errors.push({ field: "skipSelectors", message: "must be an array of CSS selectors" });
-    } else {
-      hint.skipSelectors.forEach((selector, index) => {
-        if (typeof selector !== "string") {
-          errors.push({ field: `skipSelectors[${index}]`, message: "must be a string" });
-        } else {
-          const selectorError = validateSelector(selector);
-          if (selectorError) errors.push({ field: `skipSelectors[${index}]`, message: `invalid CSS selector: ${selectorError}` });
-        }
-      });
+  for (const [key, message] of Object.entries(LEGACY_TOP_LEVEL_KEYS)) {
+    if (hint[key] !== undefined) {
+      errors.push({ field: key, message });
     }
   }
 
-  if (hint.preferReadability !== undefined && typeof hint.preferReadability !== "boolean") {
-    errors.push({ field: "preferReadability", message: "must be a boolean" });
-  }
-  if (hint.tableExtraction !== undefined && hint.tableExtraction !== "" && !["content", "disabled"].includes(hint.tableExtraction)) {
-    errors.push({ field: "tableExtraction", message: 'must be one of "content", "disabled"' });
-  }
-  if (hint.stabilizeStrategy !== undefined && hint.stabilizeStrategy !== "" && !["network_idle", "content_idle", "mutation"].includes(hint.stabilizeStrategy)) {
-    errors.push({ field: "stabilizeStrategy", message: 'must be one of "network_idle", "content_idle", "mutation"' });
-  }
-  if (hint.contentSelectors !== undefined && !Array.isArray(hint.contentSelectors)) {
-    errors.push({ field: "contentSelectors", message: "must be an array of CSS selectors" });
-  }
-
-  const flowPresent = Array.isArray(hint.flow) && hint.flow.length > 0;
-
-  if (hint.content !== undefined) {
-    if (flowPresent) {
-      warnings.push({ field: "content", message: "ignored when a flow is present — flow extract steps own all content" });
-    } else {
-      validateContent(hint.content, errors, "content", warnings);
+  const methodKeys = ["default", "flow"].filter((key) => hint[key] !== undefined);
+  if (methodKeys.length > 1) {
+    for (const key of methodKeys) {
+      errors.push({ field: key, message: 'choose exactly one extraction method: "default" or "flow"' });
     }
   }
 
+  if (hint.default !== undefined) {
+    validateDefault(hint.default, errors, warnings);
+  }
   if (hint.flow !== undefined) {
     validateFlow(hint.flow, errors, warnings);
   }
   validateFlowOptions(hint, errors, warnings);
 
   for (const key of Object.keys(hint)) {
-    if (!["domain", "pathPattern", "pageType", "comment", "testUrls", "waitForSelector",
-      "requireSelector", "skipSelectors", "preferReadability", "tableExtraction",
-      "stabilizeStrategy", "contentSelectors", "content", "flow", "flowOptions"].includes(key)) {
-      warnings.push({ field: key, message: "unknown field (ignored)" });
-    }
+    if (TOP_LEVEL_KEYS.includes(key) || Object.prototype.hasOwnProperty.call(LEGACY_TOP_LEVEL_KEYS, key)) continue;
+    warnings.push({ field: key, message: "unknown field (ignored)" });
   }
 
   return { errors, warnings };

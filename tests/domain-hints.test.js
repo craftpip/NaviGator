@@ -432,6 +432,22 @@ describe("validateHintRule flow and blocks", () => {
     expect(ok.errors).toEqual([]);
   });
 
+  it("validates flowOptions.stabilizeStrategy", () => {
+    const bad = validateHintRule(
+      { flow: [flowExtract, flowExtract], flowOptions: { stabilizeStrategy: "wobble" } },
+      { scope: "test" }
+    );
+    expect(bad.errors.map((e) => e.field)).toContain("flowOptions.stabilizeStrategy");
+
+    for (const strategy of ["network_idle", "content_idle", "mutation", ""]) {
+      const ok = validateHintRule(
+        { flow: [flowExtract, flowExtract], flowOptions: { stabilizeStrategy: strategy } },
+        { scope: "test" }
+      );
+      expect(ok.errors).toEqual([]);
+    }
+  });
+
   it("warns when both content and flow are present", () => {
     const { warnings } = validateHintRule(
       { content: { blocks: [{ selector: "main", label: "Main", priority: "high", format: "text" }] }, flow: [flowExtract] },

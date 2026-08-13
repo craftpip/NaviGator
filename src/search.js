@@ -391,6 +391,40 @@ function uniqueLines(lines) {
   return output;
 }
 
+const BLOCK_LEVEL_TAGS = new Set([
+  "address", "article", "aside", "blockquote", "dd", "div", "dl", "dt", "fieldset",
+  "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
+  "header", "hr", "li", "main", "nav", "ol", "p", "pre", "section", "table",
+  "tbody", "td", "tfoot", "th", "thead", "tr", "ul"
+]);
+
+// Flat text of an element with newlines inserted at block-level boundaries.
+// textContent glues adjacent block elements ("<div>foo</div><div>bar</div>" →
+// "foobar") when the markup has no whitespace between them; this walk splits
+// blocks so the text-mode dump lands on "foo\nbar" instead.
+function elementTextWithBreaks(element) {
+  if (!element) return "";
+  const parts = [];
+  const walk = (node) => {
+    if (node.nodeType === 3) {
+      parts.push(node.textContent);
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    const tag = node.tagName.toLowerCase();
+    if (tag === "br") {
+      if (parts.length && !/\n$/.test(parts[parts.length - 1])) parts.push("\n");
+      return;
+    }
+    const block = BLOCK_LEVEL_TAGS.has(tag);
+    if (block && parts.length && !/\n$/.test(parts[parts.length - 1])) parts.push("\n");
+    for (const child of node.childNodes) walk(child);
+    if (block && parts.length && !/\n$/.test(parts[parts.length - 1])) parts.push("\n");
+  };
+  walk(element);
+  return parts.join("");
+}
+
 function toLines(text) {
   return String(text || "")
     .split(/\r?\n+/)
@@ -424,14 +458,14 @@ function collectCandidateBlocks(doc) {
   for (const selector of SEMANTIC_CONTENT_SELECTORS) {
     const nodes = doc.querySelectorAll(selector);
     for (const node of nodes) {
-      const text = cleanWhitespace(node.textContent || "");
+      const text = elementTextWithBreaks(node).trim();
       if (!text) continue;
       candidates.push({ element: node, text, score: scoreTextBlock(text) });
     }
   }
 
   if (!candidates.length && doc.body?.textContent) {
-    const bodyText = cleanWhitespace(doc.body.textContent);
+    const bodyText = elementTextWithBreaks(doc.body).trim();
     candidates.push({ element: doc.body, text: bodyText, score: scoreTextBlock(bodyText) });
   }
 
@@ -900,8 +934,8 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
     const doc = dom.window.document;
     doc.querySelectorAll(NON_CONTENT_SELECTORS.join(",")).forEach((node) => node.remove());
 
-    if (hint?.skipSelectors?.length) {
-      for (const sel of hint.skipSelectors) {
+    if (hint?.default?.skipSelectors?.length) {
+      for (const sel of hint.default.skipSelectors) {
         try {
           doc.querySelectorAll(sel).forEach((node) => node.remove());
         } catch {
@@ -917,104 +951,33 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       if (debug) console.log(">>> blocks produced no output");
     }
 
-    if (debug) console.log(">>> sections check:", { hasHint: !!hint, hasContent: !!hint?.content, sectionsLen: hint?.content?.sections?.length });
-    if (hint?.content?.sections?.length) {
-      if (debug) console.log(">>> DEPRECATED: hint uses content.sections — migrate to content.blocks");
-      if (debug) console.log(">>> entering sections path, selector:", hint.content.sections[0].selector);
-      const sectionOutput = [];
-      const allSectionTables = [];
-      const zeroMatch = [];
-      const order = { high: 0, medium: 1, low: 2 };
-      const sorted = [...hint.content.sections].sort(
-        (a, b) => (order[a.priority] || 1) - (order[b.priority] || 1)
-      );
-        for (const section of sorted) {
-          const elements = doc.querySelectorAll(section.selector);
-          if (debug) console.log(">>> section selector:", section.selector, "matched:", elements.length);
-          if (!elements.length) {
-            zeroMatch.push(section.selector);
-            continue;
-          }
-          let markdown = "";
-          let sectionHadTable = false;
-          if (section.fields?.length) {
-            markdown = Array.from(elements).map((el, index) => {
-              const content = renderHintFields(el, section.fields, url);
-              if (!content) return "";
-              return section.itemLabel ? `#### ${section.itemLabel} ${index + 1}\n\n${content}` : content;
-            }).filter(Boolean).join("\n\n");
-          } else {
-            for (const el of elements) {
-              const elTables = extractTablesFromDocument(doc, { container: el });
-              if (elTables.length) {
-                for (const t of elTables) {
-                  t.node?.remove();
-                }
-                const clean = elTables.map(({ node, ...rest }) => rest);
-                allSectionTables.push(...clean);
-                sectionHadTable = true;
-              }
-              if (el.matches?.("table")) continue;
-              const elementHtml = el.innerHTML || "";
-              const skipReadability = hint?.preferReadability === false;
-              if (skipReadability) {
-                markdown += htmlToMarkdown(elementHtml, { baseUrl: url }) + "\n";
-              } else {
-                const miniDoc = new JSDOM(`<body>${elementHtml}</body>`, { url }).window.document;
-                const reader = new Readability(miniDoc);
-                const article = reader.parse();
-                if (article?.content) {
-                  markdown += htmlToMarkdown(article.content, { baseUrl: url }) + "\n";
-                } else {
-                  markdown += htmlToMarkdown(elementHtml, { baseUrl: url }) + "\n";
-                }
-              }
-            }
-          }
-        markdown = markdown.trim();
-        if (!markdown && !sectionHadTable) continue;
-        if (section.priority === "medium" && markdown.length < 50 && !sectionHadTable) continue;
-        sectionOutput.push(`### ${section.label}`);
-        sectionOutput.push("");
-        sectionOutput.push(markdown);
-        sectionOutput.push("");
-      }
-      if (sectionOutput.length) {
-        if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: sections_path: ${Math.round(performance.now() - tFunc)}ms`);
-        if (debug) console.log(">>> sections produced output, length:", sectionOutput.length, "tables:", allSectionTables.length);
-        let text = sectionOutput.join("\n");
-        return {
-          title: cleanWhitespace(doc.title || fallbackTitle || ""),
-          url,
-          text: safeTruncateText(text, maxChars),
-          textOriginalLength: text.length,
-          ...(allSectionTables.length ? { tables: allSectionTables } : {}),
-          ...(zeroMatch.length ? { warnings: zeroMatch.map((selector) => `section selector "${selector}" matched 0 elements`) } : {})
-        };
-      }
-      if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: sections_no_output: ${Math.round(performance.now() - tFunc)}ms`);
-      if (debug) console.log(">>> sections produced no output");
-    }
-
-    if (strict && (hint?.content?.blocks?.length || hint?.content?.sections?.length)) {
+if (strict && hint?.content?.blocks?.length) {
       if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: strict content produced no output`);
       return { title: cleanWhitespace(doc.title || fallbackTitle || ""), url, text: "", textOriginalLength: 0 };
     }
 
-    /* ==================== Default extraction (no hint content) ==================== */
-    if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: default extraction (no hint blocks/sections)`);
+    /* ==================== Default extraction (hint method: default) ==================== */
+    const defaultBlock = hint?.default || {};
+    const pageFormat = defaultBlock.format || "readability_to_markdown";
+    const tablesMode = defaultBlock.tables || "all";
+    if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: default extraction (format=${pageFormat}, tables=${tablesMode})`);
 
-    // Tables are always extracted from the whole document and removed from the DOM
-    // before Readability / raw-HTML rendering so they don't leak as tab-separated noise.
-    const globalTables = extractTablesFromDocument(doc);
-    for (const t of globalTables) {
-      t.node?.remove();
+    // Tables are extracted and removed from the DOM before rendering so they don't leak
+    // as tab-separated noise. default.tables: "all" (omitted) = global extraction (current
+    // behavior); "disabled" = no table extraction; "content" = only tables inside the
+    // rendered content node (scoped below after Readability / candidate selection).
+    let tables = [];
+    if (tablesMode === "all") {
+      const globalTables = extractTablesFromDocument(doc);
+      for (const t of globalTables) {
+        t.node?.remove();
+      }
+      tables = globalTables.map(({ node, ...rest }) => rest);
     }
-    const tables = globalTables.map(({ node, ...rest }) => rest);
 
-    // Readability path (on by default) — extracts a clean article from the whole doc.
-    // Turn it off with preferReadability: false → the raw HTML→markdown path below keeps everything.
-    if (hint?.preferReadability !== false) {
+    // Readability path (default format) — extracts a clean article from the whole doc.
+    // "html_to_markdown" skips Readability and keeps everything; "text" is a flat text dump.
+    if (pageFormat === "readability_to_markdown") {
       let article = null;
       try {
         const reader = new Readability(dom.window.document);
@@ -1028,6 +991,19 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
         const articleLines = toLines(article.textContent);
         if (debug) console.log(">>> articleLines count:", articleLines.length, "first 5 lines:", JSON.stringify(articleLines.slice(0,5)));
         if (debug) console.log(">>> browserText exists:", !!browserText, "type:", typeof browserText, "length:", browserText?.length);
+
+        if (tablesMode === "content" && article.content) {
+          const contentDom = new JSDOM(`<body>${article.content}</body>`, { url });
+          const scopedTables = extractTablesFromDocument(contentDom.window.document, {
+            container: contentDom.window.document.body
+          });
+          if (scopedTables.length) {
+            for (const t of scopedTables) t.node?.remove();
+            tables = scopedTables.map(({ node, ...rest }) => rest);
+            article.content = contentDom.window.document.body.innerHTML;
+          }
+          contentDom.window.close();
+        }
 
         if (browserText) {
           const articleLen = article.textContent.trim().length;
@@ -1078,23 +1054,33 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       }
     }
 
-    // Raw HTML → markdown (Readability off, or it produced nothing).
+    // Raw HTML → markdown (Readability off, "html_to_markdown" format, or it produced nothing).
     // Convert the best semantic container's innerHTML so headings/paragraphs survive;
     // a textContent-only dump collapses div-based pages into a single glued line.
+    // "text" format skips markdown entirely and returns a clean flat text dump.
     let candidates, bestText, bestMarkdown = "";
     try {
       candidates = collectCandidateBlocks(doc);
       const best = candidates[0];
       if (best?.element) {
+        if (tablesMode === "content") {
+          const scopedTables = extractTablesFromDocument(doc, { container: best.element });
+          if (scopedTables.length) {
+            for (const t of scopedTables) t.node?.remove();
+            tables = scopedTables.map(({ node, ...rest }) => rest);
+          }
+        }
         bestMarkdown = htmlToMarkdown(best.element.innerHTML || "", { baseUrl: url }).trim();
       }
-      bestText = best?.text || doc.body?.textContent || "";
+      bestText = best?.text || elementTextWithBreaks(doc.body).trim();
       if (debug) console.log(">>> FALLBACK: collectCandidateBlocks, candidates:", candidates?.length, "bestText length:", bestText?.length, "bestMarkdown length:", bestMarkdown?.length, "bestText preview:", bestText?.substring(0,200));
     } catch {
-      bestText = doc.body?.textContent || "";
+      bestText = elementTextWithBreaks(doc.body).trim();
     }
     const lines = toLines(bestText);
-    const fullText = bestMarkdown ? safeTruncateText(bestMarkdown, maxChars) : buildCleanText(lines, maxChars);
+    const fullText = pageFormat === "text"
+      ? buildCleanText(lines, maxChars)
+      : (bestMarkdown ? safeTruncateText(bestMarkdown, maxChars) : buildCleanText(lines, maxChars));
     if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: fallback: ${Math.round(performance.now() - tFunc)}ms`);
     return {
       title: cleanWhitespace(doc.title || fallbackTitle || ""),
@@ -1105,7 +1091,7 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
     };
   } catch {
     if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: catch_all: ${Math.round(performance.now() - tFunc)}ms`);
-    const fallback = dom?.window?.document?.body?.textContent || "";
+    const fallback = elementTextWithBreaks(dom?.window?.document?.body).trim();
     return {
       title: cleanWhitespace(dom?.window?.document?.title || fallbackTitle || ""),
       url,
@@ -2010,7 +1996,11 @@ const FLOW_STAGE_CAPTURE_LIMIT = 60000;
 const FLOW_STEP_DEFAULT_TIMEOUT_MS = 10000;
 
 async function stabilizePage(page, hint, config) {
-  const stabilizeStrategy = hint?.stabilizeStrategy || config.stabilizeStrategy || "network_idle";
+  const stabilizeStrategy =
+    hint?.default?.stabilizeStrategy ||
+    hint?.flowOptions?.stabilizeStrategy ||
+    config.stabilizeStrategy ||
+    "network_idle";
   if (stabilizeStrategy === "network_idle") {
     try {
       await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 });
@@ -2018,7 +2008,7 @@ async function stabilizePage(page, hint, config) {
   } else if (stabilizeStrategy === "content_idle") {
     await waitForContent(page, {
       maxWait: 5000,
-      extraSelectors: hint?.contentSelectors
+      extraSelectors: hint?.default?.waitForContent
     }).catch(() => {});
   } else if (stabilizeStrategy === "mutation") {
     await waitForMutations(page, { maxWait: 5000 }).catch(() => {});
@@ -2311,7 +2301,7 @@ async function runFlowExtraction({ page, hint, config, maxChars, debug, debugLog
             textLimit: Math.min(MAX_MAIN_TEXT_CHARS, Math.max(maxChars * 3, 4000)),
             htmlLimit: Math.min(Math.max(MAX_MAIN_HTML_CHARS, maxChars * 6), 120000),
             maxCandidates: MAX_SEO_CANDIDATES,
-            extraSelectors: hint?.contentSelectors
+            extraSelectors: hint?.default?.waitForContent
           })
         );
 
@@ -2429,10 +2419,10 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         : await firstMatchingHint(page, hintCandidates);
       debugLog("resolve_hint_dom", t);
 
-      const waitSelectors = Array.isArray(hint?.waitForSelector)
-        ? hint.waitForSelector
-        : hint?.waitForSelector
-          ? [hint.waitForSelector]
+      const waitSelectors = Array.isArray(hint?.default?.waitForSelector)
+        ? hint.default.waitForSelector
+        : hint?.default?.waitForSelector
+          ? [hint.default.waitForSelector]
           : [];
       if (waitSelectors.length) {
         t = performance.now();
@@ -2483,7 +2473,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
                 textLimit: Math.min(MAX_MAIN_TEXT_CHARS, Math.max(maxChars * 3, 4000)),
                 htmlLimit: Math.min(Math.max(MAX_MAIN_HTML_CHARS, maxChars * 6), 120000),
                 maxCandidates: MAX_SEO_CANDIDATES,
-                extraSelectors: hint?.contentSelectors
+                extraSelectors: hint?.default?.waitForContent
               })
             );
       if (includeSeoAnalysis !== false) debugLog("capture_seo_snapshot", t);

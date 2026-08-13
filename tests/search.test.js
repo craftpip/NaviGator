@@ -372,6 +372,36 @@ describe("browserOpenAndExtract", () => {
     }
   });
 
+  it("text mode separates adjacent block elements (no glued text)", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-text-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([{
+      domain: "example.com",
+      pathPattern: "/**",
+      default: { format: "text" }
+    }]));
+
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+      hintsPath,
+      html: `<!doctype html><html><head><title>Text page</title></head><body>
+        <div>Alpha</div><div>Beta</div><span>Gamma</span><span>Delta</span>
+      </body></html>`
+    }));
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({
+        url: "https://example.com/text",
+        includeSeoAnalysis: false
+      });
+
+      expect(result.text).toMatch(/Alpha\nBeta/);
+      expect(result.text).not.toContain("AlphaBeta");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("renders structured hint fields without post UI noise", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-hints-"));
     const hintsPath = path.join(tempDir, "domain-hints.json");

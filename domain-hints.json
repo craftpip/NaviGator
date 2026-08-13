@@ -4,109 +4,174 @@
     "pathPattern": "/*",
     "pageType": "profile",
     "comment": "User profile page — sidebar (name, bio, stats, orgs) + pinned repos + contribution graph.",
-    "waitForSelector": "turbo-frame#user-profile-frame",
-    "preferReadability": false,
-    "content": {
-      "sections": [
-        {
-          "selector": "h1.vcard-names",
-          "label": "Name",
-          "priority": "high"
-        },
-        {
-          "selector": "div.js-profile-editable-area",
-          "label": "Profile",
-          "priority": "high"
-        },
-        {
-          "selector": "ol.js-pinned-items-reorder-list",
-          "label": "Pinned Repositories",
-          "priority": "high"
+    "flow": [
+      {
+        "action": "wait",
+        "selector": "turbo-frame#user-profile-frame",
+        "timeoutMs": 10000
+      },
+      {
+        "action": "extract",
+        "label": "profile",
+        "content": {
+          "blocks": [
+            {
+              "selector": "h1.vcard-names",
+              "label": "Name",
+              "priority": "high",
+              "format": "html_to_markdown"
+            },
+            {
+              "selector": "div.js-profile-editable-area",
+              "label": "Profile",
+              "priority": "high",
+              "format": "html_to_markdown"
+            },
+            {
+              "selector": "ol.js-pinned-items-reorder-list",
+              "label": "Pinned Repositories",
+              "priority": "high",
+              "format": "html_to_markdown"
+            }
+          ]
         }
-      ]
-    }
+      }
+    ]
   },
   {
     "domain": "github.com",
     "pathPattern": "/*/*",
     "pageType": "repo",
     "comment": "Repository page — README, file list, metadata. README is in a markdown-body element.",
-    "waitForSelector": "[class*=\"markdown-body\"]",
-    "content": {
-      "sections": [
-        {
-          "selector": "[class*=\"markdown-body\"]",
-          "label": "README",
-          "priority": "high"
+    "flow": [
+      {
+        "action": "wait",
+        "selector": "[class*=\"markdown-body\"]",
+        "timeoutMs": 10000
+      },
+      {
+        "action": "extract",
+        "label": "repo",
+        "content": {
+          "blocks": [
+            {
+              "selector": "[class*=\"markdown-body\"]",
+              "label": "README",
+              "priority": "high",
+              "format": "readability_to_markdown"
+            }
+          ]
         }
-      ]
-    }
+      }
+    ]
   },
   {
     "domain": "github.com",
     "pathPattern": "/*/*/issues",
     "pageType": "issues",
     "comment": "Issue list page — each issue row has title, status, number, author.",
-    "waitForSelector": "turbo-frame#repo-content-turbo-frame",
-    "content": {
-      "sections": [
-        {
-          "selector": "li[role=\"listitem\"]",
-          "label": "Issues",
-          "priority": "high"
+    "flow": [
+      {
+        "action": "wait",
+        "selector": "turbo-frame#repo-content-turbo-frame",
+        "timeoutMs": 10000
+      },
+      {
+        "action": "extract",
+        "label": "issues",
+        "content": {
+          "blocks": [
+            {
+              "selector": "li[role=\"listitem\"]",
+              "label": "Issues",
+              "priority": "high",
+              "format": "readability_to_markdown"
+            }
+          ]
         }
-      ]
-    }
+      }
+    ]
   },
   {
     "domain": "github.com",
     "pathPattern": "/*/*/pulls",
     "pageType": "prs",
     "comment": "Pull request list page — each PR row has title, status, reviewers.",
-    "waitForSelector": "turbo-frame#repo-content-turbo-frame",
-    "content": {
-      "sections": [
-        {
-          "selector": "div.js-issue-row",
-          "label": "Pull Requests",
-          "priority": "high"
+    "flow": [
+      {
+        "action": "wait",
+        "selector": "turbo-frame#repo-content-turbo-frame",
+        "timeoutMs": 10000
+      },
+      {
+        "action": "extract",
+        "label": "prs",
+        "content": {
+          "blocks": [
+            {
+              "selector": "div.js-issue-row",
+              "label": "Pull Requests",
+              "priority": "high",
+              "format": "readability_to_markdown"
+            }
+          ]
         }
-      ]
-    }
+      }
+    ]
   },
   {
     "domain": "github.com",
     "pathPattern": "/*/*/issues/*",
     "pageType": "issue-detail",
     "comment": "Issue detail page — description, comments.",
-    "waitForSelector": ".markdown-body",
-    "preferReadability": false,
-    "content": {
-      "sections": [
-        {
-          "selector": ".markdown-body",
-          "label": "Issue",
-          "priority": "high"
+    "flow": [
+      {
+        "action": "wait",
+        "selector": ".markdown-body",
+        "timeoutMs": 10000
+      },
+      {
+        "action": "extract",
+        "label": "issue-detail",
+        "content": {
+          "blocks": [
+            {
+              "selector": ".markdown-body",
+              "label": "Issue",
+              "priority": "high",
+              "format": "html_to_markdown"
+            }
+          ]
         }
-      ]
-    }
+      }
+    ]
   },
   {
     "domain": "github.com",
     "pathPattern": "/*/*/pull/*",
     "pageType": "pr-detail",
     "comment": "Pull request detail page — description, diff, comments.",
-    "waitForSelector": ".markdown-body",
-    "preferReadability": false,
-    "content": {
-      "sections": [
-        {
-          "selector": ".markdown-body",
-          "label": "PR",
-          "priority": "high"
+    "flow": [
+      {
+        "action": "wait",
+        "selector": ".markdown-body",
+        "timeoutMs": 10000
+      },
+      {
+        "action": "extract",
+        "label": "pr-detail",
+        "content": {
+          "blocks": [
+            {
+              "selector": ".markdown-body",
+              "label": "PR",
+              "priority": "high",
+              "format": "html_to_markdown"
+            }
+          ]
         }
-      ]
-    }
+      }
+    ]
   },
   {
     "domain": "10.69.1.164",
@@ -116,6 +181,9 @@
     "testUrls": [
       "http://10.69.1.164:32768/chaos/"
     ],
-    "preferReadability": false
+    "default": {
+      "format": "html_to_markdown",
+      "tables": "all"
+    }
   }
 ]
