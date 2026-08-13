@@ -17,7 +17,7 @@ Design decisions locked 2026-08-13: v1 actions are `extract` / `click` / `wait` 
 - [x] 7. Output semantics: `## <stage>` headings in order, tables stay with their stage, links deduplicated, `maxChars` on merged text, final `url`/`title` from final page state (navigating click), step-failure returns an explicit error naming the step.
 - [x] 8. Console editor (`web-console/src/main.jsx`): `BlocksEditor` (replaces `SectionsEditor`) + `FlowEditor` step-list component, per-step fields, add/remove/reorder, validation surfacing, warning when top-level `content` coexists with `flow`.
 - [x] 9. Unit tests (`tests/search.test.js`): no-flow path unchanged, extract→click→extract order, click waits, post-click DOM, stage tables/links, click failures, wait/type/navigate behavior, flow validation rejections, URL/title on navigating click, bot abort.
-- [ ] 10. Live validation (`tests/domain-hints-live.test.js`, behind `LIVE_DOMAIN_HINTS=1`) against the local `example.com` fixture server (busybox httpd on :8080) — add an interactive multi-page fixture if none exists.
+- [ ] 10. Live validation (`tests/domain-hints-live.test.js`, behind `LIVE_DOMAIN_HINTS=1`) against the local `example.com` fixture server (container `example-com`, internal 8080 published on a random host port) — add an interactive multi-page fixture if none exists.
 - [ ] 11. Documentation: `docs/domain-hints.md` (blocks schema, flow field, action contract, multi-page example), `docs/web-fetch-docs.md`, `AGENTS.md` (browser-inspection routine for interactive/multi-page hints).
 - [ ] 12. Rollout: first production flow hint only after browser inspection confirms selectors and pre/post-navigation DOM states.
 
@@ -430,7 +430,7 @@ Cover:
 
 Extend `tests/domain-hints-live.test.js` to execute flow steps for hints with a `testUrls` entry, behind `LIVE_DOMAIN_HINTS=1`.
 
-- Reuse the local `example.com` fixture server (busybox httpd on :8080, container `example-com`) for deterministic multi-page flows — add an `interactive`-style fixture with a tab and a linked detail page if none exists.
+- Reuse the local `example.com` fixture server (container `example-com`; internal port 8080, published on a RANDOM host port — find it with `docker port example-com 8080`) for deterministic multi-page flows — add an `interactive`-style fixture with a tab and a linked detail page if none exists.
 - Verify every configured extraction block exists at its corresponding stage.
 - Add the first production flow only after browser inspection confirms the selectors, before/after DOM states, and output are stable.
 

@@ -113,8 +113,8 @@
     "pathPattern": "/**",
     "comment": "",
     "testUrls": [
-      "http://10.69.1.164:8080/chaos/",
-      "http://10.69.1.164:8080/table/"
+      "http://10.69.1.164:32768/chaos/",
+      "http://10.69.1.164:32768/table/"
     ],
     "waitForSelector": [],
     "skipSelectors": [],

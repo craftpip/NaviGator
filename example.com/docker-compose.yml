@@ -5,7 +5,10 @@ services:
     working_dir: /www
     command: ["node", "server.js"]
     ports:
-      - "8080:8080"
+      # Publish the container's internal 8080 to a RANDOM host port so we never
+      # occupy 8080 on the host (the test website's port is random now).
+      # Find the actual host port with: docker port example-com 8080
+      - "8080"
     volumes:
       - .:/www
     restart: unless-stopped
