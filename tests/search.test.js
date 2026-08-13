@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { JSDOM } from "jsdom";
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeAll, afterAll, beforeEach } from "vitest";
 
 const mockGetBrowserManager = vi.fn();
 
@@ -16,6 +16,7 @@ vi.mock("cloakbrowser/puppeteer", () => ({ launch: vi.fn() }));
 afterEach(() => {
   vi.clearAllMocks();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 function makeMockConfig(overrides = {}) {
@@ -89,6 +90,18 @@ describe("getSearchBackendHealth", () => {
     vi.resetModules();
   });
 
+  let cwdTemp;
+  let originalCwd;
+  beforeAll(async () => {
+    originalCwd = process.cwd();
+    cwdTemp = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-cwd-"));
+    process.chdir(cwdTemp);
+  });
+  afterAll(async () => {
+    process.chdir(originalCwd);
+    await fs.rm(cwdTemp, { recursive: true, force: true });
+  });
+
   it("returns empty array when no routes have failed", async () => {
     const { getSearchBackendHealth } = await import("../src/search.js");
     const health = getSearchBackendHealth();
@@ -124,8 +137,18 @@ describe("isLocalBrowserFailure", () => {
 });
 
 describe("getEngineAttemptStats", () => {
-  afterEach(() => {
+  let cwdTemp;
+  let originalCwd;
+  beforeEach(async () => {
     vi.resetModules();
+    originalCwd = process.cwd();
+    cwdTemp = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-cwd-"));
+    process.chdir(cwdTemp);
+  });
+  afterEach(async () => {
+    vi.resetModules();
+    process.chdir(originalCwd);
+    await fs.rm(cwdTemp, { recursive: true, force: true });
   });
 
   it("returns an empty shape when no engine attempts have been recorded", async () => {
@@ -277,6 +300,26 @@ describe("browserSearch with duckduckgo_api (HTTP backend)", () => {
     expect(result).toHaveProperty("queries");
     expect(result.queryCount).toBeGreaterThanOrEqual(1);
     expect(result).toHaveProperty("queryResults");
+  });
+
+  it("merges DuckDuckGo instant answers regardless of engine", async () => {
+    mockGetBrowserManager.mockResolvedValue(makeMockManager());
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      const urlStr = String(url);
+      const body = urlStr.includes("api.duckduckgo.com")
+        ? JSON.stringify({ Answer: "42 is the answer", AbstractURL: "https://example.com/answer" })
+        : '<html><body><div class="result"><a class="result__a" href="https://example.com/r">Result One</a><div class="result__snippet">Snippet one</div></div></body></html>';
+      return { ok: true, status: 200, text: async () => body };
+    }));
+
+    const { browserSearch } = await import("../src/search.js");
+    const result = await browserSearch({
+      query: "answer to everything",
+      engines: ["duckduckgo_api"],
+    });
+
+    expect(result.directAnswers.length).toBeGreaterThan(0);
+    expect(result.directAnswers.some((item) => item.text === "42 is the answer")).toBe(true);
   });
 });
 
@@ -528,6 +571,564 @@ describe("browserOpenAndExtract", () => {
       expect(result.text).not.toContain("### Profile");
     } finally {
       cleanup();
+    }
+  });
+});
+
+describe("browserOpenAndExtract with flow hints", () => {
+  function makeFlowPage({ states, visibleCounts = {}, botOnStates = {} }) {
+    let stateIndex = 0;
+    const domFor = (html) => {
+      const dom = new JSDOM(html || "<!doctype html><html><head></head><body></body></html>");
+      return dom;
+    };
+    const page = {
+      goto: vi.fn().mockImplementation(async (target) => {
+        const idx = states.findIndex((s) => s.url === target || s.accept === target);
+        if (idx !== -1) stateIndex = idx;
+      }),
+      waitForNetworkIdle: vi.fn().mockResolvedValue(undefined),
+      title: vi.fn().mockImplementation(async () => states[stateIndex].title),
+      url: vi.fn().mockImplementation(() => states[stateIndex].url),
+      content: vi.fn().mockImplementation(async () => states[stateIndex].html),
+      isClosed: vi.fn(() => false),
+      close: vi.fn().mockResolvedValue(undefined),
+      click: vi.fn().mockImplementation(async (sel) => {
+        const dom = domFor(states[stateIndex].html);
+        const el = dom.window.document.querySelector(sel);
+        dom.window.close();
+        if (!el) throw new Error(`No element found for selector: ${sel}`);
+        const tag = el.tagName;
+        if ((tag === "BUTTON" || tag === "A") && states[stateIndex + 1]) stateIndex += 1;
+      }),
+      waitForSelector: vi.fn().mockImplementation(async (sel, opts = {}) => {
+        const dom = domFor(states[stateIndex].html);
+        const exists = !!dom.window.document.querySelector(sel);
+        dom.window.close();
+        if (exists) return undefined;
+        throw new Error(`waiting for selector "${sel}" failed: timeout ${opts.timeout}ms exceeded`);
+      }),
+      type: vi.fn().mockResolvedValue(undefined),
+      keyboard: {
+        press: vi.fn().mockImplementation(async () => {
+          if (states[stateIndex + 1]) stateIndex += 1;
+        })
+      },
+      evaluate: vi.fn().mockImplementation(async (fn, arg) => {
+        const source = String(fn);
+        if (source.includes("document.querySelector(sel)")) {
+          const dom = domFor(states[stateIndex].html);
+          const found = !!dom.window.document.querySelector(arg);
+          dom.window.close();
+          return found;
+        }
+        if (source.includes("cf-browser-verification")) {
+          if (Object.prototype.hasOwnProperty.call(botOnStates, stateIndex)) return botOnStates[stateIndex];
+          return null;
+        }
+        if (source.includes("getBoundingClientRect")) {
+          if (Object.prototype.hasOwnProperty.call(visibleCounts, arg)) return visibleCounts[arg];
+          const dom = domFor(states[stateIndex].html);
+          const n = dom.window.document.querySelectorAll(arg).length;
+          dom.window.close();
+          return n;
+        }
+        if (source.includes("el.value")) return undefined;
+        if (source.includes("innerText")) return "";
+        return "Rendered browser text";
+      })
+    };
+    return { page, getState: () => stateIndex };
+  }
+
+  async function makeFlowManager(states, hint, { visibleCounts, botOnStates } = {}) {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-flow-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([hint]));
+    const { page } = makeFlowPage({ states, visibleCounts, botOnStates });
+    const manager = {
+      config: makeMockConfig({ domainHintsPath: hintsPath, defaultBackend: "cloakbrowser" }),
+      withPageSlot: vi.fn().mockImplementation((fn) => fn()),
+      newPage: vi.fn().mockResolvedValue(page)
+    };
+    return { manager, page, tempDir };
+  }
+
+  const interactiveStates = [
+    {
+      url: "https://example.com/page",
+      title: "Page A",
+      html: `<!doctype html><html><head><title>Page A</title></head><body>
+        <button id="show">Show more</button>
+        <div class="summary"><p>Initial summary content.</p></div>
+      </body></html>`
+    },
+    {
+      url: "https://example.com/page",
+      title: "Page A",
+      html: `<!doctype html><html><head><title>Page A</title></head><body>
+        <button id="show">Show more</button>
+        <div class="summary"><p>Initial summary content.</p></div>
+        <div class="extra"><p>Revealed extra content after the click.</p></div>
+      </body></html>`
+    }
+  ];
+
+  function interactiveFlowHint(flow) {
+    return {
+      domain: "example.com",
+      pathPattern: "/**",
+      navigationWait: 0,
+      flow
+    };
+  }
+
+  it("extract -> click -> extract captures both states in order with stage labels", async () => {
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "click", selector: "#show", waitForSelector: ".extra" },
+      { action: "extract", label: "Revealed", content: { blocks: [{ selector: ".extra", label: "Extra", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, tempDir } = await makeFlowManager(interactiveStates, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.text).toContain("## Summary");
+      expect(result.text).toContain("### Summary");
+      expect(result.text).toContain("Initial summary content.");
+      expect(result.text).toContain("## Revealed");
+      expect(result.text).toContain("### Extra");
+      expect(result.text).toContain("Revealed extra content after the click.");
+      expect(result.text.indexOf("## Summary")).toBeLessThan(result.text.indexOf("## Revealed"));
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("click waits for the declared selector; second extraction sees post-click DOM", async () => {
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "click", selector: "#show", waitForSelector: ".extra" },
+      { action: "extract", label: "Revealed", content: { blocks: [{ selector: ".extra", label: "Extra", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, page, tempDir } = await makeFlowManager(interactiveStates, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(page.waitForSelector).toHaveBeenCalledWith(".extra", expect.objectContaining({ timeout: expect.any(Number) }));
+      expect(result.text).toContain("Revealed extra content after the click.");
+      expect(result.text).not.toContain("Revealed extra content after the click.\n\nInitial summary");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("tables stay with their stage and links are deduplicated", async () => {
+    const states = [
+      {
+        url: "https://example.com/page",
+        title: "Page A",
+        html: `<!doctype html><html><head><title>Page A</title></head><body>
+          <a href="/a">Link A</a>
+          <button id="show">Show more</button>
+          <div class="summary">
+            <p>Initial summary content.</p>
+            <table><tr><th>Name</th><th>Value</th></tr><tr><td>Visitors</td><td>12345</td></tr><tr><td>Subscribers</td><td>67890</td></tr></table>
+          </div>
+        </body></html>`
+      },
+      {
+        url: "https://example.com/page",
+        title: "Page A",
+        html: `<!doctype html><html><head><title>Page A</title></head><body>
+          <a href="/a">Link A</a>
+          <a href="/b">Link B</a>
+          <button id="show">Show more</button>
+          <div class="extra"><p>Revealed extra content.</p></div>
+        </body></html>`
+      }
+    ];
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "click", selector: "#show", waitForSelector: ".extra" },
+      { action: "extract", label: "Revealed", content: { blocks: [{ selector: ".extra", label: "Extra", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.text).toContain("### Table");
+      expect(result.text).toContain("Visitors | 12345");
+      const tableIndex = result.text.indexOf("### Table");
+      const revealedIndex = result.text.indexOf("## Revealed");
+      expect(tableIndex).toBeGreaterThan(-1);
+      expect(tableIndex).toBeLessThan(revealedIndex);
+      expect(result.links.map((l) => l.href).sort()).toEqual(["https://example.com/a", "https://example.com/b"]);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails with a step-specific error when the click selector matches nothing", async () => {
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "click", selector: "#missing", waitForSelector: ".extra" },
+      { action: "extract", label: "Revealed", content: { blocks: [{ selector: ".extra", label: "Extra", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, tempDir } = await makeFlowManager(interactiveStates, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      await expect(
+        browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false })
+      ).rejects.toThrow(/flow step 2 click failed: selector "#missing" matched 0 visible elements/);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails when the click selector matches more than one visible element", async () => {
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "click", selector: "#show", waitForSelector: ".extra" },
+      { action: "extract", label: "Revealed", content: { blocks: [{ selector: ".extra", label: "Extra", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, tempDir } = await makeFlowManager(interactiveStates, hint, { visibleCounts: { "#show": 2 } });
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      await expect(
+        browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false })
+      ).rejects.toThrow(/flow step 2 click failed: selector "#show" matched 2 visible elements/);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails with a step-specific error when the post-click selector never appears", async () => {
+    const states = [
+      {
+        url: "https://example.com/page",
+        title: "Page A",
+        html: `<!doctype html><html><head><title>Page A</title></head><body>
+          <button id="show">Show more</button>
+          <div class="summary"><p>Initial summary content.</p></div>
+        </body></html>`
+      },
+      {
+        url: "https://example.com/page",
+        title: "Page A",
+        html: `<!doctype html><html><head><title>Page A</title></head><body>
+          <button id="show">Show more</button>
+          <div class="summary"><p>Initial summary content.</p></div>
+          <div class="other"><p>Not the target.</p></div>
+        </body></html>`
+      }
+    ];
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "click", selector: "#show", waitForSelector: ".extra" },
+      { action: "extract", label: "Revealed", content: { blocks: [{ selector: ".extra", label: "Extra", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      await expect(
+        browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false })
+      ).rejects.toThrow(/flow step 2 click: post-click selector "\.extra" not found/);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("wait step blocks until its selector is present and honors state/timeout", async () => {
+    const html = `<!doctype html><html><head><title>Page A</title></head><body>
+      <div class="summary"><p>Initial content.</p></div>
+      <div class="delayed"><p>Delayed content arrived.</p></div>
+    </body></html>`;
+    const states = [{ url: "https://example.com/page", title: "Page A", html }];
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "wait", selector: ".delayed", state: "visible", timeoutMs: 5000 },
+      { action: "extract", label: "Delayed", content: { blocks: [{ selector: ".delayed", label: "Delayed", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, page, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(page.waitForSelector).toHaveBeenCalledWith(".delayed", { state: "visible", timeout: 5000 });
+      expect(result.text).toContain("### Delayed");
+      expect(result.text).toContain("Delayed content arrived.");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("wait step failing reports the step", async () => {
+    const html = `<!doctype html><html><head><title>Page A</title></head><body>
+      <div class="summary"><p>Initial content.</p></div>
+    </body></html>`;
+    const states = [{ url: "https://example.com/page", title: "Page A", html }];
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "wait", selector: ".never-appears", state: "visible", timeoutMs: 5000 },
+      { action: "extract", label: "Delayed", content: { blocks: [{ selector: ".delayed", label: "Delayed", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      await expect(
+        browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false })
+      ).rejects.toThrow(/flow step 2 wait failed: selector "\.never-appears"/);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("type step types, submits, and waits for the results gate", async () => {
+    const states = [
+      {
+        url: "https://example.com/search",
+        title: "Search",
+        html: `<!doctype html><html><head><title>Search</title></head><body>
+          <div id="q"><p>Search field.</p></div>
+          <form><input name="q" type="text" value="old"></form>
+        </body></html>`
+      },
+      {
+        url: "https://example.com/search",
+        title: "Search results",
+        html: `<!doctype html><html><head><title>Search results</title></head><body>
+          <ol class="results"><li>Wireless mouse</li><li>Wireless keyboard</li></ol>
+        </body></html>`
+      }
+    ];
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Form", content: { blocks: [{ selector: "#q", label: "Field", priority: "high", format: "text" }] } },
+      { action: "type", selector: "input[name=q]", text: "wireless", submit: true, waitForSelector: "ol.results" },
+      { action: "extract", label: "Results", content: { blocks: [{ selector: "ol.results li", label: "Results", priority: "high", format: "list" }] } }
+    ]);
+    const { manager, page, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/search", includeSeoAnalysis: false });
+
+      expect(page.type).toHaveBeenCalledWith("input[name=q]", "wireless", { delay: 30 });
+      expect(page.keyboard.press).toHaveBeenCalledWith("Enter");
+      expect(result.text).toContain("### Results");
+      expect(result.text).toContain("- Wireless mouse");
+      expect(result.text).toContain("- Wireless keyboard");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("navigate step resolves relative URLs and lands on the destination gate", async () => {
+    const states = [
+      {
+        url: "https://example.com/list/",
+        title: "List",
+        html: `<!doctype html><html><head><title>List</title></head><body>
+          <div class="item"><p>An item.</p></div>
+        </body></html>`
+      },
+      {
+        url: "https://example.com/blog/article/",
+        title: "Article",
+        html: `<!doctype html><html><head><title>Article</title></head><body>
+          <article class="detail-content"><p>Full article body.</p></article>
+        </body></html>`
+      }
+    ];
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "List", content: { blocks: [{ selector: ".item", label: "Item", priority: "high", format: "text" }] } },
+      { action: "navigate", url: "/blog/article/", waitForSelector: ".detail-content" },
+      { action: "extract", label: "Article", content: { blocks: [{ selector: ".detail-content", label: "Detail", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, page, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/list/", includeSeoAnalysis: false });
+
+      expect(page.goto).toHaveBeenCalledWith("https://example.com/blog/article/", expect.any(Object));
+      expect(result.url).toBe("https://example.com/blog/article/");
+      expect(result.text).toContain("### Detail");
+      expect(result.text).toContain("Full article body.");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses final page url and title after a navigating click", async () => {
+    const states = [
+      {
+        url: "https://example.com/page",
+        title: "Page A",
+        html: `<!doctype html><html><head><title>Page A</title></head><body>
+          <a class="detail-link" href="https://example.com/detail">Detail</a>
+          <div class="summary"><p>Initial summary content.</p></div>
+        </body></html>`
+      },
+      {
+        url: "https://example.com/detail",
+        title: "Detail page",
+        html: `<!doctype html><html><head><title>Detail page</title></head><body>
+          <div class="detail-content"><p>Detail content.</p></div>
+        </body></html>`
+      }
+    ];
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "List", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "click", selector: ".detail-link", waitForSelector: ".detail-content" },
+      { action: "extract", label: "Detail", content: { blocks: [{ selector: ".detail-content", label: "Detail", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.url).toBe("https://example.com/detail");
+      expect(result.title).toBe("Detail page");
+      expect(result.text).toContain("### Detail");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("aborts remaining actions when a bot challenge appears after an interaction", async () => {
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "click", selector: "#show", waitForSelector: ".extra" },
+      { action: "extract", label: "Revealed", content: { blocks: [{ selector: ".extra", label: "Extra", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, tempDir } = await makeFlowManager(interactiveStates, hint, {
+      botOnStates: { 1: "Cloudflare challenge" }
+    });
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      await expect(
+        browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false })
+      ).rejects.toThrow(/flow step 2 aborted: bot challenge detected \(Cloudflare challenge\)/);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails with a step-specific error when an extract produces no content", async () => {
+    const html = `<!doctype html><html><head><title>Page A</title></head><body>
+      <div class="summary"><p>Initial content.</p></div>
+    </body></html>`;
+    const states = [{ url: "https://example.com/page", title: "Page A", html }];
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "extract", label: "Empty", content: { blocks: [{ selector: ".no-such-thing", label: "Nope", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      await expect(
+        browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false })
+      ).rejects.toThrow(/flow step 2 extract "Empty" produced no content/);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("continueOnEmptyExtract skips empty stages instead of failing", async () => {
+    const html = `<!doctype html><html><head><title>Page A</title></head><body>
+      <div class="summary"><p>Initial content.</p></div>
+    </body></html>`;
+    const states = [{ url: "https://example.com/page", title: "Page A", html }];
+    const hint = {
+      ...interactiveFlowHint([
+        { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+        { action: "extract", label: "Optional", content: { blocks: [{ selector: ".maybe", label: "Maybe", priority: "high", format: "text" }] } }
+      ]),
+      flowOptions: { continueOnEmptyExtract: true }
+    };
+    const { manager, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.text).toContain("## Summary");
+      expect(result.text).not.toContain("## Optional");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("renders record blocks per item with itemLabel headings", async () => {
+    const html = `<!doctype html><html><head><title>Answers</title></head><body>
+      <div class="answer"><span class="vote">12</span><div class="body"><p>First answer.</p></div></div>
+      <div class="answer"><span class="vote">7</span><div class="body"><p>Second answer.</p></div></div>
+    </body></html>`;
+    const states = [{ url: "https://example.com/page", title: "Answers", html }];
+    const hint = interactiveFlowHint([
+      {
+        action: "extract",
+        label: "Answers",
+        content: {
+          blocks: [
+            {
+              selector: ".answer",
+              label: "Answers",
+              itemLabel: "Answer",
+              priority: "high",
+              fields: [
+                { selector: ".vote", label: "Votes", format: "text" },
+                { selector: ".body", label: "Content", format: "markdown" }
+              ]
+            }
+          ]
+        }
+      }
+    ]);
+    const { manager, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.text).toContain("#### Answer 1");
+      expect(result.text).toContain("**Votes:** 12");
+      expect(result.text).toContain("First answer.");
+      expect(result.text).toContain("#### Answer 2");
+      expect(result.text).toContain("**Votes:** 7");
+      expect(result.text).toContain("Second answer.");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 });

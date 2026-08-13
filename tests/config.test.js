@@ -248,6 +248,22 @@ describe("loadConfig (parse engine behavior)", () => {
     expect(config.enableHttpMcp).toBe(true);
   });
 
+  it("parses ENABLE_INSTANT_ANSWERS correctly", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("ENABLE_INSTANT_ANSWERS", "1");
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.enableInstantAnswers).toBe(true);
+  });
+
+  it("disables instant answers with ENABLE_INSTANT_ANSWERS=0", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("ENABLE_INSTANT_ANSWERS", "0");
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.enableInstantAnswers).toBe(false);
+  });
+
   it("parses MCP_API_PORT correctly", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
     vi.stubEnv("MCP_API_PORT", "8080");
@@ -286,9 +302,9 @@ describe("loadConfig (parse engine behavior)", () => {
       "ENABLE_HANG_RESTART",
       "STARTUP_URL",
       "ENABLE_SCREENSHOT_PATH",
-      "ENABLE_SCREENSHOT_DOWNLOAD_LINK"
-    ]) {
-      vi.stubEnv(v, undefined);
+      "ENABLE_SCREENSHOT_DOWNLOAD_LINK",
+      "ENABLE_INSTANT_ANSWERS"
+    ]) {      vi.stubEnv(v, undefined);
     }
     const { loadConfig } = await import("../src/config.js");
     const config = await loadConfig();
@@ -321,6 +337,7 @@ describe("loadConfig (parse engine behavior)", () => {
     expect(config.startupUrl).toBe("about:blank");
     expect(config.screenshotPathPrefix).toBeNull();
     expect(config.enableScreenshotDownloadLink).toBe(false);
+    expect(config.enableInstantAnswers).toBe(true);
   });
 
   it("parses STARTUP_URL correctly", async () => {

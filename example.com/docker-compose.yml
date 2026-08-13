@@ -1,10 +1,11 @@
 services:
   web:
-    image: busybox:latest
+    image: node:22-alpine
     container_name: example-com
-    command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
+    working_dir: /www
+    command: ["node", "server.js"]
     ports:
       - "8080:8080"
     volumes:
-      - .:/www:ro
+      - .:/www
     restart: unless-stopped

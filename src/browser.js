@@ -724,6 +724,7 @@ export class BrowserManager {
         }
         const browser = await launch({
           headless: this.config.headless,
+          humanize: true,
           args: [
             "--no-sandbox",
             "--disable-setuid-sandbox",
@@ -732,7 +733,14 @@ export class BrowserManager {
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-extensions",
-            "--window-size=1920,1080"
+            "--window-size=1920,1080",
+            "--fingerprint=48271",
+            "--fingerprint-hardware-concurrency=8",
+            "--fingerprint-device-memory=8",
+            "--fingerprint-screen-width=1920",
+            "--fingerprint-screen-height=1080",
+            "--fingerprint-taskbar-height=48",
+            "--fingerprint-storage-quota=5000"
           ]
         });
         this.cloakbrowserBrowser = browser;

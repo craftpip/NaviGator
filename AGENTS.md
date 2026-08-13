@@ -31,9 +31,8 @@ Performs broad web research using multiple search engines with automatic fallbac
 | `queries` | `string[]` | — | Multiple query variants |
 | `limit` | `number` | `5` | Results per query |
 | `engine` | `enum` | `select_best` | Preferred engine: `duckduckgo_api`, `bing_lp`, `mojeek_lp`, `google_ch`, `duckduckgo_ch` |
-| `engines` | `string[]` | — | Multiple engines to query in parallel |
 
-**Output:** `results[]` containing `{ title, snippet, llmText, ref_id, link, url }`
+**Output:** `results[]` containing `{ title, snippet, llmText, ref_id, link, url }`. Every search also makes an independent DuckDuckGo Instant Answer API call (`https://api.duckduckgo.com/` with `t=navigator`) regardless of which engine runs (unless disabled via `ENABLE_INSTANT_ANSWERS=0`) — when the reply contains content it is returned as a single `directAnswers[]` entry and rendered as a `**Instant Answer:**` section between the query and the results (one answer per query). The section is omitted when the DDG reply has no content. Response order is always: query → instant answer → results → errors.
 
 ---
 
@@ -76,11 +75,10 @@ Captures rendered page appearance as images.
 - `targetId: string` — Target id from `Target.createTarget` to screenshot an existing persistent tab
 - `url: string` or `urls: string[]`
 - `ref_id: number` or `ref_ids: number[]`
-- `format: 'png' | 'jpeg'` (default `'png'`)
 - `quality: number` (default `75`) — JPEG quality (1–100)
 - `fullPage: boolean` (default `true`) — Capture entire page
 
-**Output:** `screenshotBase64` with page metadata.
+**Output:** `screenshotBase64` with page metadata. Output format is always JPEG (the `format` option was removed).
 
 ---
 
@@ -232,6 +230,7 @@ For visual verification, call `web_page_screenshot` with the same `ref_id`.
 | `ENABLE_HTTP_MCP` | `0` | Enable Streamable HTTP transport |
 | `DEBUG` | `0` | Enable per-step benchmark timing logs in `web_fetch` — logs each step (`goto_page`, `stabilize_page`, `extract_text_from_html`, etc.) with ms timing and a TOTAL summary |
 | `LOG_TOOL_ERRORS` | `1` | Log every erroring tool call to `logs/tool-errors.log` (one JSON line per error, redacted args, 5MB rotation). Default on — set to `0` to disable |
+| `ENABLE_INSTANT_ANSWERS` | `1` | Make the independent DuckDuckGo Instant Answer API call on every `web_search` (rendered as the `**Instant Answer:**` section). Set to `0` to disable |
 | `DISABLE_TOOLS` | `` | Comma-separated MCP tool names to hide from `tools/list` and reject on call. Matched case-insensitively. Example: `web_page_ascii,web_page_links`. Default empty (all tools enabled). The docker-compose default keeps `web_page_ascii` disabled |
 
 ### Key Notes
@@ -436,9 +435,33 @@ right selectors for a tricky page; the panel is where you iterate and commit the
    - Is the formatting clean (markdown lists for sections)?
    - Are tables extracted properly?
 
-10. **Tune and repeat** until output is clean. Then move to the next page type for the same domain, then the next domain.
+ 10. **Tune and repeat** until output is clean. Then move to the next page type for the same domain, then the next domain.
+
+### Routine for interactive / multi-page hints (flow)
+
+Same idea, but the page changes as you script it — verify each state in the browser
+before writing the flow steps:
+
+1. **Open the page** in a persistent tab and screenshot it (see steps 1–2 above).
+2. **Capture the initial DOM** — `browser_DOM_getDocument(targetId, limit: 30-40)` and
+   `browser_DOM_getOuterHTML` on the content container. These become the first
+   `extract` step's blocks.
+3. **Inspect the control** — find the click/type target and its result container in
+   the DOM snapshot. Confirm the exact selector and that it matches one element.
+4. **Drive it in the live tab**: `browser_Input_dispatchMouseEvent` (click) or
+   `browser_Input_insertText` (type). Then re-inspect the DOM to capture the
+   post-interaction content — these become the next `extract` step's blocks.
+5. **Confirm the result gate**: the selector the flow should wait on after the
+   interaction (`waitForSelector`). Verify it appears only after the click/submit.
+6. **Write the hint with `flow`** — extract/click/type/navigate steps in order, each
+   `extract` carrying its own `content.blocks` — then test with `/extract` exactly as
+   in steps 8–10 above. The response should read top-to-bottom as the page changed.
+
+For multi-page flows (navigate steps), use the linked page URL and verify its content
+container the same way.
 
 ### Known pitfalls
+
 
 - `cleanAndTruncateText` used to call `cleanWhitespace` which collapsed newlines with `\s+`. Now uses `[^\S\n]+` to preserve newlines. If section output appears as a single run-on line, check that the fix is deployed.
 - Sections path and fallback path are exclusive — if sections produce any output, Readability/candidate blocks are skipped entirely.
@@ -474,6 +497,21 @@ right selectors for a tricky page; the panel is where you iterate and commit the
 - Container deploy flow: `docker compose build && docker compose down && docker compose up -d`. Never `npm install` on the host.
 
 ## Project Learnings
+
+### Never Miss a Message — Capture Every Instruction in the Todo List
+
+**Created:** 2026-08-13
+
+**Trigger:** User repeatedly found that when they gave multiple instructions (either in one message or as follow-ups while I was mid-task), I dropped or under-delivered on some of them — e.g. the multi-query fix, the bypass-cache fix, removing the plural `engines` param, and restarting the server so the new tool schema was actually live.
+
+**The rule — make it a reflex, not a habit:**
+1. **Enumerate first, act second.** The moment a message arrives, scan it for EVERY distinct instruction and write each one into the todo list (`todowrite`) BEFORE touching any code. One message = one todo per instruction, no matter how small ("restart the server", "update the docs", "also remove from UI").
+2. **Mid-task interruptions get appended, never merged or forgotten.** When new instructions arrive while working, append them to the todo list immediately, then finish the current step and move on in FIFO order. Re-read the user's message after finishing to confirm nothing was left behind.
+3. **Multiple instructions in one sentence = multiple todos.** "Fix the cache AND remove engines AND restart" is three todos, not one.
+4. **Closing the loop = the final todo.** For user-facing fixes, always include a verification step that makes the change actually visible (e.g. `docker restart navigator` so a schema/code change takes effect, then `curl /mcp` or the web UI to confirm). "Code is correct on disk" is NOT done — the running server must show it.
+5. **If unsure whether anything was missed, ask.** A quick "did I miss anything?" beats shipping half the work.
+
+**Why this bites here specifically:** source files are bind-mounted into the container, so the live server keeps running the old module code until `docker restart navigator`. A fix "on disk" is invisible to the user — treating restart + verification as part of the todo list is what made the `engines` removal actually show up in the tool UI.
 
 ### Do Not Remove Debug Console Logs
 
@@ -901,4 +939,4 @@ For each site:
 - MCP tools return text content; a JSON formatter returns the JSON string as the text content (`JSON.stringify(payload, null, 2)`), not `structuredContent`, so all MCP clients render it.
 - Plan for JSON output: `plans/web-fetch-json.md`.
 
-**Plans convention:** New feature plans go in `plans/<topic>.md` (e.g., `generalize-web-fetch.md`, `monitoring.md`, `opensource-prep.md`). When a plan is fully implemented, absorb its durable knowledge into this file (or `docs/`) and move the plan file to `plans/archive/`.
+**Plans convention:** Every plan is numbered by creation date, oldest first. New feature plans go in `plans/<NN>_<topic>.md` with the next sequential number (e.g., `17_<topic>.md` after `16_domain-hint-flows.md`) — always prepend the number when creating a plan. When a plan is fully implemented, absorb its durable knowledge into this file (or `docs/`) and move the plan file to `plans/archive/`.

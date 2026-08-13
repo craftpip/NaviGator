@@ -1,4 +1,4 @@
-import { KNOWN_BACKENDS, POOL_POLICIES } from "./driver.js";
+import { KNOWN_BACKENDS, POOL_POLICIES, SearchEngineDriver } from "./driver.js";
 import { DuckDuckGoApiDriver } from "./duckduckgo-api.js";
 import { DuckDuckGoCbDriver } from "./duckduckgo-cb.js";
 import { DuckDuckGoChDriver } from "./duckduckgo-ch.js";
@@ -45,12 +45,21 @@ for (const DriverClass of DRIVER_CLASSES) {
     if (instance.homeUrl) {
       throw new Error(`Search engine ${id} is an API route but declares a homeUrl`);
     }
+    if (typeof instance.search !== "function" || instance.search === SearchEngineDriver.prototype.search) {
+      throw new Error(`Search engine ${id} is an API route but does not implement search()`);
+    }
   } else {
     if (!instance.homeUrl) {
       throw new Error(`Search engine ${id} is a browser route but has no homeUrl`);
     }
     if (!POOL_POLICIES.has(instance.pool)) {
       throw new Error(`Search engine ${id} has invalid pool policy: ${instance.pool}`);
+    }
+    if (typeof instance.searchUrl !== "function" || instance.searchUrl === SearchEngineDriver.prototype.searchUrl) {
+      throw new Error(`Search engine ${id} is a browser route but does not implement searchUrl()`);
+    }
+    if (typeof instance.extract !== "function" || instance.extract === SearchEngineDriver.prototype.extract) {
+      throw new Error(`Search engine ${id} is a browser route but does not implement extract()`);
     }
   }
 
@@ -59,8 +68,6 @@ for (const DriverClass of DRIVER_CLASSES) {
     backend: instance.backend,
     pool: instance.pool,
     homeUrl: instance.homeUrl,
-    inputSelectors: instance.inputSelectors,
-    resultSelectors: instance.resultSelectors,
     isBrowser: instance.backend !== "api"
   });
 }

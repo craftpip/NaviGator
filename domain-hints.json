@@ -1,26 +1,5 @@
 [
   {
-    "domain": "economictimes.indiatimes.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "React SPA with TOI stack. Homepage has market data + news headlines.",
-    "waitForSelector": "main.pageHolder",
-    "preferReadability": false
-  },
-  {
-    "domain": "en.wikipedia.org",
-    "pathPattern": "/wiki/**",
-    "pageType": "article",
-    "comment": "Standard encyclopedia article with infobox and references. Skip navbox tables.",
-    "skipSelectors": [".navbox", ".navbox-styles", ".mw-empty-elt"],
-    "tableExtraction": "content",
-    "content": {
-      "sections": [
-        { "selector": "main#content", "label": "Article", "priority": "high" }
-      ]
-    }
-  },
-  {
     "domain": "github.com",
     "pathPattern": "/*",
     "pageType": "profile",
@@ -29,9 +8,21 @@
     "preferReadability": false,
     "content": {
       "sections": [
-        { "selector": "h1.vcard-names", "label": "Name", "priority": "high" },
-        { "selector": "div.js-profile-editable-area", "label": "Profile", "priority": "high" },
-        { "selector": "ol.js-pinned-items-reorder-list", "label": "Pinned Repositories", "priority": "high" }
+        {
+          "selector": "h1.vcard-names",
+          "label": "Name",
+          "priority": "high"
+        },
+        {
+          "selector": "div.js-profile-editable-area",
+          "label": "Profile",
+          "priority": "high"
+        },
+        {
+          "selector": "ol.js-pinned-items-reorder-list",
+          "label": "Pinned Repositories",
+          "priority": "high"
+        }
       ]
     }
   },
@@ -43,7 +34,11 @@
     "waitForSelector": "[class*=\"markdown-body\"]",
     "content": {
       "sections": [
-        { "selector": "[class*=\"markdown-body\"]", "label": "README", "priority": "high" }
+        {
+          "selector": "[class*=\"markdown-body\"]",
+          "label": "README",
+          "priority": "high"
+        }
       ]
     }
   },
@@ -55,7 +50,11 @@
     "waitForSelector": "turbo-frame#repo-content-turbo-frame",
     "content": {
       "sections": [
-        { "selector": "li[role=\"listitem\"]", "label": "Issues", "priority": "high" }
+        {
+          "selector": "li[role=\"listitem\"]",
+          "label": "Issues",
+          "priority": "high"
+        }
       ]
     }
   },
@@ -67,7 +66,11 @@
     "waitForSelector": "turbo-frame#repo-content-turbo-frame",
     "content": {
       "sections": [
-        { "selector": "div.js-issue-row", "label": "Pull Requests", "priority": "high" }
+        {
+          "selector": "div.js-issue-row",
+          "label": "Pull Requests",
+          "priority": "high"
+        }
       ]
     }
   },
@@ -80,7 +83,11 @@
     "preferReadability": false,
     "content": {
       "sections": [
-        { "selector": ".markdown-body", "label": "Issue", "priority": "high" }
+        {
+          "selector": ".markdown-body",
+          "label": "Issue",
+          "priority": "high"
+        }
       ]
     }
   },
@@ -93,426 +100,25 @@
     "preferReadability": false,
     "content": {
       "sections": [
-        { "selector": ".markdown-body", "label": "PR", "priority": "high" }
+        {
+          "selector": ".markdown-body",
+          "label": "PR",
+          "priority": "high"
+        }
       ]
     }
   },
   {
-    "domain": "mausam.imd.gov.in",
+    "domain": "10.69.1.164",
     "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Bootstrap portal with interactive weather map as the main feature.",
-    "preferReadability": false
-  },
-  {
-    "domain": "mumbaimirror.indiatimes.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "TOI tech stack. Local Mumbai news headlines with article cards.",
-    "preferReadability": false
-  },
-  {
-    "domain": "stackoverflow.com",
-    "pathPattern": "/questions/**",
-    "pageType": "article",
-    "comment": "QA page with question and answers. Cloudflare protection on some pages.",
+    "comment": "",
     "testUrls": [
-      "https://stackoverflow.com/questions/6818875/new-line-on-php-cli",
-      "https://stackoverflow.com/questions/11227809/why-is-processing-a-sorted-array-faster-than-processing-an-unsorted-array"
+      "http://10.69.1.164:8080/chaos/",
+      "http://10.69.1.164:8080/table/"
     ],
-    "waitForSelector": "#question .js-post-body",
-    "preferReadability": false,
-    "flags": { "botProtected": true },
-    "content": {
-      "sections": [
-        {
-          "selector": "#question",
-          "label": "Question",
-          "priority": "high",
-          "fields": [
-            { "selector": ".js-vote-count", "label": "Votes", "format": "text" },
-            { "selector": ".js-post-body", "label": "Content", "format": "markdown" },
-            { "selector": "[id^=\"follow-ups-list-\"] [itemprop=\"text\"]", "label": "Comments", "format": "list" }
-          ]
-        },
-        {
-          "selector": ".answer",
-          "label": "Answers",
-          "itemLabel": "Answer",
-          "priority": "high",
-          "fields": [
-            { "selector": ".js-vote-count", "label": "Votes", "format": "text" },
-            { "selector": ".js-post-body", "label": "Content", "format": "markdown" },
-            { "selector": "[id^=\"follow-ups-list-\"] [itemprop=\"text\"]", "label": "Comments", "format": "list" }
-          ]
-        }
-      ]
-    }
-  },
-  {
-    "domain": "timesofindia.indiatimes.com",
-    "pathPattern": "/city/**",
-    "pageType": "homepage",
-    "comment": "React SPA. City news page with headlines and article cards.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.accuweather.com",
-    "pathPattern": "/**",
-    "pageType": "weather",
-    "comment": "Weather data page. Div-based layout with current conditions and forecast.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.afternoonvoice.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "TagDiv WordPress theme. Local Mumbai news with article cards."
-  },
-  {
-    "domain": "www.bbc.com",
-    "pathPattern": "/weather/**",
-    "pageType": "weather",
-    "comment": "React SPA weather page. Conditions and forecast in custom components.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.business-standard.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Next.js app. Business news homepage with headlines and market data.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.cricbuzz.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Cricket scores and news. Scorecards are div-based, not HTML tables.",
-    "waitForSelector": "main.min-h-container",
-    "preferReadability": false,
-    "tableExtraction": "disabled",
-    "content": {
-      "sections": [
-        { "selector": "main.min-h-container", "label": "Cricket", "priority": "high" }
-      ]
-    }
-  },
-  {
-    "domain": "www.deccanherald.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "News homepage with headlines and article cards. Classless div layout."
-  },
-  {
-    "domain": "www.divyamarathi.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Marathi news homepage. React SPA with city news and weather widget.",
-    "waitForSelector": "div#root",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.esakal.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Marathi news. Next.js SPA with headline cards.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.financialexpress.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Business news homepage. JS-heavy, needs extra time to settle.",
-    "preferReadability": false,
-    "content": {
-      "sections": [
-        { "selector": "article", "label": "Headlines", "priority": "high" }
-      ]
-    }
-  },
-  {
-    "domain": "www.firstpost.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "News homepage. No semantic HTML — pure div layout.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.flipkart.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "E-commerce homepage or product page. Pure div SPA layout.",
-    "preferReadability": false,
-    "content": {
-      "sections": [
-        { "selector": "div#container", "label": "Content", "priority": "high" }
-      ]
-    }
-  },
-  {
-    "domain": "www.freepressjournal.in",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "News homepage with good heading hierarchy. Readability works."
-  },
-  {
-    "domain": "www.hindustantimes.com",
-    "pathPattern": "/india-news",
-    "pageType": "section-listing",
-    "comment": "India news listing. Next.js SPA with headline cards.",
-    "testUrls": ["https://www.hindustantimes.com/india-news"],
-    "waitForSelector": "section#dataHolder",
-    "preferReadability": false,
-    "content": {
-      "sections": [
-        {
-          "selector": "section#dataHolder .cartHolder",
-          "label": "Latest Headlines",
-          "itemLabel": "Headline",
-          "priority": "high",
-          "fields": [
-            { "selector": "h2", "label": "Title", "format": "text" },
-            { "selector": ".dateTime", "label": "Published", "format": "text" }
-          ]
-        }
-      ]
-    }
-  },
-  {
-    "domain": "www.hindustantimes.com",
-    "pathPattern": "/**",
-    "pageType": "article-or-generic",
-    "comment": "Article pages use dataHolder for metadata and artContent for the story body; other pages use Readability fallback.",
-    "testUrls": ["https://www.hindustantimes.com/india-news/rahul-targets-amit-shah-over-pellet-guns-at-cjp-march-govt-plans-bill-move-as-parliament-session-resumes-101785083843946.html"],
-    "content": {
-      "sections": [
-        {
-          "selector": "#dataHolder .articleDetail",
-          "label": "Article",
-          "priority": "high",
-          "fields": [
-            { "selector": "h1.artTitle", "label": "Title", "format": "text" },
-            { "selector": "h2.artIntro", "label": "Summary", "format": "markdown" },
-            { "selector": ".artTimes", "label": "Published", "format": "text" },
-            { "selector": ".storyBy", "label": "Byline", "format": "text" }
-          ]
-        },
-        {
-          "selector": "#dataHolder .artContent",
-          "label": "Story",
-          "priority": "high"
-        }
-      ]
-    }
-  },
-  {
-    "domain": "www.indiatimes.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "News homepage. Article content in div.article-detail-content."
-  },
-  {
-    "domain": "www.irctc.co.in",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Railway booking portal. Angular SPA with language popup. Wait for Angular bootstrap.",
-    "waitForSelector": "app-root, app-home, app-main-page",
-    "skipSelectors": [".language-popup", ".cdk-overlay-container"]
-  },
-  {
-    "domain": "www.livemint.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Business news homepage. Next.js app — content renders after JS hydration.",
-    "waitForSelector": "div#__next"
-  },
-  {
-    "domain": "www.loksatta.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Marathi news. WordPress Newpack theme with <main> and <article>."
-  },
-  {
-    "domain": "maharashtratimes.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Marathi news. TOI React SPA — heavy JS, Readability fails.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.lokmat.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Marathi news. Custom PHP framework — link-heavy homepage.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.mid-day.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Mumbai news. Next.js SPA with live blog and good heading hierarchy.",
-    "waitForSelector": "div#__next"
-  },
-  {
-    "domain": "www.moneycontrol.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Market data and news. Interstitial ad on first load — needs extra wait.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.mumbailive.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Local Mumbai news. Mobile-first design with push notification popup.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.news18.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "News homepage. Next.js SPA — content renders after hydration.",
-    "waitForSelector": "main, article[id^='story-'], div#__next",
-    "content": {
-      "sections": [
-        { "selector": "main", "label": "Headlines", "priority": "high" }
-      ]
-    }
-  },
-  {
-    "domain": "www.pudhari.news",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Marathi news. Next.js SPA with hero slider.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.reuters.com",
-    "pathPattern": "/**",
-    "pageType": "article",
-    "comment": "Article pages. Heavy JS/bot protection — try chromium backend.",
-    "flags": { "requiresChromium": true }
-  },
-  {
-    "domain": "www.skymetweather.com",
-    "pathPattern": "/**",
-    "pageType": "weather",
-    "comment": "Angular SPA weather page with custom elements.",
-    "waitForSelector": "app-root, app-home, app-current-data",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.tarunbharat.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "Marathi news. Older HTML with <marquee> and inline styles. Nagpur-focused.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.thehindu.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "News homepage. No semantic HTML — pure div layout with structured text.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.tribuneindia.com",
-    "pathPattern": "/**",
-    "pageType": "homepage",
-    "comment": "News homepage. <article> elements are sidebar cards, not main content.",
-    "preferReadability": false
-  },
-  {
-    "domain": "www.nseindia.com",
-    "pathPattern": "/option-chain",
-    "pageType": "option-chain",
-    "comment": "Option chain page — CALLS/PUTS data in an HTML table with colspan group headers. Skip nav, filters, sidebar, footer.",
-    "waitForSelector": "table#optionChainTable-indices",
-    "stabilizeStrategy": "mutation",
-    "preferReadability": false,
-    "content": {
-      "sections": [
-        {
-          "selector": "table#optionChainTable-indices",
-          "label": "Option Chain",
-          "priority": "high"
-        }
-      ]
-    }
-  }, 
-  {
-    "domain": "www.youtube.com",
-    "pathPattern": "/watch**",
-    "pageType": "video",
-    "comment": "Video watch page. Title, description, and comments in web components.",
-    "preferReadability": false,
-    "content": {
-      "sections": [
-        { "selector": "ytd-watch-flexy", "label": "Video", "priority": "high" }
-      ]
-    }
-  },
-  {
-    "domain": "news.ycombinator.com",
-    "pathPattern": "/**",
-    "pageType": "aggregator",
-    "comment": "Pure server-rendered HTML, table-based layout. Gold standard for extraction — Readability works well.",
-    "preferReadability": true
-  },
-  {
-    "domain": "dev.to",
-    "pathPattern": "/**",
-    "pageType": "article",
-    "comment": "Developer blog platform. Server-rendered. Article pages have standard <article> + <main>. Feed uses .crayons-story cards.",
-    "preferReadability": true
-  },
-  {
-    "domain": "daily.dev",
-    "pathPattern": "/**",
-    "pageType": "marketing",
-    "comment": "Marketing landing page. Feed is behind auth. Readability works on landing page content.",
-    "preferReadability": true
-  },
-  {
-    "domain": "www.npmjs.com",
-    "pathPattern": "/**",
-    "pageType": "package",
-    "comment": "Package registry. Clean semantic HTML. README in article + div#readme. Sidebar metadata in <aside>.",
+    "waitForSelector": [],
+    "skipSelectors": [],
     "preferReadability": true,
-    "content": {
-      "sections": [
-        { "selector": "article", "label": "README", "priority": "high" }
-      ]
-    }
-  },
-  {
-    "domain": "www.freecodecamp.org",
-    "pathPattern": "/news/**",
-    "pageType": "article",
-    "comment": "Gold standard for Readability. Classic blog post in article.post-full. 48K+ px tall page.",
-    "preferReadability": true,
-    "content": {
-      "sections": [
-        { "selector": "article.post-full", "label": "Article", "priority": "high" }
-      ]
-    }
-  },
-  {
-    "domain": "www.bseindia.com",
-    "pathPattern": "/markets/derivatives/**",
-    "pageType": "option-chain",
-    "comment": "Derivatives option chain — CALLS/PUTS data in an HTML table with colspan group headers. Angular SPA. Data loads after JS hydration.",
-    "waitForSelector": "table.index-option-table",
-    "stabilizeStrategy": "mutation",
-    "preferReadability": false,
-    "content": {
-      "sections": [
-        {
-          "selector": "table.index-option-table",
-          "label": "Option Chain",
-          "priority": "high"
-        }
-      ]
-    }
+    "contentSelectors": []
   }
 ]

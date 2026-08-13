@@ -42,23 +42,37 @@ web_fetch()
              │   param: { html, url, maxChars, fallbackTitle, hint, browserText }
              │  │
              │  ├─ Step A: Remove NON_CONTENT_SELECTORS from JSDOM document
-             │  ├─ Step B: Remove hint.skipSelectors from document
-             │  │
-             │  ├─ Step C: SECTIONS PATH (if hint.content.sections.length > 0)
-             │  │   param: hint.content.sections[{ selector, label, priority, fields?, itemLabel? }]
-             │  │  │
-             │  │  ├─ For each section (sorted by priority: high → medium → low):
-             │  │  │   ├─ doc.querySelectorAll(selector) → elements[]
-             │  │  │   ├─ If has fields[] → renderHintFields(el, fields, url)
-             │  │  │   ├─ Else → extractTablesFromDocument() + htmlToMarkdown()
-             │  │  │   ├─ Skip if medium priority + markdown < 50 chars + no table
-             │  │  │   └─ Push "### {label}" + markdown → sectionOutput[]
-             │  │  │
-             │  │  ├─ sectionOutput.length > 0?
-             │  │  │   ✓ → RETURN { title, url, text: sections, tables }
-             │  │  │   ✗ → fall through ⬇
-             │  │  │
-             │  │
+              │  ├─ Step B: Remove hint.skipSelectors from document
+              │  │
+              │  ├─ Step C: FLOW PATH (if hint.flow.length > 0)
+              │  │   param: hint.flow[{ action, ... }] + hint.flowOptions
+              │  │  │
+              │  │  ├─ For each step (max 8, 4 clicks, must end with extract):
+              │  │  │   ├─ extract → capture page state + render step's content.blocks
+              │  │  │   ├─ click   → click (exactly 1 visible) + waitForSelector gate
+              │  │  │   ├─ wait    → waitForSelector with state
+              │  │  │   ├─ type    → focus/type, optional submit + waitForSelector
+              │  │  │   └─ navigate→ goto (relative ok) + waitForSelector gate
+              │  │  │
+              │  │  ├─ Stages merged: text "## {label}"-headed, tables per stage, links deduped
+              │  │  ├─ RETURN { title, url (final state), text: stages, tables, links }
+              │  │
+              │  ├─ Step C2: BLOCKS / SECTIONS PATH (if content.blocks or content.sections non-empty)
+              │  │   param: content.blocks[{ selector, label, priority, format?, itemLabel?, fields? }]
+              │  │          or legacy content.sections[{ selector, label, priority, fields?, itemLabel? }]
+              │  │  │
+              │  │  ├─ For each block (sorted by priority: high → medium → low):
+              │  │  │   ├─ doc.querySelectorAll(selector) → elements[]
+              │  │  │   ├─ If record (fields[]) → renderHintFields(el, fields, url)
+              │  │  │   ├─ If leaf → format: text/list/html/html_to_markdown/readability_to_markdown/table/table_json/table_csv
+              │  │  │   ├─ Skip if medium priority + markdown < 50 chars + no table
+              │  │  │   └─ Push "### {label}" + markdown → sectionOutput[]
+              │  │  │
+              │  │  ├─ sectionOutput.length > 0?
+              │  │  │   ✓ → RETURN { title, url, text: sections, tables }
+              │  │  │   ✗ → fall through ⬇
+              │  │  │
+              │  │
              │  ├─ Step D: Extract global tables from document
              │  │
              │  ├─ Step E: READABILITY PATH (if preferReadability !== false)
@@ -110,9 +124,16 @@ web_fetch()
 
 `extractTextFromHtml()` in `src/search.js` tries three strategies in order:
 
-### Strategy 1: Domain Hints (Sections)
+### Strategy 0: Domain Hint Flow (interactive)
 
-**When:** URL matches a hint with `content.sections`
+**When:** URL matches a hint with a non-empty `flow`
+**How:** Runs each step against the live page — extract / click / wait / type / navigate. See `docs/domain-hints.md` `flow` section for the full schema and bounds.
+**Output:** Stages under `## <step label>`, in flow order; tables stay with their stage; links deduped; final URL/title from the last page state.
+**Returns early** — Readability never runs.
+
+### Strategy 1: Domain Hints (Blocks / Sections)
+
+**When:** URL matches a hint with `content.blocks` (or legacy `content.sections`)
 **How:** Selectors target specific DOM elements, extract textContent, dedup, render as indented markdown
 **Output:** `  - **Label**\n    - line\n    - line`
 **Returns early** — Readability never runs
@@ -122,11 +143,12 @@ web_fetch()
 {
   "selector": "h1.vcard-names",
   "label": "Name",
-  "priority": "high"
+  "priority": "high",
+  "format": "text"
 }
 ```
 
-**When sections produce output, Readability is skipped entirely.** This is by design — sections give structured, labeled content. Readability would give unstructured prose.
+**When blocks produce output, Readability is skipped entirely.** This is by design — blocks give structured, labeled content. Readability would give unstructured prose.
 
 ### Strategy 2: Readability (Mozilla)
 
@@ -192,10 +214,13 @@ Domain hints are per-site extraction configurations stored in `domain-hints.json
 | `preferReadability` | boolean | `false` skips Readability entirely |
 | `tableExtraction` | string | `"disabled"` skips table extraction |
 | `skipSelectors` | string[] | CSS selectors to remove from DOM before extraction |
-| `content.sections` | array | Targeted content selectors with labels |
+| `content.blocks` | array | Targeted content selectors — leaf or record blocks (recommended) |
+| `content.sections` | array | Targeted content selectors with labels (legacy) |
+| `flow` | array | Multi-step interactive extraction (extract/click/wait/type/navigate) |
+| `flowOptions` | object | Flow policy: `totalTimeoutMs`, `continueOnEmptyExtract` |
 | `flags` | object | Special flags: `authWall`, `paywall`, `visualOnly`, etc. |
 
-### Sections Format
+### Blocks Format
 
 ```json
 {
@@ -213,15 +238,18 @@ Domain hints are per-site extraction configurations stored in `domain-hints.json
 - `priority: "medium"` — included only if text > 50 chars
 - `priority: "low"` — reserved, currently unused
 
-### Special Flags
+### Page states — auto-detected (no flags in hints)
 
-| Flag | Behavior |
-|------|----------|
-| `authWall: true` | Returns early with "Auth wall" error message |
-| `visualOnly: true` | Returns early with "Visual-only" error message |
-| `paywall: true` | Informational — extraction still attempts |
-| `botProtected: true` | Informational — extraction still attempts |
-| `requiresChromium: true` | Informational — notes chromium backend needed |
+Auth walls, visual-only pages, and bot protection are **detected automatically per page**
+at fetch time and reported in the response — you never author them in a hint:
+
+| Condition | Detection | Reporting |
+|-----------|-----------|-----------|
+| Bot challenge | Cloudflare/DataDome/marker checks (`detectBotChallenge`) | Hard error: `Bot block detected`, `Cloudflare challenge`, `DataDome challenge` |
+| Auth wall | A `<input type="password">` exists on the page | `- ⚠ Page appears to require login — auth wall detected (a password field is present)` |
+| Visual-only | `<120` chars of text but ≥3 images/media elements | `- ⚠ Page appears to be visual-only — little extractable text (mostly images/media)` |
+
+A leftover `flags` field in a hint is ignored with a validation warning.
 
 ### Current Hints (40 entries, 37 domains)
 

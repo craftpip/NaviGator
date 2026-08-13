@@ -1,5 +1,4 @@
 import { BrowserSearchDriver } from "./browser-driver.js";
-import { dedupeDirectAnswers } from "./util.js";
 
 const RESULT_SELECTORS = ["#b_results", "#b_results li.b_algo"];
 
@@ -37,14 +36,16 @@ export class BingDriver extends BrowserSearchDriver {
     return `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
   }
 
-  async extract(page) {
-    const payload = await page.evaluate(EXTRACT_PAGE);
+  async assertNotBlocked(page) {
+    const text = await page.evaluate(() => document.body?.innerText || document.body?.textContent || "");
+    const pageUrl = page.url();
 
-    return {
-      results: payload.results.map((item) => ({ ...item, engine: this.id })),
-      directAnswers: dedupeDirectAnswers(
-        (payload.directAnswers || []).map((item) => ({ ...item, engine: this.id, url: page.url() }))
-      )
-    };
+    if (/captcha|unusual traffic|verify you(?:'|’)?re a human|are you( a)? human/i.test(text) || /\/sorry\//.test(pageUrl)) {
+      throw new Error("Bing blocked this request with a CAPTCHA/verification page");
+    }
+  }
+
+  async extract(page) {
+    return this.extractViaEvaluate(page, EXTRACT_PAGE);
   }
 }

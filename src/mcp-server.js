@@ -257,6 +257,7 @@ function normalizeSearchEngineSelection(engines, engine) {
 }
 
 function parseQueryList(value) {
+  if (typeof value === "string") return [String(value).trim()].filter(Boolean);
   if (!Array.isArray(value)) return [];
   return value.map((item) => String(item).trim()).filter(Boolean);
 }
@@ -781,6 +782,22 @@ async function updateHint(hintsPath, index, rawHint) {
   });
 }
 
+async function deleteHint(hintsPath, index) {
+  if (!Number.isInteger(index) || index < 0) {
+    return { ok: false, error: "invalid index" };
+  }
+  return queueHintMutation(async () => {
+    const hints = await loadRawDomainHints(hintsPath);
+    if (index >= hints.length) {
+      return { ok: false, error: `index ${index} out of range (${hints.length} hints)` };
+    }
+    const [removed] = hints.splice(index, 1);
+    const save = await saveDomainHints(hints, hintsPath);
+    if (!save.ok) return save;
+    return { ok: true, index, removed, count: save.count, hintsPath: save.hintsPath };
+  });
+}
+
 const LOG_MAP = {
   booting:               ["🚀", "Server starting"],
   "boot.config":         ["⚙️",  (p) => `Search route warmup engines: ${p?.searchRouteWarmupEngines?.join(", ") || "?"}`],
@@ -883,9 +900,8 @@ function mcpRequestSummary(body) {
   if (args.ref_id !== void 0) parts.push(`ref #${args.ref_id}`);
   if (args.ref_ids) parts.push(`${args.ref_ids.length} refs`);
   const pageBackend = formatBrowserBackendShort(parseBrowserBackend(process.env.BROWSER_BACKEND, "cloakbrowser"));
-  const eng = isPage
-    ? pageBackend
-    : normalizeSearchEngineSelection(args.engines, args.engine).join(",");
+  const engine = typeof args.engine === "string" ? String(args.engine).trim().toLowerCase() : "";
+  const eng = isPage ? pageBackend : engine && engine !== "select_best" ? engine : "";
   if (eng) parts.push(`[${eng}]`);
   if (args.limit && args.limit !== 5) parts.push(`limit=${args.limit}`);
   if (args.maxChars && args.maxChars !== DEFAULT_MAX_CHARS) parts.push(`maxc=${args.maxChars}`);
@@ -1118,10 +1134,74 @@ function decorateSearchPayload(payload) {
 function formatSearchMarkdown(payload) {
   const lines = [];
 
+  const multiQuery = Array.isArray(payload?.queryResults) && payload.queryResults.length > 1;
+  if (multiQuery) {
+    payload.queryResults.forEach((entry, sectionIndex) => {
+      if (sectionIndex > 0) lines.push("");
+      const queryLabel = entry?.query ? String(entry.query) : "";
+      lines.push(`**Queries:** ${queryLabel}`);
+
+      if (Array.isArray(entry?.directAnswers) && entry.directAnswers.length) {
+        lines.push("", "**Instant Answer:**");
+        entry.directAnswers.forEach((answer) => {
+          const snippet = truncateForDisplay(answer?.text || "", 400);
+          const link = answer?.url ? ` (${answer.url})` : "";
+          lines.push(`- ${snippet}${link}`.trim());
+        });
+      }
+
+      const results = Array.isArray(entry?.results) ? entry.results : [];
+      if (results.length) {
+        lines.push("", `**Results (${results.length}):**`);
+        results.forEach((result, index) => {
+          const refId = result?.ref_id;
+          const refLabel = refId ? `[${refId}]` : `${index + 1}.`;
+          const titleText = cleanTitle(result?.title || "");
+          const title = titleText ? `**${titleText}**` : "Untitled";
+          const snippet = truncateForDisplay(result?.snippet || "", 450);
+          const queryVariants = Array.isArray(result?.queryVariants) && result.queryVariants.length
+            ? ` _(queries: ${result.queryVariants.join(", ")})_`
+            : queryLabel
+              ? ` _(queries: ${queryLabel})_`
+              : "";
+          const domain = result?.domain ? ` (${result.domain})` : "";
+
+          const bullet = `- ${title} ${refLabel}${domain}${queryVariants}`;
+          lines.push(bullet.trim());
+          if (snippet) {
+            lines.push(`  - ${snippet}`);
+          }
+        });
+      } else {
+        lines.push("", "No results returned.");
+      }
+
+      if (Array.isArray(entry?.errors) && entry.errors.length) {
+        lines.push("", "**Errors:**");
+        entry.errors.forEach((entryError) => {
+          if (!entryError?.error) return;
+          lines.push(`- ${entryError.error}`);
+        });
+      }
+    });
+
+    lines.push("", "*Square brackets contain ref_ids.*");
+    return lines.filter(Boolean).join("\n");
+  }
+
   if (payload?.query) {
     lines.push(`**Query:** ${payload.query}`);
   } else if (Array.isArray(payload?.queries) && payload.queries.length) {
     lines.push(`**Queries:** ${payload.queries.join(", ")}`);
+  }
+
+  if (Array.isArray(payload?.directAnswers) && payload.directAnswers.length) {
+    lines.push("", "**Instant Answer:**");
+    payload.directAnswers.forEach((answer) => {
+      const snippet = truncateForDisplay(answer?.text || "", 400);
+      const link = answer?.url ? ` (${answer.url})` : "";
+      lines.push(`- ${snippet}${link}`.trim());
+    });
   }
 
   const results = Array.isArray(payload?.results) ? payload.results : [];
@@ -1144,22 +1224,9 @@ function formatSearchMarkdown(payload) {
         lines.push(`  - ${snippet}`);
       }
     });
-    lines.push("", "*Square brackets contain reference IDs.*");
+    lines.push("", "*Square brackets contain ref_ids.*");
   } else {
     lines.push("", "No results returned.");
-  }
-
-  if (Array.isArray(payload?.directAnswers) && payload.directAnswers.length) {
-    lines.push("", "**Direct Answers:**");
-    payload.directAnswers.forEach((answer) => {
-      const source = answer?.source ? answer.source : "answer";
-      const snippet = truncateForDisplay(answer?.text || "", 400);
-      const link = answer?.url ? ` (${answer.url})` : "";
-      lines.push(`- ${source}${link}`);
-      if (snippet) {
-        lines.push(`  - ${snippet}`);
-      }
-    });
   }
 
   if (Array.isArray(payload?.errors) && payload.errors.length) {
@@ -1588,15 +1655,14 @@ function getToolsListResponse(allowedTools = null) {
       {
         name: "web_search",
         description:
-          "Search the web for any user request and return ranked results with numeric result ids. By default, send `engine: \"select_best\"` or omit engine/engines entirely unless the user explicitly asks about engines or requests a specific one. `select_best` means the server will choose the best engine automatically using its fallback and circuit-breaker logic. If `select_best` is combined with specific engines, `select_best` takes priority. Use this for general research, fact lookup, docs, tutorials, comparisons, news, and discovery before opening pages.",
+          "Search the web for any user request and return ranked results with numeric result ids. By default, send `engine: \"select_best\"` or omit engine entirely unless the user explicitly asks about engines or requests a specific one. `select_best` means the server will choose the best engine automatically using its fallback and circuit-breaker logic. Use this for general research, fact lookup, docs, tutorials, comparisons, news, and discovery before opening pages.",
         inputSchema: {
           type: "object",
           properties: {
-            query: { type: "string" },
             queries: {
               type: "array",
               items: { type: "string" },
-              description: "Multiple query variations to run"
+              description: "One or more search queries to run (query variations)"
             },
             limit: { type: "number", default: 5 },
             bypassCache: {
@@ -1604,42 +1670,32 @@ function getToolsListResponse(allowedTools = null) {
               default: false,
               description: "Skip cached data and refresh the cached response"
             },
-            engines: {
-              type: "array",
-              items: { type: "string" },
-              description: "Specific search engines to run. Prefer `select_best` by default. A registered route may be named explicitly even when it is not enabled for `select_best`. If `select_best` appears anywhere in this list, it takes priority and automatic fallback/circuit-breaker selection is used."
-            },
             engine: {
               type: "string",
               default: "select_best",
               description: "Preferred default: `select_best`, which uses only SEARCH_ENABLED_ENGINES. A registered route may be named explicitly even when it is not enabled for `select_best`."
             }
           },
-          description: "Provide query (string) or queries (string[]). Use queries for multiple search variations.",
+          description: "Provide queries (string[]). Use queries for one or more search variations.",
           additionalProperties: false
         }
       },
       {
         name: "web_fetch",
         description:
-          "Fetch one or more pages and return clean readable text for analysis. Use this after web_search via ref_id/ref_ids or with direct url/urls for summarization, extraction, QA, and synthesis.",
+          "Fetch one or more pages and return clean readable text for analysis. Use this after web_search via ref_ids or with direct urls for summarization, extraction, QA, and synthesis.",
         inputSchema: {
           type: "object",
           properties: {
-            url: { type: "string" },
             urls: {
               type: "array",
               items: { type: "string" },
-              description: "Multiple URLs to open in parallel"
-            },
-            ref_id: {
-              type: "number",
-              description: "Result id returned by a previous web_search call"
+              description: "One or more URLs to open"
             },
             ref_ids: {
               type: "array",
               items: { type: "number" },
-              description: "Multiple result ids returned by a previous web_search call"
+              description: "Result ids returned by a previous web_search call"
             },
             maxChars: { type: "number", default: DEFAULT_MAX_CHARS },
             bypassCache: {
@@ -1648,48 +1704,37 @@ function getToolsListResponse(allowedTools = null) {
               description: "Skip cached data and refresh the cached response"
             }
           },
-          description: "Provide one of: url, urls, ref_id, or ref_ids. Prefer ref_id/ref_ids from web_search when available.",
+          description: "Provide one of: urls (string[]) or ref_ids (number[]) from a previous web_search call. Prefer ref_ids when available.",
           additionalProperties: false
         }
       },
       {
         name: "web_page_screenshot",
         description:
-          "Open one or more pages and return screenshots (PNG or JPEG). Use this to capture visual snapshots of results discovered via web_search. Alternatively, pass a targetId from Target.createTarget to screenshot an existing persistent tab.",
+          "Open one or more pages and return screenshots (JPEG). Use this to capture visual snapshots of results discovered via web_search. Alternatively, pass a targetId from Target.createTarget to screenshot an existing persistent tab.",
         inputSchema: {
           type: "object",
           properties: {
-            url: { type: "string" },
             urls: {
               type: "array",
               items: { type: "string" },
-              description: "Multiple URLs to open in parallel"
-            },
-            ref_id: {
-              type: "number",
-              description: "Result id returned by a previous web_search call"
+              description: "One or more URLs to open"
             },
             ref_ids: {
               type: "array",
               items: { type: "number" },
-              description: "Multiple result ids returned by a previous web_search call"
+              description: "Result ids returned by a previous web_search call"
             },
             targetId: {
               type: "string",
               description: "Target id from Target.createTarget. Screenshots the existing tab instead of opening a new one."
-            },
-            format: {
-              type: "string",
-              enum: ["png", "jpeg"],
-              default: "png",
-              description: "Image format for the screenshot"
             },
             quality: {
               type: "string",
               enum: ["low", "medium", "high"],
               default: "medium",
               description:
-                "JPEG quality preset: low (30, small file), medium (55, balanced), high (75, detailed). Ignored for PNG."
+                "JPEG quality preset: low (30, small file), medium (55, balanced), high (75, detailed)."
             },
             fullPage: {
               type: "boolean",
@@ -1708,25 +1753,21 @@ function getToolsListResponse(allowedTools = null) {
               description: "How to return the screenshot: 'base64' (inline data), 'file' (save to disk, returns path), 'url' (returns download URL). Available options depend on server configuration."
             }
           },
-          description: "Provide one of: targetId, url, urls, ref_id, or ref_ids. Prefer ref_id/ref_ids from web_search when available.",
+          description: "Provide one of: targetId, urls (string[]), or ref_ids (number[]) from a previous web_search call. Prefer ref_ids when available.",
           additionalProperties: false
         }
       },
       {
         name: "web_page_links",
         description:
-          "Resolve one or more link ref_ids (shown inline in web_fetch output as [ref_id]) to their full URLs. Provide a single ref_id or multiple ref_ids. Returns the URL for each ref_id.",
+          "Resolve one or more link ref_ids (shown inline in web_fetch output as [ref_id]) to their full URLs. Returns the URL for each ref_id.",
         inputSchema: {
           type: "object",
           properties: {
-            ref_id: {
-              type: "number",
-              description: "Single link ref_id to resolve (e.g. 4)"
-            },
             ref_ids: {
               type: "array",
               items: { type: "number" },
-              description: "Multiple link ref_ids to resolve (e.g. [4, 5, 6])"
+              description: "Link ref_ids to resolve (e.g. [4, 5, 6])"
             }
           },
           additionalProperties: false
@@ -1803,7 +1844,8 @@ async function handleToolCallInner(name, args = {}) {
 
   if (name === "web_search") {
     const bypassCache = args.bypassCache === true;
-    const cached = bypassCache ? null : await getCachedToolResult(name, args);
+    const cacheKeyArgs = getCacheArgs(args);
+    const cached = bypassCache ? null : await getCachedToolResult(name, cacheKeyArgs);
     if (cached) {
       timer.step("cache_hit", mark);
       timer.end({ cacheHit: true, status: "ok" });
@@ -1811,16 +1853,19 @@ async function handleToolCallInner(name, args = {}) {
     }
     mark = timer.step("cache_miss", mark);
     const queries = parseQueryList(args.queries);
+    if (!queries.length && typeof args.query === "string" && args.query.trim()) {
+      queries.push(args.query.trim());
+    }
     if (!queries.length) {
-      assertString(args.query, "query");
+      throw new Error("Missing queries: provide at least one search query (string[])");
     }
     const limit = parseSearchLimit(args.limit, 5);
-    const engines = normalizeSearchEngineSelection(args.engines, args.engine);
+    const engine = typeof args.engine === "string" ? String(args.engine).trim().toLowerCase() : "";
+    const engines = engine && engine !== "select_best" ? [engine] : [];
     mark = timer.step("validate_inputs", mark);
 
     const results = await runWithHangGuard(`mcp:${name}`, () =>
       browserSearch({
-        query: args.query,
         queries,
         limit,
         ...(engines.length ? { engines } : {})
@@ -1880,8 +1925,7 @@ async function handleToolCallInner(name, args = {}) {
   if (name === "web_page_screenshot") {
     const screenshotStartedAt = performance.now();
     const hasTargetId = args && typeof args.targetId === "string" && args.targetId.trim();
-    const formatRaw = typeof args.format === "string" ? args.format.trim().toLowerCase() : "png";
-    const format = formatRaw === "jpeg" ? "jpeg" : "png";
+    const format = "jpeg";
     let quality;
     if (typeof args.quality !== "undefined" && args.quality !== null) {
       const QUALITY_PRESETS = { low: 30, medium: 55, high: 75 };
@@ -1905,7 +1949,7 @@ async function handleToolCallInner(name, args = {}) {
       format,
       quality: quality ?? "default",
       fullPage,
-      target: hasTargetId ? args.targetId.trim() : (args.url || args.urls || args.ref_id || args.ref_ids || "unknown")
+      target: hasTargetId ? args.targetId.trim() : (args.urls || args.ref_ids || "unknown")
     };
     console.error(`📸  screenshot context: ${JSON.stringify(screenshotCtx)}`);
 
@@ -2265,9 +2309,13 @@ async function handleToolCallInner(name, args = {}) {
   }
 
   if (name === "web_page_links") {
-    const singleRef = args.ref_id !== undefined ? parsePositiveInt(args.ref_id, "ref_id") : null;
-    const multipleRefs = Array.isArray(args.ref_ids) ? args.ref_ids.map((v) => parsePositiveInt(v, "ref_ids")) : null;
-    if (singleRef === null && !multipleRefs) throw new Error("Provide ref_id (number) or ref_ids (number[])");
+    const multipleRefs = Array.isArray(args.ref_ids) && args.ref_ids.length
+      ? args.ref_ids.map((v) => parsePositiveInt(v, "ref_ids"))
+      : null;
+    const singleRef = args.ref_id !== undefined && multipleRefs === null
+      ? parsePositiveInt(args.ref_id, "ref_id")
+      : null;
+    if (multipleRefs === null && singleRef === null) throw new Error("Provide ref_ids (number[]) to resolve");
 
     const ids = singleRef !== null ? [singleRef] : multipleRefs;
     const out = [];
@@ -2840,6 +2888,17 @@ async function maybeStartHttpServer(managerOverride) {
             sendJson(res, 200, result);
             return;
           }
+          if (method === "DELETE" && updateMatch) {
+            const index = Number(updateMatch[1]);
+            const result = await deleteHint(hintsPath, index);
+            if (!result.ok) {
+              sendJson(res, 400, result);
+              return;
+            }
+            logEvent("http.request", { method, path: url.pathname, hint: result.removed?.domain });
+            sendJson(res, 200, result);
+            return;
+          }
           sendJson(res, 405, { ok: false, error: "Method not allowed" });
         } catch (error) {
           sendJson(res, 400, { ok: false, error: String(error?.message || error) });
@@ -3015,8 +3074,7 @@ async function maybeStartHttpServer(managerOverride) {
         }
         mark = timer.step("resolve_targets", mark);
 
-        const formatParam = String(url.searchParams.get("format") || "png").trim().toLowerCase();
-        const format = formatParam === "jpeg" ? "jpeg" : "png";
+        const format = "jpeg";
         const fullPage = parseBooleanParam(url.searchParams.get("fullPage"), true);
         const qualityParam = url.searchParams.get("quality");
         let quality = null;

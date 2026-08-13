@@ -2,6 +2,25 @@ export function cleanWhitespace(input) {
   return String(input || "").replace(/\s+/g, " ").trim();
 }
 
+// Convert an error into a human-readable message. AggregateError instances
+// (e.g. from Promise.any when every selector wait times out) only expose the
+// generic "All promises were rejected" as their message; the real reasons live
+// in error.errors. Unwrap those so circuit breakers, attempt logs, and the
+// console show what actually failed instead of the cryptic AggregateError text.
+export function readableErrorMessage(error, maxLen = 300) {
+  if (error && typeof error === "object" && Array.isArray(error.errors)) {
+    const reasons = error.errors
+      .map((reason) => readableErrorMessage(reason, maxLen))
+      .map((message) => String(message).trim())
+      .filter((message) => message && message !== "All promises were rejected");
+    const unique = [...new Set(reasons)];
+    if (unique.length) {
+      return unique.join("; ").slice(0, maxLen);
+    }
+  }
+  return String(error?.message || error || "").slice(0, maxLen);
+}
+
 export function normalizeQueryText(input) {
   let text = String(input || "").trim();
   if (!text) return "";

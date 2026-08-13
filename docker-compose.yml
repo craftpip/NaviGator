@@ -23,6 +23,7 @@ services:
       # These entries read from it and fall back to sane defaults when unset.
       HEADLESS: ${HEADLESS:-true}
       BROWSER_BACKEND: ${BROWSER_BACKEND:-cloakbrowser}
+      BROWSER_USER_AGENT: ${BROWSER_USER_AGENT:-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36}
       ENABLE_VNC: ${ENABLE_VNC:-1}
       ENABLE_WEB_CONSOLE: ${ENABLE_WEB_CONSOLE:-1}
       ENABLE_HTTP_MCP: ${ENABLE_HTTP_MCP:-1}
@@ -68,6 +69,10 @@ services:
 
       ENABLE_HANG_RESTART: ${ENABLE_HANG_RESTART:-0}
       HANG_RESTART_TIMEOUT_MS: ${HANG_RESTART_TIMEOUT_MS:-120000}
+
+      # DuckDuckGo Instant Answers on every web_search (rendered as the
+      # **Instant Answer:** section between the query and the results).
+      ENABLE_INSTANT_ANSWERS: ${ENABLE_INSTANT_ANSWERS:-1}
 
       # Disable MCP tools by name (comma-separated, case-insensitive). Add any
       # tool to hide it from tools/list and reject its calls. Values come from

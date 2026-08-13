@@ -54,6 +54,26 @@ body {
   margin: 0;
   background: var(--bg);
 }
+/* Main page scrollbar — always visible, even when there is nothing to scroll. */
+html {
+  overflow-y: scroll;
+  scrollbar-color: var(--line) var(--panel2);
+  scrollbar-width: thin;
+}
+html::-webkit-scrollbar {
+  width: 10px;
+}
+html::-webkit-scrollbar-track {
+  background: var(--panel2);
+}
+html::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border: 2px solid var(--panel2);
+  border-radius: 8px;
+}
+html::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
 button,
 input,
 select,
@@ -2226,12 +2246,6 @@ select.config-input option {
 .hint-url-row input {
   flex: 1;
 }
-.hint-options-head {
-  color: var(--muted);
-  font: 700 10px var(--sans);
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-}
 .hint-meta-badge {
   display: inline-block;
   margin-left: 6px;
@@ -2353,11 +2367,6 @@ select.config-input option {
   color: var(--muted);
   font: 11px var(--sans);
 }
-.hint-flags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-}
 .hint-check {
   display: inline-flex;
   align-items: center;
@@ -2434,6 +2443,100 @@ select.config-input option {
   color: var(--muted);
   font: 10px var(--mono);
 }
+.block-mode {
+  min-width: 0;
+}
+.hint-block-format {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.hint-block-format .hint-option-name {
+  min-width: 110px;
+}
+.hint-warn {
+  color: var(--amber);
+}
+.hint-default {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  background: var(--panel2);
+  line-height: 1.5;
+}
+.hint-step-row {
+  padding: 10px;
+}
+.hint-step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.hint-step-action {
+  font: 700 11px var(--sans);
+  color: var(--blue);
+}
+.hint-step-controls {
+  display: flex;
+  gap: 4px;
+}
+.hint-step-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.hint-step-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+.hint-step-options {
+  align-items: center;
+}
+.hint-narrow {
+  max-width: 160px;
+}
+.hint-field .button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.hint-field input[type="number"] {
+  font: 12px var(--mono);
+}
+.hint-mode-switch {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.hint-mode-switch button {
+  flex: 1 1 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font: 700 12px var(--sans);
+  cursor: pointer;
+  text-align: left;
+}
+.hint-mode-switch button em {
+  font: normal 11px var(--sans);
+  color: var(--muted);
+}
+.hint-mode-switch button.active {
+  border-color: var(--blue);
+  background: var(--blue-bg);
+  color: var(--blue);
+}
+.hint-mode-switch button.active em {
+  color: var(--blue);
+}
 .hint-test {
   display: flex;
   flex-direction: column;
@@ -2447,7 +2550,13 @@ select.config-input option {
   display: flex;
   gap: 6px;
 }
-.hint-test-controls input {
+.hint-test-form {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  margin: 0;
+}
+.hint-test-form input {
   flex: 1;
   min-width: 0;
   padding: 6px 8px;

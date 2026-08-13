@@ -1,5 +1,4 @@
 import { BrowserSearchDriver } from "./browser-driver.js";
-import { dedupeDirectAnswers } from "./util.js";
 
 const INPUT_SELECTOR = "input[name='q'], input#searchbox_input, input[data-testid='searchbox-input']";
 const RESULT_SELECTORS = [
@@ -40,8 +39,17 @@ export class DuckDuckGoBrowserDriver extends BrowserSearchDriver {
   inputSelectors = [INPUT_SELECTOR];
   resultSelectors = RESULT_SELECTORS;
 
-  searchUrl() {
+  searchUrl(_query) {
     return "https://duckduckgo.com/";
+  }
+
+  async assertNotBlocked(page) {
+    const text = await page.evaluate(() => document.body?.innerText || document.body?.textContent || "");
+    const pageUrl = page.url();
+
+    if (/anomaly-modal|puzzl|unusual traffic|isn't quite right/i.test(text) || /\/sorry\//.test(pageUrl)) {
+      throw new Error("DuckDuckGo blocked this request with a bot/anomaly page");
+    }
   }
 
   async submit(page, query) {
@@ -69,13 +77,6 @@ export class DuckDuckGoBrowserDriver extends BrowserSearchDriver {
   }
 
   async extract(page) {
-    const payload = await page.evaluate(EXTRACT_PAGE);
-
-    return {
-      results: payload.results.map((item) => ({ ...item, engine: this.id })),
-      directAnswers: dedupeDirectAnswers(
-        (payload.directAnswers || []).map((item) => ({ ...item, engine: this.id, url: page.url() }))
-      )
-    };
+    return this.extractViaEvaluate(page, EXTRACT_PAGE);
   }
 }

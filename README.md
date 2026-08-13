@@ -331,7 +331,6 @@ Also supports:
 
 - `queries`
 - `engine`
-- `engines`
 
 ### `web_fetch`
 

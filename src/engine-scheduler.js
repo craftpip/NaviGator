@@ -21,6 +21,7 @@ function freshProfile(engine) {
     lastSelectedAt: 0,
     lastSuccessAt: 0,
     lastFailureAt: 0,
+    lastError: "",
     latencySamples: []
   };
 }
@@ -50,14 +51,15 @@ export class EngineScheduler {
       this.cursor = Math.max(0, Number(saved?.cursor) || 0);
       for (const [engine, profile] of Object.entries(saved?.profiles || {})) {
         if (!this.engines.includes(engine) || !profile || typeof profile !== "object") continue;
-        this.profiles.set(engine, {
+        const merged = {
           ...freshProfile(engine),
           ...profile,
           engine,
           latencySamples: Array.isArray(profile.latencySamples)
             ? profile.latencySamples.filter(Number.isFinite).slice(-this.latencySampleLimit)
             : []
-        });
+        };
+        this.profiles.set(engine, merged);
       }
     } catch {
       // No persisted queue state on the first start.
@@ -128,6 +130,7 @@ export class EngineScheduler {
     profile.successes += 1;
     // Recovery is deliberate: repeated failures need repeated successful probes.
     profile.consecutiveFailures = Math.max(0, profile.consecutiveFailures - 1);
+    if (profile.consecutiveFailures === 0) profile.lastError = "";
     profile.cooldownMs = Math.max(this.minIntervalMs, Math.floor(profile.cooldownMs / this.escalationFactor));
     profile.nextEligibleAt = 0;
     profile.lastSuccessAt = now;
@@ -140,7 +143,13 @@ export class EngineScheduler {
     this.persist();
   }
 
-  recordFailure(engine, now = Date.now()) {
+  recordFailure(engine, errorMsgOrNow, now = Date.now()) {
+    let errorMsg = "";
+    if (typeof errorMsgOrNow === "number") {
+      now = errorMsgOrNow;
+    } else {
+      errorMsg = String(errorMsgOrNow || "").slice(0, 300);
+    }
     const profile = this.profile(engine);
     profile.errors += 1;
     profile.consecutiveFailures += 1;
@@ -150,6 +159,7 @@ export class EngineScheduler {
     );
     profile.nextEligibleAt = now + profile.cooldownMs;
     profile.lastFailureAt = now;
+    if (errorMsg) profile.lastError = errorMsg;
     this.persist();
   }
 

@@ -1,5 +1,4 @@
 import { BrowserSearchDriver } from "./browser-driver.js";
-import { dedupeDirectAnswers } from "./util.js";
 
 const RESULT_SELECTORS = [
   "#results .snippet",
@@ -48,13 +47,6 @@ export class BraveCbDriver extends BrowserSearchDriver {
   }
 
   async extract(page) {
-    const payload = await page.evaluate(EXTRACT_PAGE);
-
-    return {
-      results: payload.results.map((item) => ({ ...item, engine: this.id })),
-      directAnswers: dedupeDirectAnswers(
-        (payload.directAnswers || []).map((item) => ({ ...item, engine: this.id, url: page.url() }))
-      )
-    };
+    return this.extractViaEvaluate(page, EXTRACT_PAGE);
   }
 }

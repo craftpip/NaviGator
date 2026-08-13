@@ -12,9 +12,10 @@ import {
   recordSearchStart,
   searchContext
 } from "./activity.js";
-import { findMatchingHints, getDomainHints } from "./domain-hints.js";
+import { findMatchingHints, getDomainHints, FLOW_TOTAL_TIMEOUT_MAX } from "./domain-hints.js";
 import { htmlToMarkdown } from "./markdown.js";
 import { getEngineDriver, getEngineMetadata, SUPPORTED_ENGINES } from "./engines/index.js";
+import { fetchDuckDuckGoInstantAnswers } from "./engines/instant-answers.js";
 import { EngineScheduler } from "./engine-scheduler.js";
 import { incrementUsageTotal } from "./db.js";
 import {
@@ -23,7 +24,8 @@ import {
   cleanWhitespace,
   dedupeDirectAnswers,
   normalizeQueryText,
-  normalizeUrl
+  normalizeUrl,
+  readableErrorMessage
 } from "./engines/util.js";
 
 const DEFAULT_CONTENT_SELECTORS = [
@@ -174,12 +176,12 @@ function recordRouteFailure(engine, error, cooldownMs) {
   routeCircuitState.set(key, {
     openUntil: Date.now() + cooldownMs,
     failures: (previous?.failures || 0) + 1,
-    lastError: String(error?.message || error || "Unknown route failure"),
+    lastError: readableErrorMessage(error) || "Unknown route failure",
     lastFailureAt: new Date().toISOString()
   });
   persistRouteCircuitState();
 
-  const message = String(error?.message || error || "");
+  const message = readableErrorMessage(error);
   if (/captcha|blocked by|bot|unusual traffic/i.test(message)) {
     activityCounters.botBlocks += 1;
   }
@@ -227,7 +229,7 @@ function persistEngineAttemptLog() {
 }
 
 export function recordEngineAttempt(engine, status, errorMsg, resultCount = 0, durationMs = 0) {
-  engineAttemptLog.push({ t: Date.now(), engine, status, results: status === "ok" ? Math.max(0, Number(resultCount) || 0) : 0, err: status === "ok" ? "" : String(errorMsg || status).slice(0, 300) });
+  engineAttemptLog.push({ t: Date.now(), engine, status, results: status === "ok" ? Math.max(0, Number(resultCount) || 0) : 0, err: status === "ok" ? "" : readableErrorMessage(errorMsg || status).slice(0, 300) });
   if (engineAttemptLog.length > ENGINE_ATTEMPT_LOG_MAX) {
     engineAttemptLog.splice(0, engineAttemptLog.length - ENGINE_ATTEMPT_LOG_MAX);
   }
@@ -237,7 +239,7 @@ export function recordEngineAttempt(engine, status, errorMsg, resultCount = 0, d
     backend: getEngineMetadata(engine)?.backend,
     status,
     resultCount,
-    error: status === "ok" ? "" : errorMsg,
+    error: status === "ok" ? "" : readableErrorMessage(errorMsg),
     durationMs
   });
 }
@@ -707,6 +709,19 @@ function renderHintFields(element, fields, baseUrl) {
       if (field.format === "text" || field.format === "list") {
         return cleanWhitespace(node.textContent || "");
       }
+      if (field.format === "html") {
+        return `\`\`\`html\n${node.innerHTML || ""}\n\`\`\``;
+      }
+      if (field.format === "readability_to_markdown") {
+        try {
+          const miniDoc = new JSDOM(`<body>${node.innerHTML || ""}</body>`, { url: baseUrl }).window.document;
+          const reader = new Readability(miniDoc);
+          const article = reader.parse();
+          if (article?.content) return htmlToMarkdown(article.content, { baseUrl }).trim();
+        } catch {
+          // fall through to html_to_markdown below
+        }
+      }
       return htmlToMarkdown(node.innerHTML || "", { baseUrl }).trim();
     }).filter(Boolean);
     if (!values.length) continue;
@@ -728,7 +743,147 @@ function renderHintFields(element, fields, baseUrl) {
   return output.join("\n\n");
 }
 
-function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, debug = false }) {
+function renderLeafContent(element, format, url) {
+  if (format === "text") return cleanWhitespace(element.textContent || "");
+  const innerHtml = element.innerHTML || "";
+  if (format === "html") return `\`\`\`html\n${innerHtml}\n\`\`\``;
+  if (format === "markdown" || format === "html_to_markdown") return htmlToMarkdown(innerHtml, { baseUrl: url }).trim();
+  if (format === "readability_to_markdown") {
+    try {
+      const miniDoc = new JSDOM(`<body>${innerHtml}</body>`, { url }).window.document;
+      const reader = new Readability(miniDoc);
+      const article = reader.parse();
+      if (article?.content) return htmlToMarkdown(article.content, { baseUrl: url }).trim();
+    } catch {
+      // fall through to raw html_to_markdown below
+    }
+    return htmlToMarkdown(innerHtml, { baseUrl: url }).trim();
+  }
+  return "";
+}
+
+function csvEscape(value) {
+  const string = String(value ?? "");
+  return /[",\n]/.test(string) ? `"${string.replace(/"/g, '""')}"` : string;
+}
+
+function renderTablesAsJson(tables) {
+  const rows = [];
+  for (const table of tables) {
+    const keys = (table.headers || []).map((header, index) => header || `col${index + 1}`);
+    for (const row of table.rows || []) {
+      const entry = {};
+      keys.forEach((key, index) => {
+        entry[key] = row[index] !== undefined ? row[index] : "";
+      });
+      rows.push(entry);
+    }
+  }
+  return `\`\`\`json\n${JSON.stringify(rows, null, 2)}\n\`\`\``;
+}
+
+function renderTablesAsCsv(tables) {
+  const lines = [];
+  for (const table of tables) {
+    if (table.caption) lines.push(`# ${table.caption}`);
+    if (table.headers?.length) lines.push(table.headers.map(csvEscape).join(","));
+    for (const row of table.rows || []) lines.push(row.map(csvEscape).join(","));
+  }
+  return `\`\`\`csv\n${lines.join("\n")}\n\`\`\``;
+}
+
+function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = "") {
+  const blocks = hint?.content?.blocks?.length ? hint.content.blocks : null;
+  const sections = blocks ? null : (hint?.content?.sections?.length ? hint.content.sections : null);
+  const content = blocks || sections;
+  if (!content) return null;
+
+  const output = [];
+  const allTables = [];
+  const zeroMatch = [];
+  const order = { high: 0, medium: 1, low: 2 };
+  const sorted = [...content].sort((a, b) => (order[a.priority] || 1) - (order[b.priority] || 1));
+
+  for (const block of sorted) {
+    const elements = doc.querySelectorAll(block.selector);
+    if (debug) console.log(">>> content selector:", block.selector, "matched:", elements.length);
+    if (!elements.length) {
+      zeroMatch.push(block.selector);
+      continue;
+    }
+    let markdown = "";
+    let blockHadTable = false;
+
+    if (block.fields?.length) {
+      markdown = Array.from(elements).map((el, index) => {
+        const fieldText = renderHintFields(el, block.fields, url);
+        if (!fieldText) return "";
+        return block.itemLabel ? `#### ${block.itemLabel} ${index + 1}\n\n${fieldText}` : fieldText;
+      }).filter(Boolean).join("\n\n");
+    } else if (block.format === "table") {
+      for (const el of elements) {
+        const elTables = extractTablesFromDocument(doc, { container: el });
+        if (elTables.length) {
+          for (const t of elTables) t.node?.remove();
+          allTables.push(...elTables.map(({ node, ...rest }) => rest));
+          blockHadTable = true;
+        }
+      }
+    } else if (block.format === "list") {
+      markdown = Array.from(elements).map((el) => {
+        const value = cleanWhitespace(el.textContent || "");
+        return value ? `- ${value}` : "";
+      }).filter(Boolean).join("\n");
+    } else if (block.format === "table_json" || block.format === "table_csv") {
+      const tables = [];
+      for (const el of elements) {
+        const elTables = extractTablesFromDocument(doc, { container: el });
+        if (elTables.length) {
+          for (const t of elTables) t.node?.remove();
+          tables.push(...elTables.map(({ node, ...rest }) => rest));
+          blockHadTable = true;
+        }
+      }
+      if (tables.length) {
+        markdown = block.format === "table_json" ? renderTablesAsJson(tables) : renderTablesAsCsv(tables);
+      }
+    } else {
+      for (const el of elements) {
+        const elTables = extractTablesFromDocument(doc, { container: el });
+        if (elTables.length) {
+          for (const t of elTables) t.node?.remove();
+          allTables.push(...elTables.map(({ node, ...rest }) => rest));
+          blockHadTable = true;
+        }
+        if (el.matches?.("table")) continue;
+        const rendered = renderLeafContent(el, block.format, url);
+        if (rendered) markdown += rendered + "\n";
+      }
+    }
+
+    markdown = markdown.trim();
+    if (!markdown && !blockHadTable) continue;
+    if (block.priority === "medium" && markdown.length < 50 && !blockHadTable) continue;
+    output.push(`### ${block.label}`);
+    output.push("");
+    output.push(markdown);
+    output.push("");
+  }
+
+  if (!output.length) return null;
+  const text = output.join("\n");
+  if (debug) console.log(`[web_fetch] [${url}] content_path: blocks: ${output.length}, tables: ${allTables.length}`);
+  return {
+    title: cleanWhitespace(doc.title || fallbackTitle || ""),
+    url,
+    text: safeTruncateText(text, maxChars),
+    textOriginalLength: text.length,
+    ...(allTables.length ? { tables: allTables } : {}),
+    ...(zeroMatch.length ? { warnings: zeroMatch.map((selector) => `section selector "${selector}" matched 0 elements`) } : {})
+  };
+}
+
+function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, debug = false, strict = false }) {
   const tFunc = performance.now();
   if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml called`);
   const rawHtml = typeof html === "string" ? html : "";
@@ -754,8 +909,16 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       }
     }
 
+    if (hint?.content?.blocks?.length) {
+      if (debug) console.log(">>> entering blocks path, blocks:", hint.content.blocks.length, "first selector:", hint.content.blocks[0].selector);
+      const blockResult = renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle);
+      if (blockResult) return blockResult;
+      if (debug) console.log(">>> blocks produced no output");
+    }
+
     if (debug) console.log(">>> sections check:", { hasHint: !!hint, hasContent: !!hint?.content, sectionsLen: hint?.content?.sections?.length });
     if (hint?.content?.sections?.length) {
+      if (debug) console.log(">>> DEPRECATED: hint uses content.sections — migrate to content.blocks");
       if (debug) console.log(">>> entering sections path, selector:", hint.content.sections[0].selector);
       const sectionOutput = [];
       const allSectionTables = [];
@@ -830,6 +993,11 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
       }
       if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: sections_no_output: ${Math.round(performance.now() - tFunc)}ms`);
       if (debug) console.log(">>> sections produced no output");
+    }
+
+    if (strict && (hint?.content?.blocks?.length || hint?.content?.sections?.length)) {
+      if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: strict content produced no output`);
+      return { title: cleanWhitespace(doc.title || fallbackTitle || ""), url, text: "", textOriginalLength: 0 };
     }
 
     const globalTables = extractTablesFromDocument(doc);
@@ -1362,7 +1530,12 @@ async function runSearchRoute({ manager, query, engine, config, explicit }) {
     }
     recordRouteSuccess(engine);
     const durationMs = performance.now() - routeStart;
-    recordEngineAttempt(engine, "ok", "", value.results?.length || 0, durationMs);
+    if (value.results?.length) {
+      recordEngineAttempt(engine, "ok", "", value.results.length, durationMs);
+    } else {
+      recordEngineAttempt(engine, "fail", "Search engine returned no results", 0, durationMs);
+      if (!explicit) engineScheduler.recordFailure(engine, "Search engine returned no results");
+    }
     return { ...value, durationMs };
   } catch (error) {
     const localBrowserFailure = isLocalBrowserFailure(error);
@@ -1417,7 +1590,6 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
       engineScheduler.markSelected(engine);
       const value = await runSearchRoute({ manager, query, engine, config, explicit: false });
       if (!value.results?.length) {
-        engineScheduler.recordFailure(engine);
         errors.push({ engine, route: routeKey(engine), error: "Search engine returned no results" });
         continue;
       }
@@ -1447,8 +1619,8 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
         }
       };
     } catch (reason) {
-      if (!reason.schedulerIgnore) engineScheduler.recordFailure(engine);
-      errors.push({ engine, route: routeKey(engine), error: String(reason?.message || reason) });
+      if (!reason.schedulerIgnore) engineScheduler.recordFailure(engine, readableErrorMessage(reason));
+      errors.push({ engine, route: routeKey(engine), error: readableErrorMessage(reason) });
     }
   }
 
@@ -1491,7 +1663,7 @@ function buildQueryResult({ query, settled, limit, fallbackAttempted }) {
       errors.push({
         engine: entry.engine,
         route: entry.engine ? routeKey(entry.engine) : undefined,
-        error: String(entry.reason?.message || entry.reason)
+        error: readableErrorMessage(entry.reason)
       });
     }
   }
@@ -1567,11 +1739,30 @@ export async function browserSearch({ query, queries, limit = 5, engines }) {
 
   try {
     const result = await searchContext.run({ searchId }, async () => {
-      const perQueryTasks = uniqueQueries.map((singleQuery) =>
-        explicitEngines
+      const perQueryTasks = uniqueQueries.map(async (singleQuery) => {
+        const engineTask = explicitEngines
           ? runExplicitEngineGroup({ manager, query: singleQuery, engines: selectedEngines, limit, config: manager.config })
-          : runFallbackEngineGroups({ manager, query: singleQuery, limit, config: manager.config })
-      );
+          : runFallbackEngineGroups({ manager, query: singleQuery, limit, config: manager.config });
+
+        const instantAnswerTask = manager.config.enableInstantAnswers !== false
+          ? fetchDuckDuckGoInstantAnswers(singleQuery, manager.config).catch(() => [])
+          : Promise.resolve([]);
+
+        const [entry, ddgInstantAnswers] = await Promise.all([
+          engineTask,
+          instantAnswerTask
+        ]);
+
+        if (ddgInstantAnswers.length) {
+          entry.directAnswers = dedupeDirectAnswers([
+            ...ddgInstantAnswers,
+            ...(entry.directAnswers || [])
+          ]);
+          entry.directAnswerCount = entry.directAnswers.length;
+        }
+
+        return entry;
+      });
 
       return await Promise.all(perQueryTasks);
     });
@@ -1798,6 +1989,359 @@ async function firstMatchingHint(page, candidates) {
   return null;
 }
 
+const FLOW_STAGE_CAPTURE_LIMIT = 60000;
+const FLOW_STEP_DEFAULT_TIMEOUT_MS = 10000;
+
+async function stabilizePage(page, hint, config) {
+  const stabilizeStrategy = hint?.stabilizeStrategy || config.stabilizeStrategy || "network_idle";
+  if (stabilizeStrategy === "network_idle") {
+    try {
+      await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 });
+    } catch {}
+  } else if (stabilizeStrategy === "content_idle") {
+    await waitForContent(page, {
+      maxWait: 5000,
+      extraSelectors: hint?.contentSelectors
+    }).catch(() => {});
+  } else if (stabilizeStrategy === "mutation") {
+    await waitForMutations(page, { maxWait: 5000 }).catch(() => {});
+  }
+}
+
+async function detectBotChallenge(page) {
+  try {
+    return await page.evaluate(() => {
+      const title = document.title || "";
+      const bodyText = (document.body?.innerText || "").trim();
+      const html = (document.documentElement?.outerHTML || "").toLowerCase();
+      if (html.includes("cf-browser-verification") || html.includes("__cf_challenge") || /just a moment|performing security verification|security service to protect/i.test(`${title}\n${bodyText}`)) return "Cloudflare challenge";
+      if (html.includes("data-dome") || bodyText.includes("Please enable JS") || bodyText.includes("disable any ad blocker")) return "DataDome challenge";
+      if ((!title && !bodyText) || /^[a-z0-9-]+\.[a-z]{2,}$/i.test(title)) return `Bot block detected (title: "${title}")`;
+      return null;
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function detectPageState(page) {
+  try {
+    return await page.evaluate(() => {
+      const warnings = [];
+      const bodyText = (document.body?.innerText || "").trim();
+      const textLen = bodyText.replace(/\s+/g, " ").trim().length;
+      if (document.querySelector('input[type="password"]')) {
+        warnings.push("Page appears to require login — auth wall detected (a password field is present)");
+      }
+      const mediaCount = document.querySelectorAll("img, canvas, video, picture, svg").length;
+      if (textLen < 120 && mediaCount >= 3) {
+        warnings.push("Page appears to be visual-only — little extractable text (mostly images/media)");
+      }
+      return warnings;
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function countVisibleMatches(page, selector) {
+  try {
+    return await page.evaluate((sel) => {
+      let count = 0;
+      for (const el of document.querySelectorAll(sel)) {
+        const style = window.getComputedStyle(el);
+        if (style.display === "none" || style.visibility === "hidden") continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 2 || rect.height < 2) continue;
+        count += 1;
+      }
+      return count;
+    }, selector);
+  } catch {
+    return 0;
+  }
+}
+
+async function capturePageState(page) {
+  const [html, url, title, browserText] = await Promise.all([
+    page.content(),
+    Promise.resolve(page.url()),
+    page.title(),
+    page.evaluate(() => document.body?.innerText || "").catch(() => "")
+  ]);
+  return { html, url, title, browserText };
+}
+
+function extractHintStage(pageState, hint, step, maxChars, debug) {
+  return extractTextFromHtml({
+    html: pageState.html,
+    url: pageState.url,
+    maxChars,
+    fallbackTitle: pageState.title,
+    hint: { ...hint, content: step.content },
+    browserText: pageState.browserText,
+    debug,
+    strict: true
+  });
+}
+
+function renderExtractedStage(label, extracted) {
+  let text = extracted?.text || "";
+  if (extracted?.tables?.length) {
+    text = insertTablesInline(text, extracted.tables);
+  }
+  const heading = `## ${label}`;
+  return {
+    text: `${heading}\n\n${text.trim()}`,
+    tables: extracted?.tables || [],
+    warnings: extracted?.warnings || [],
+    textOriginalLength: extracted?.textOriginalLength || 0
+  };
+}
+
+function mergeExtractedStages(stages, maxChars, preCollectedLinks = []) {
+  const textParts = [];
+  const tables = [];
+  const linksByHref = new Map();
+  const warnings = [];
+  let textOriginalLength = 0;
+  for (const link of preCollectedLinks) {
+    if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
+  }
+  for (const stage of stages) {
+    if (stage.text?.trim()) textParts.push(stage.text.trim());
+    textOriginalLength += stage.textOriginalLength || 0;
+    if (stage.tables?.length) tables.push(...stage.tables);
+    for (const link of stage.links || []) {
+      if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
+    }
+    if (stage.warnings?.length) warnings.push(...stage.warnings);
+  }
+  let text = textParts.join("\n\n").trim();
+  let textWasTruncated = false;
+  if (text.length > maxChars) {
+    text = safeTruncateText(text, maxChars);
+    textWasTruncated = text.endsWith("...");
+  }
+  return {
+    text,
+    textWasTruncated,
+    textOriginalLength,
+    tables,
+    links: [...linksByHref.values()],
+    warnings: [...new Set(warnings)]
+  };
+}
+
+async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, debugLog, withPageTimeout, operationTimeoutMs }) {
+  const flow = hint.flow;
+  const flowOptions = hint.flowOptions || {};
+  const totalTimeoutMs = Math.min(
+    Number.isInteger(flowOptions.totalTimeoutMs) && flowOptions.totalTimeoutMs > 0
+      ? flowOptions.totalTimeoutMs
+      : FLOW_TOTAL_TIMEOUT_MAX,
+    FLOW_TOTAL_TIMEOUT_MAX
+  );
+  const continueOnEmptyExtract = flowOptions.continueOnEmptyExtract === true;
+  const stages = [];
+  const linksByHref = new Map();
+  const warnings = [];
+  const flowStart = Date.now();
+  let stepIndex = 0;
+
+  const checkTotalBudget = (stepLabel) => {
+    if (Date.now() - flowStart > totalTimeoutMs) {
+      throw new Error(
+        `Domain hint flow step ${stepIndex + 1} (${stepLabel}) exceeded total timeout (${totalTimeoutMs}ms)`
+      );
+    }
+  };
+
+  const checkBot = async () => {
+    const challenge = await withPageTimeout("check_bot_flow", () => detectBotChallenge(page));
+    if (challenge) {
+      throw new Error(`Domain hint flow step ${stepIndex} aborted: bot challenge detected (${challenge})`);
+    }
+  };
+
+  for (const step of flow) {
+    stepIndex += 1;
+    checkTotalBudget(step.action);
+    const tStep = performance.now();
+    try {
+      if (step.action === "extract") {
+        const state = await withPageTimeout("flow_capture", () => capturePageState(page));
+        const stageLinks = extractLinksFromHtml({ html: state.html, url: state.url });
+        for (const link of stageLinks) {
+          if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
+        }
+        const extracted = extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug);
+        const stage = renderExtractedStage(step.label, extracted);
+        const emptyStage = !stage.text.trim() || stage.text.trim() === `## ${step.label}`;
+        if (emptyStage) {
+          const message = `Domain hint flow step ${stepIndex} extract "${step.label}" produced no content`;
+          if (!continueOnEmptyExtract) {
+            throw new Error(message);
+          }
+          warnings.push(`${message} (skipped)`);
+          continue;
+        }
+        stages.push(stage);
+      } else if (step.action === "click") {
+        const visible = await withPageTimeout("flow_click_count", () => countVisibleMatches(page, step.selector));
+        if (visible === 0) {
+          throw new Error(`Domain hint flow step ${stepIndex} click failed: selector "${step.selector}" matched 0 visible elements`);
+        }
+        if (visible > 1) {
+          throw new Error(`Domain hint flow step ${stepIndex} click failed: selector "${step.selector}" matched ${visible} visible elements (expected exactly 1)`);
+        }
+        await withPageTimeout("flow_click", () => page.click(step.selector, { delay: 50 })).catch((error) => {
+          throw new Error(`Domain hint flow step ${stepIndex} click failed: ${String(error?.message || error)}`);
+        });
+        const clickTimeout = step.timeoutMs ?? FLOW_STEP_DEFAULT_TIMEOUT_MS;
+        await withPageTimeout("flow_click_wait", () =>
+          page.waitForSelector(step.waitForSelector, { timeout: clickTimeout })
+        ).catch((error) => {
+          throw new Error(
+            `Domain hint flow step ${stepIndex} click: post-click selector "${step.waitForSelector}" not found after ${clickTimeout}ms: ${String(error?.message || error)}`
+          );
+        });
+        await stabilizePage(page, hint, config);
+        await checkBot();
+      } else if (step.action === "wait") {
+        const waitTimeout = step.timeoutMs ?? FLOW_STEP_DEFAULT_TIMEOUT_MS;
+        await withPageTimeout("flow_wait", () =>
+          page.waitForSelector(step.selector, { state: step.state || "visible", timeout: waitTimeout })
+        ).catch((error) => {
+          throw new Error(
+            `Domain hint flow step ${stepIndex} wait failed: selector "${step.selector}" (state "${step.state || "visible"}"): ${String(error?.message || error)}`
+          );
+        });
+      } else if (step.action === "type") {
+        await withPageTimeout("flow_type_focus", () => page.click(step.selector, { delay: 20 })).catch((error) => {
+          throw new Error(`Domain hint flow step ${stepIndex} type failed: cannot focus "${step.selector}": ${String(error?.message || error)}`);
+        });
+        if (step.clear !== false) {
+          await withPageTimeout("flow_type_clear", () =>
+            page.evaluate((sel) => {
+              const el = document.querySelector(sel);
+              if (el) el.value = "";
+            }, step.selector)
+          );
+        }
+        await withPageTimeout("flow_type_text", () => page.type(step.selector, step.text, { delay: 30 }));
+        if (step.submit === true) {
+          await withPageTimeout("flow_type_submit", () => page.keyboard.press("Enter"));
+          const typeTimeout = step.timeoutMs ?? FLOW_STEP_DEFAULT_TIMEOUT_MS;
+          await withPageTimeout("flow_type_wait", () =>
+            page.waitForSelector(step.waitForSelector, { timeout: typeTimeout })
+          ).catch((error) => {
+            throw new Error(
+              `Domain hint flow step ${stepIndex} type: results selector "${step.waitForSelector}" not found after ${typeTimeout}ms: ${String(error?.message || error)}`
+            );
+          });
+          await stabilizePage(page, hint, config);
+          await checkBot();
+        }
+      } else if (step.action === "navigate") {
+        const target = new URL(step.url, page.url()).href;
+        await withPageTimeout("flow_navigate", () =>
+          page.goto(target, { waitUntil: "domcontentloaded", timeout: operationTimeoutMs })
+        );
+        const navTimeout = step.timeoutMs ?? FLOW_STEP_DEFAULT_TIMEOUT_MS;
+        await withPageTimeout("flow_navigate_wait", () =>
+          page.waitForSelector(step.waitForSelector, { timeout: navTimeout })
+        ).catch((error) => {
+          throw new Error(
+            `Domain hint flow step ${stepIndex} navigate: destination selector "${step.waitForSelector}" not found after ${navTimeout}ms: ${String(error?.message || error)}`
+          );
+        });
+        await stabilizePage(page, hint, config);
+        await checkBot();
+      }
+    } finally {
+      debugLog(`flow_step_${stepIndex}_${step.action}`, tStep);
+    }
+  }
+
+  return { stages, links: [...linksByHref.values()], warnings };
+}
+
+async function runFlowExtraction({ page, hint, config, maxChars, debug, debugLog, withPageTimeout, operationTimeoutMs, includeSeoAnalysis, hintNote, startTime }) {
+  const botChallenge = await withPageTimeout("check_bot", () => detectBotChallenge(page));
+  if (botChallenge) {
+    const pageTitle = await page.title().catch(() => "");
+    return { title: pageTitle || "", url: page.url(), text: "", error: botChallenge };
+  }
+
+  const flowResult = await executeFlow({
+    page,
+    hint,
+    config,
+    maxChars,
+    debug,
+    debugLog,
+    withPageTimeout,
+    operationTimeoutMs
+  });
+
+  const finalState = await withPageTimeout("flow_final_state", () => capturePageState(page));
+  const seoSnapshot =
+    includeSeoAnalysis === false
+      ? null
+      : await withPageTimeout("seo_snapshot", () =>
+          captureSeoSnapshot(page, {
+            textLimit: Math.min(MAX_MAIN_TEXT_CHARS, Math.max(maxChars * 3, 4000)),
+            htmlLimit: Math.min(Math.max(MAX_MAIN_HTML_CHARS, maxChars * 6), 120000),
+            maxCandidates: MAX_SEO_CANDIDATES,
+            extraSelectors: hint?.contentSelectors
+          })
+        );
+
+  const merged = mergeExtractedStages(flowResult.stages, maxChars, flowResult.links);
+  merged.warnings = [...merged.warnings, ...(flowResult.warnings || [])];
+  const pageStateWarnings = await withPageTimeout("detect_page_state", () => detectPageState(page));
+  if (pageStateWarnings.length) merged.warnings = [...merged.warnings, ...pageStateWarnings];
+  const seoAnalysis =
+    includeSeoAnalysis === false
+      ? null
+      : buildSeoAnalysis({ snapshot: seoSnapshot, extracted: { text: merged.text, title: finalState.title }, maxChars });
+
+  let finalText = merged.text || "";
+  const textWasTruncated = merged.textWasTruncated;
+  if (textWasTruncated || finalText.length > maxChars) {
+    const fullSize = merged.textOriginalLength || finalText.length;
+    if (textWasTruncated) {
+      finalText = finalText.slice(0, -3).trimEnd();
+    }
+    finalText += `\n\n*(Response truncated — full page is ${fullSize} chars, increase maxChars to see more)*`;
+  }
+
+  if (hintNote) {
+    finalText = `${hintNote}\n\n${finalText}`;
+  }
+
+  const result = {
+    title: cleanWhitespace(finalState.title || ""),
+    url: finalState.url,
+    text: finalText,
+    textOriginalLength: merged.textOriginalLength,
+    ...(merged.tables.length ? { tables: merged.tables } : {}),
+    ...(merged.links.length ? { links: merged.links } : {}),
+    ...(merged.warnings.length ? { warnings: merged.warnings } : {}),
+    ...(seoAnalysis ? { seo: seoAnalysis } : {})
+  };
+
+  if (debug) {
+    const elapsed = Math.round(performance.now() - startTime);
+    console.log(
+      `[web_fetch] [${finalState.url}] TOTAL(flow): ${elapsed}ms | text: ${finalText.length} chars | links: ${merged.links.length} | tables: ${merged.tables.length} | stages: ${flowResult.stages.length}`
+    );
+  }
+
+  return result;
+}
+
 export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, includeSeoAnalysis = true, hintOverride = null }) {
   const tOverall = performance.now();
   activityCounters.fetches += 1;
@@ -1868,14 +2412,6 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         : await firstMatchingHint(page, hintCandidates);
       debugLog("resolve_hint_dom", t);
 
-      if (hint?.flags?.authWall || hint?.flags?.visualOnly) {
-        const pageTitle = await page.title().catch(() => "");
-        const resolvedUrl = page.url();
-        const reason = hint.flags.authWall ? "Auth wall — page requires login" : "Visual-only page — no text content in DOM";
-        await page.close().catch(() => {});
-        return { title: pageTitle, url: resolvedUrl, text: "", error: reason };
-      }
-
       const waitSelectors = Array.isArray(hint?.waitForSelector)
         ? hint.waitForSelector
         : hint?.waitForSelector
@@ -1892,19 +2428,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       }
 
       t = performance.now();
-      const stabilizeStrategy = hint?.stabilizeStrategy || manager.config.stabilizeStrategy || "network_idle";
-      if (stabilizeStrategy === "network_idle") {
-        try {
-          await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 });
-        } catch {}
-      } else if (stabilizeStrategy === "content_idle") {
-        await waitForContent(page, {
-          maxWait: 5000,
-          extraSelectors: hint?.contentSelectors
-        }).catch(() => {});
-      } else if (stabilizeStrategy === "mutation") {
-        await waitForMutations(page, { maxWait: 5000 }).catch(() => {});
-      }
+      await stabilizePage(page, hint, manager.config);
       debugLog("stabilize_page", t);
 
       if (hintOverride) {
@@ -1916,6 +2440,22 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         hint = await firstMatchingHint(page, hintCandidates);
       }
       debugLog("resolve_hint_dom_final", t);
+
+      if (hint?.flow?.length) {
+        return await runFlowExtraction({
+          page,
+          hint,
+          config: manager.config,
+          maxChars,
+          debug,
+          debugLog,
+          withPageTimeout,
+          operationTimeoutMs,
+          includeSeoAnalysis,
+          hintNote,
+          startTime: tOverall
+        });
+      }
 
       t = performance.now();
       const seoSnapshot =
@@ -1943,17 +2483,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       debugLog("serialize_page", t);
 
       t = performance.now();
-      const botChallenge = await withPageTimeout("check_bot", () =>
-        page.evaluate(() => {
-          const title = document.title || "";
-          const bodyText = (document.body?.innerText || "").trim();
-          const html = (document.documentElement?.outerHTML || "").toLowerCase();
-          if (html.includes("cf-browser-verification") || html.includes("__cf_challenge") || /just a moment|performing security verification|security service to protect/i.test(`${title}\n${bodyText}`)) return "Cloudflare challenge";
-          if (html.includes("data-dome") || bodyText.includes("Please enable JS") || bodyText.includes("disable any ad blocker")) return "DataDome challenge";
-          if ((!title && !bodyText) || /^[a-z0-9-]+\.[a-z]{2,}$/i.test(title)) return `Bot block detected (title: "${title}")`;
-          return null;
-        }).catch(() => null)
-      );
+      const botChallenge = await withPageTimeout("check_bot", () => detectBotChallenge(page));
       debugLog("check_bot", t);
 
       if (botChallenge) {
@@ -1964,6 +2494,10 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
           error: botChallenge
         };
       }
+
+      t = performance.now();
+      const pageStateWarnings = await withPageTimeout("detect_page_state", () => detectPageState(page));
+      debugLog("detect_page_state", t);
 
       t = performance.now();
       const extracted = extractTextFromHtml({
@@ -2015,7 +2549,10 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         ...extracted,
         text: finalText,
         ...(links.length ? { links } : {}),
-        ...(seoAnalysis ? { seo: seoAnalysis } : {})
+        ...(seoAnalysis ? { seo: seoAnalysis } : {}),
+        ...(pageStateWarnings.length
+          ? { warnings: [...(extracted.warnings || []), ...pageStateWarnings] }
+          : {})
       };
 
       if (debug) {
@@ -2046,7 +2583,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
 
 export async function browserCaptureScreenshot({
   url,
-  format = "png",
+  format = "jpeg",
   fullPage = true,
   quality
 }) {
@@ -2054,7 +2591,7 @@ export async function browserCaptureScreenshot({
   incrementUsageTotal("screenshots");
   const manager = await getBrowserManager();
   const tShotStart = performance.now();
-  const normalizedFormat = format === "jpeg" ? "jpeg" : "png";
+  const normalizedFormat = "jpeg";
   const normalizedQuality =
     normalizedFormat === "jpeg"
       ? Math.max(1, Math.min(100, Math.floor(Number.isFinite(quality) ? quality : 75)))

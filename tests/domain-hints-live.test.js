@@ -6,9 +6,7 @@ import { getBrowserManager } from "../src/browser.js";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hints = JSON.parse(await fs.readFile(path.join(projectRoot, "domain-hints.json"), "utf8"));
-const liveHints = hints.filter((hint) =>
-  !hint.flags?.botProtected && (hint.waitForSelector || hint.content?.sections?.length)
-);
+const liveHints = hints.filter((hint) => hint.waitForSelector || hint.content?.sections?.length);
 
 function sampleUrl(hint) {
   const githubPaths = {

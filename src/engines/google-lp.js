@@ -1,5 +1,4 @@
 import { GoogleDriver } from "./google-driver.js";
-import { dedupeDirectAnswers } from "./util.js";
 
 const LP_RESULT_SELECTORS = ["#search", "#rso", ".g", "#rcnt"];
 
@@ -41,13 +40,6 @@ export class GoogleLpDriver extends GoogleDriver {
   resultSelectors = LP_RESULT_SELECTORS;
 
   async extract(page) {
-    const payload = await page.evaluate(LP_EXTRACT_PAGE);
-
-    return {
-      results: payload.results.map((item) => ({ ...item, engine: this.id })),
-      directAnswers: dedupeDirectAnswers(
-        (payload.directAnswers || []).map((item) => ({ ...item, engine: this.id, url: page.url() }))
-      )
-    };
+    return this.extractViaEvaluate(page, LP_EXTRACT_PAGE);
   }
 }

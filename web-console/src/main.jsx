@@ -801,11 +801,12 @@ function Engines({ config, health, stats }) {
               ? "enabled"
               : "available";
           const pct = Math.round(rate * 100);
+          const errMsg = circuit?.lastError || (schedulerState !== "ready" ? profile.lastError : "");
           return (
             <div
               className="engine engine-row"
               key={engine.id}
-              title={circuit?.lastError || ""}
+              title={errMsg || ""}
             >
               <Dot tone={tone === "ok" ? "" : tone} />
               <div className="engine-main">
@@ -824,8 +825,8 @@ function Engines({ config, health, stats }) {
                   <span><b>{stat.ok || 0}/{stat.fail || 0}/{stat.skip || 0}</b> ok/fail/skip</span>
                   <span><b>{attempted ? `${pct}%` : "-"}</b> · 24h</span>
                 </div>
-                {circuit?.lastError && schedulerState !== "ready" && (
-                  <div className="engine-route-error" title={circuit.lastError}>{circuit.lastError}</div>
+                {errMsg && schedulerState !== "ready" && (
+                  <div className="engine-route-error" title={errMsg}>{errMsg}</div>
                 )}
               </div>
               <div className="engine-stats">
@@ -1923,6 +1924,12 @@ function SchemaField({ name, schema, value, onChange }) {
         value={asLines}
         placeholder={`one ${schema.items?.type || "value"} per line`}
         onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
       />
     );
   } else if (type === "number" || type === "integer") {
@@ -2140,30 +2147,38 @@ function Keys() {
 /* ---------- Domain hints panel ---------- */
 
 const HINT_PRIORITIES = ["high", "medium", "low"];
-const HINT_FORMATS = ["markdown", "text", "list"];
-const HINT_FLAGS = ["authWall", "visualOnly", "botProtected", "requiresChromium"];
-const HINT_FLAG_LABELS = {
-  authWall: "Auth wall",
-  visualOnly: "Visual only",
-  botProtected: "Bot protected",
-  requiresChromium: "Needs Chromium",
+const HINT_FORMATS = ["text", "list", "markdown", "html", "html_to_markdown", "readability_to_markdown"];
+const HINT_BLOCK_FORMATS = [
+  "text",
+  "list",
+  "html",
+  "html_to_markdown",
+  "readability_to_markdown",
+  "table",
+  "table_json",
+  "table_csv",
+];
+const FLOW_ACTIONS = ["extract", "click", "wait", "type", "navigate"];
+const FLOW_STATES = ["visible", "attached", "hidden"];
+const FLOW_ACTION_LABELS = {
+  extract: "Extract (capture content)",
+  click: "Click (interact)",
+  wait: "Wait (gate)",
+  type: "Type (input)",
+  navigate: "Navigate (go to URL)",
 };
-
 function emptyHint() {
   return {
     domain: "",
     pathPattern: "/**",
     comment: "",
     testUrls: [],
-    requireSelector: "",
     waitForSelector: [],
     skipSelectors: [],
     preferReadability: true,
-    tableExtraction: "",
-    stabilizeStrategy: "",
     contentSelectors: [],
-    flags: {},
-    content: { sections: [] },
+    content: {},
+    flowOptions: {},
   };
 }
 
@@ -2171,14 +2186,25 @@ function hintKey(hint) {
   return `${hint?.domain || "?"} ${hint?.pathPattern || "/**"}`;
 }
 
+function modeFromHint(hint) {
+  if (hint?.flow?.length) return "flow";
+  if (hint?.content?.blocks?.length || hint?.content?.sections?.length) return "content";
+  return "default";
+}
+
 function hintMeta(hint) {
   const parts = [];
   if (hint?.pageType) parts.push(hint.pageType);
   if (hint?.requireSelector) parts.push(`require: ${hint.requireSelector}`);
-  const sectionCount = hint?.content?.sections?.length || 0;
-  if (sectionCount) parts.push(`${sectionCount} section${sectionCount === 1 ? "" : "s"}`);
-  const flags = HINT_FLAGS.filter((flag) => hint?.flags?.[flag]);
-  if (flags.length) parts.push(`flags: ${flags.join(",")}`);
+  if (hint?.flow?.length) {
+    parts.push(`flow: ${hint.flow.length} step${hint.flow.length === 1 ? "" : "s"}`);
+  } else if (hint?.content?.blocks?.length) {
+    parts.push(`${hint.content.blocks.length} block${hint.content.blocks.length === 1 ? "" : "s"}`);
+  } else if (hint?.content?.sections?.length) {
+    parts.push(`${hint.content.sections.length} legacy section${hint.content.sections.length === 1 ? "" : "s"}`);
+  } else {
+    parts.push("default extraction");
+  }
   return parts.join(" · ");
 }
 
@@ -2339,79 +2365,396 @@ function FieldRowEditor({ fields, onChange }) {
   );
 }
 
-function SectionRowEditor({ section, onChange, onRemove }) {
-  const set = (key, value) => onChange({ ...section, [key]: value });
+function BlockRowEditor({ block, onChange, onRemove }) {
+  const isLeaf = block.format !== undefined || block.fields === undefined;
+  const set = (key, value) => onChange({ ...block, [key]: value });
+  const toLeaf = () => {
+    const { fields, itemLabel, ...rest } = block;
+    onChange({ ...rest, format: "text" });
+  };
+  const toRecord = () => {
+    const { format, ...rest } = block;
+    onChange({ ...rest, fields: [] });
+  };
   return (
     <div className="hint-section-row">
       <div className="hint-section-grid">
+        <select
+          className="block-mode"
+          value={isLeaf ? "leaf" : "record"}
+          onChange={(event) => (event.target.value === "leaf" ? toLeaf() : toRecord())}
+          title="Leaf = one flat value from this element. Record = one item per matching element, with per-item fields."
+        >
+          <option value="leaf">Leaf</option>
+          <option value="record">Record</option>
+        </select>
         <input
           className="mono"
           placeholder="div.content-area"
-          value={section.selector || ""}
+          value={block.selector || ""}
           onChange={(event) => set("selector", event.target.value)}
         />
         <input
           placeholder="label"
-          value={section.label || ""}
+          value={block.label || ""}
           onChange={(event) => set("label", event.target.value)}
         />
-        <select value={section.priority || "medium"} onChange={(event) => set("priority", event.target.value)}>
+        <select value={block.priority || "high"} onChange={(event) => set("priority", event.target.value)}>
           {HINT_PRIORITIES.map((priority) => (
             <option key={priority} value={priority}>
               {priority}
             </option>
           ))}
         </select>
-        <input
-          placeholder="item label (lists)"
-          value={section.itemLabel || ""}
-          onChange={(event) => set("itemLabel", event.target.value)}
-        />
         <button type="button" className="button tiny danger" onClick={onRemove}>
           ✕
         </button>
       </div>
-      <FieldRowEditor
-        fields={section.fields || []}
-        onChange={(fields) => set("fields", fields)}
-      />
+      {isLeaf ? (
+        <div className="hint-option hint-block-format">
+          <span className="hint-option-name">Format</span>
+          <select value={block.format || "text"} onChange={(event) => set("format", event.target.value)}>
+            {HINT_BLOCK_FORMATS.map((format) => (
+              <option key={format} value={format}>
+                {format}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <>
+          <div className="hint-option hint-block-format">
+            <span className="hint-option-name">Item label (records)</span>
+            <input
+              placeholder="e.g. Issue, Post, Comment"
+              value={block.itemLabel || ""}
+              onChange={(event) => set("itemLabel", event.target.value)}
+            />
+          </div>
+          <FieldRowEditor
+            fields={block.fields || []}
+            onChange={(fields) => set("fields", fields)}
+          />
+        </>
+      )}
     </div>
   );
 }
 
-function SectionsEditor({ sections, onChange }) {
-  const setSection = (index, section) => {
-    const next = [...(sections || [])];
-    next[index] = section;
+function BlocksEditor({ blocks, onChange, legacySectionCount }) {
+  const setBlock = (index, block) => {
+    const next = [...(blocks || [])];
+    next[index] = block;
     onChange(next);
   };
-  const removeSection = (index) => onChange((sections || []).filter((_, i) => i !== index));
+  const removeBlock = (index) => onChange((blocks || []).filter((_, i) => i !== index));
   return (
     <div className="hint-field">
       <div className="hint-field-head">
-        <span>Sections (extraction layout)</span>
+        <span>Blocks (extraction layout)</span>
         <button
           type="button"
           className="button tiny"
           onClick={() =>
-            onChange([
-              ...(sections || []),
-              { selector: "", label: "", priority: "high", fields: [] },
-            ])
+            onChange([...(blocks || []), { selector: "", label: "", priority: "high", format: "text" }])
           }
         >
-          + Add section
+          + Add block
         </button>
       </div>
-      {!(sections || []).length && <p className="hint">No sections — the page uses the default Readability path.</p>}
-      {(sections || []).map((section, index) => (
-        <SectionRowEditor
+      <p className="hint">
+        Leaf blocks (one flat value) vs record blocks (one item per matching element, each with its own
+        fields).
+      </p>
+      {legacySectionCount > 0 && (
+        <p className="hint hint-warn">
+          This hint also has {legacySectionCount} legacy <code>sections</code> — used only when{" "}
+          <code>blocks</code> is empty.
+        </p>
+      )}
+      {!(blocks || []).length && (
+        <p className="hint hint-default">
+          No blocks — the default pipeline runs for this: <strong>Readability → tables →
+          links</strong>, with your toggles still applying. Add a block only to extract
+          specific content instead of the default. Prefer the{" "}
+          <em>Default extraction</em> mode when you don't need any custom layout.
+        </p>
+      )}
+      {(blocks || []).map((block, index) => (
+        <BlockRowEditor
           key={index}
-          section={section}
-          onChange={(next) => setSection(index, next)}
-          onRemove={() => removeSection(index)}
+          block={block}
+          onChange={(next) => setBlock(index, next)}
+          onRemove={() => removeBlock(index)}
         />
       ))}
+    </div>
+  );
+}
+
+function emptyFlowStep(action) {
+  const base = { action };
+  switch (action) {
+    case "extract":
+      return { ...base, label: "", content: {} };
+    case "click":
+      return { ...base, selector: "", waitForSelector: "", timeoutMs: "" };
+    case "wait":
+      return { ...base, selector: "", state: "visible", timeoutMs: "" };
+    case "type":
+      return { ...base, selector: "", text: "", clear: false, submit: false, waitForSelector: "", timeoutMs: "" };
+    case "navigate":
+      return { ...base, url: "", waitForSelector: "", timeoutMs: "" };
+    default:
+      return base;
+  }
+}
+
+function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
+  const set = (key, value) => onChange({ ...step, [key]: value });
+  const patchContent = (content) => set("content", content);
+  const setNumber = (key, raw) => {
+    if (raw === "") return set(key, "");
+    const value = Number(raw);
+    set(key, Number.isInteger(value) && value > 0 ? value : raw);
+  };
+  const timeoutField = (
+    <input
+      className="mono"
+      type="number"
+      min="250"
+      max="20000"
+      placeholder="20000"
+      value={step.timeoutMs ?? ""}
+      onChange={(event) => setNumber("timeoutMs", event.target.value)}
+    />
+  );
+  const waitForSelectorField = (
+    <input
+      className="mono"
+      placeholder="div.result"
+      value={step.waitForSelector || ""}
+      onChange={(event) => set("waitForSelector", event.target.value)}
+    />
+  );
+  return (
+    <div className="hint-section-row hint-step-row">
+      <div className="hint-step-head">
+        <span className="hint-step-action">{FLOW_ACTION_LABELS[step.action] || step.action}</span>
+        <span className="hint-step-controls">
+          <button type="button" className="button tiny" disabled={!canMoveUp} onClick={onMoveUp}>
+            ↑
+          </button>
+          <button type="button" className="button tiny" disabled={!canMoveDown} onClick={onMoveDown}>
+            ↓
+          </button>
+          <button type="button" className="button tiny danger" onClick={onRemove}>
+            ✕
+          </button>
+        </span>
+      </div>
+      {step.action === "extract" && (
+        <>
+          <div className="hint-field">
+            <input
+              placeholder="Step label — e.g. Initial page"
+              value={step.label || ""}
+              onChange={(event) => set("label", event.target.value)}
+            />
+          </div>
+          <BlocksEditor
+            blocks={step.content?.blocks || []}
+            onChange={(blocks) => patchContent({ blocks })}
+            legacySectionCount={step.content?.sections?.length || 0}
+          />
+        </>
+      )}
+      {step.action === "click" && (
+        <div className="hint-step-grid">
+          <div className="hint-field">
+            <span>Selector to click</span>
+            <input className="mono" placeholder="button.next" value={step.selector || ""} onChange={(event) => set("selector", event.target.value)} />
+          </div>
+          <div className="hint-field">
+            <span>Wait for selector after click (required)</span>
+            {waitForSelectorField}
+          </div>
+          <div className="hint-field hint-narrow">
+            <span>Timeout (ms)</span>
+            {timeoutField}
+          </div>
+        </div>
+      )}
+      {step.action === "wait" && (
+        <div className="hint-step-grid">
+          <div className="hint-field">
+            <span>Selector to wait for</span>
+            <input className="mono" placeholder="div.loaded" value={step.selector || ""} onChange={(event) => set("selector", event.target.value)} />
+          </div>
+          <div className="hint-field">
+            <span>State</span>
+            <select value={step.state || "visible"} onChange={(event) => set("state", event.target.value)}>
+              {FLOW_STATES.map((state) => (
+                <option key={state} value={state}>
+                  {state}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="hint-field hint-narrow">
+            <span>Timeout (ms)</span>
+            {timeoutField}
+          </div>
+        </div>
+      )}
+      {step.action === "type" && (
+        <>
+          <div className="hint-step-grid">
+            <div className="hint-field">
+              <span>Selector to type into</span>
+              <input className="mono" placeholder="input#search" value={step.selector || ""} onChange={(event) => set("selector", event.target.value)} />
+            </div>
+            <div className="hint-field">
+              <span>Text</span>
+              <input placeholder="query" value={step.text || ""} onChange={(event) => set("text", event.target.value)} />
+            </div>
+          </div>
+          <div className="hint-step-grid hint-step-options">
+            <label className="hint-check">
+              <input type="checkbox" checked={Boolean(step.clear)} onChange={(event) => set("clear", event.target.checked)} />
+              Clear existing value first
+            </label>
+            <label className="hint-check">
+              <input type="checkbox" checked={Boolean(step.submit)} onChange={(event) => set("submit", event.target.checked)} />
+              Submit (press Enter)
+            </label>
+          </div>
+          {step.submit && (
+            <div className="hint-field">
+              <span>Wait for selector after submit</span>
+              {waitForSelectorField}
+            </div>
+          )}
+        </>
+      )}
+      {step.action === "navigate" && (
+        <div className="hint-step-grid">
+          <div className="hint-field">
+            <span>URL (absolute or relative to page)</span>
+            <input className="mono" placeholder="/results" value={step.url || ""} onChange={(event) => set("url", event.target.value)} />
+          </div>
+          <div className="hint-field">
+            <span>Wait for selector after load</span>
+            {waitForSelectorField}
+          </div>
+          <div className="hint-field hint-narrow">
+            <span>Timeout (ms)</span>
+            {timeoutField}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FlowEditor({ flow, onChange }) {
+  const steps = flow?.length ? flow : [];
+  const setStep = (index, step) => {
+    const next = [...steps];
+    next[index] = step;
+    onChange(next);
+  };
+  const move = (index, delta) => {
+    const next = [...steps];
+    const target = index + delta;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
+  const removeStep = (index) => onChange(steps.filter((_, i) => i !== index));
+  const lastAction = steps.length ? steps[steps.length - 1].action : null;
+  return (
+    <div className="hint-field">
+      <div className="hint-field-head">
+        <span>Flow (interactive steps)</span>
+        <div className="hint-step-add">
+          {FLOW_ACTIONS.map((action) => (
+            <button
+              key={action}
+              type="button"
+              className="button tiny"
+              onClick={() => onChange([...steps, emptyFlowStep(action)])}
+            >
+              + {action}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="hint">
+        Script the page with steps, in order. Each <code>extract</code> step defines its own blocks.
+        Max 8 steps, 4 clicks. Interactions (click/type/navigate) can't be adjacent and the flow must
+        end with an extract step.
+      </p>
+      {!steps.length && <p className="hint">No flow — this hint does a single extraction with the content above.</p>}
+      {lastAction && lastAction !== "extract" && (
+        <p className="hint hint-warn">
+          Last step is <code>{lastAction}</code> — flows must end with an extract step (validation will fail).
+        </p>
+      )}
+      {steps.map((step, index) => (
+        <StepEditor
+          key={index}
+          step={step}
+          onChange={(next) => setStep(index, next)}
+          onRemove={() => removeStep(index)}
+          onMoveUp={() => move(index, -1)}
+          onMoveDown={() => move(index, 1)}
+          canMoveUp={index > 0}
+          canMoveDown={index < steps.length - 1}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FlowOptionsEditor({ options, onChange }) {
+  const set = (key, value) => onChange({ ...(options || {}), [key]: value });
+  return (
+    <div className="hint-field">
+      <div className="hint-field-head">
+        <span>Flow options</span>
+      </div>
+      <div className="hint-step-grid hint-step-options">
+        <div className="hint-field hint-narrow">
+          <span>Total timeout (ms)</span>
+          <input
+            className="mono"
+            type="number"
+            min="1000"
+            max="45000"
+            placeholder="45000"
+            value={options?.totalTimeoutMs ?? ""}
+            onChange={(event) => {
+              const raw = event.target.value;
+              if (raw === "") {
+                const next = { ...(options || {}) };
+                delete next.totalTimeoutMs;
+                return onChange(next);
+              }
+              const value = Number(raw);
+              set("totalTimeoutMs", Number.isInteger(value) && value > 0 ? value : raw);
+            }}
+          />
+        </div>
+        <label className="hint-check">
+          <input
+            type="checkbox"
+            checked={Boolean(options?.continueOnEmptyExtract)}
+            onChange={(event) => set("continueOnEmptyExtract", event.target.checked)}
+          />
+          Continue when an extract returns empty content
+        </label>
+      </div>
     </div>
   );
 }
@@ -2631,6 +2974,7 @@ function Hints() {
   const [state, setState] = useState(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [deleting, setDeleting] = useState(null);
   const [editor, setEditor] = useState(() => editorFromPath(location.pathname));
   const scrollRef = useRef(0);
   const load = async () => {
@@ -2640,6 +2984,20 @@ function Hints() {
       setError("");
     } catch (err) {
       setError(err.message || "Request failed");
+    }
+  };
+  const removeHint = async (index) => {
+    if (deleting !== null) return;
+    const hint = state?.hints?.[index];
+    if (!window.confirm(`Delete hint #${index} (${hint?.domain || "?"} ${hint?.pathPattern || "/**"})?\nThis removes it from ${state?.hintsPath || "domain-hints.json"} (a .bak is kept).`)) return;
+    setDeleting(index);
+    try {
+      await request(`/console/api/hints/${index}`, { method: "DELETE" });
+      await load();
+    } catch (err) {
+      setError(err.message || "Delete failed");
+    } finally {
+      setDeleting(null);
     }
   };
   useEffect(() => {
@@ -2783,6 +3141,14 @@ function Hints() {
                   >
                     Edit
                   </button>
+                  <button
+                    className="button tiny danger"
+                    title="Delete this hint"
+                    disabled={deleting !== null}
+                    onClick={() => removeHint(index)}
+                  >
+                    {deleting === index ? "Deleting…" : "Delete"}
+                  </button>
                 </span>
               </div>
             ))
@@ -2797,6 +3163,7 @@ function Hints() {
 
 function HintEditorPane({ index, initial, onClose, onSaved }) {
   const [tab, setTab] = useState("form");
+  const [mode, setMode] = useState(() => modeFromHint(initial));
   const [hint, setHint] = useState(initial);
   const [json, setJson] = useState(JSON.stringify(initial, null, 2));
   const [jsonError, setJsonError] = useState("");
@@ -2810,6 +3177,18 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
     setJson(JSON.stringify(next, null, 2));
   };
   const patchContent = (content) => patch({ content });
+  const switchToDefault = () => setMode("default");
+  const switchToContent = () => setMode("content");
+  const switchToFlow = () => {
+    if (!hint.flow?.length) patch({ flow: [emptyFlowStep("extract")] });
+    setMode("flow");
+  };
+  const cleanedHint =
+    mode === "flow"
+      ? hint
+      : mode === "content"
+        ? { ...hint, flow: undefined }
+        : { ...hint, content: undefined, flow: undefined, flowOptions: undefined };
   const applyJson = (text) => {
     setJson(text);
     setJsonError("");
@@ -2817,6 +3196,7 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
       const parsed = JSON.parse(text);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         setHint(parsed);
+        setMode(modeFromHint(parsed));
         setValidation(null);
       } else {
         setJsonError("Must be a JSON object.");
@@ -2832,7 +3212,7 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
       const result = await request("/console/api/hints/validate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ hint }),
+        body: JSON.stringify({ hint: cleanedHint }),
       });
       setValidation(result);
       setMessage({
@@ -2852,7 +3232,7 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
       const options = {
         method: index === null ? "POST" : "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ hint }),
+        body: JSON.stringify({ hint: cleanedHint }),
       };
       await request(index === null ? "/console/api/hints" : `/console/api/hints/${index}`, options);
       onSaved();
@@ -2870,9 +3250,7 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
     <section className="panel hints">
       <h2>
         [ {isNew ? "New hint" : `Edit — ${hintKey(hint)}`} ]{" "}
-        <span className="sub">
-          backend: {hintMeta(hint) || "no sections"}
-        </span>
+        <span className="sub">backend: {hintMeta(hint) || "default extraction"}</span>
       </h2>
       <div className="hints-two-pane">
         <div className="hints-pane hints-editor-pane">
@@ -2938,7 +3316,7 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                     className="mono"
                     placeholder="div.js-profile-editable-area"
                     value={hint.requireSelector || ""}
-                    onChange={(event) => patch({ requireSelector: event.target.value.trim() })}
+                    onChange={(event) => patch({ requireSelector: event.target.value.trim() || undefined })}
                   />
                 </HintField>
               </HintFieldGroup>
@@ -2963,7 +3341,7 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                     <span className="hint-option-name">Table extraction</span>
                     <select
                       value={hint.tableExtraction || ""}
-                      onChange={(event) => patch({ tableExtraction: event.target.value })}
+                      onChange={(event) => patch({ tableExtraction: event.target.value || undefined })}
                     >
                       <option value="">Default</option>
                       <option value="content">Content tables only</option>
@@ -2971,28 +3349,64 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                     </select>
                   </div>
                 </div>
-                <div className="hint-options-head">Page flags</div>
-                <div className="hint-flags">
-                  {HINT_FLAGS.map((flag) => (
-                    <label className="hint-check" key={flag}>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(hint.flags?.[flag])}
-                        onChange={(event) => {
-                          const nextFlags = { ...(hint.flags || {}), [flag]: event.target.checked };
-                          patch({ flags: nextFlags });
-                        }}
-                      />
-                      {HINT_FLAG_LABELS[flag]}
-                    </label>
-                  ))}
-                </div>
               </HintFieldGroup>
-              <HintFieldGroup title="Content — what actually gets extracted" accent>
-                <SectionsEditor
-                  sections={hint.content?.sections || []}
-                  onChange={(sections) => patchContent({ sections })}
-                />
+              <HintFieldGroup title="What gets extracted" accent>
+                <div className="hint-mode-switch" role="tablist">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === "default"}
+                    className={mode === "default" ? "active" : ""}
+                    onClick={switchToDefault}
+                  >
+                    Default extraction
+                    <em>standard pipeline — your toggles apply</em>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === "content"}
+                    className={mode === "content" ? "active" : ""}
+                    onClick={switchToContent}
+                  >
+                    Static blocks
+                    <em>one pass over the loaded page</em>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === "flow"}
+                    className={mode === "flow" ? "active" : ""}
+                    onClick={switchToFlow}
+                  >
+                    Interactive flow
+                    <em>scripted extract / click / type steps</em>
+                  </button>
+                </div>
+                {mode === "default" ? (
+                  <p className="hint hint-default">
+                    No custom extraction — the page runs the standard pipeline:{" "}
+                    <strong>Readability → tables → links</strong>. Everything you toggle in{" "}
+                    <em>Extraction options</em> and <em>Page load</em> still applies
+                    (Readability on/off, table extraction, waits, skip selectors). Switch to{" "}
+                    <em>Static blocks</em> or <em>Interactive flow</em> to override with your own
+                    layout.
+                  </p>
+                ) : mode === "content" ? (
+                  <BlocksEditor
+                    blocks={hint.content?.blocks || []}
+                    onChange={(blocks) => patchContent({ blocks })}
+                    legacySectionCount={hint.content?.sections?.length || 0}
+                  />
+                ) : (
+                  <>
+                    <FlowEditor flow={hint.flow || []} onChange={(flow) => patch({ flow })} />
+                    <FlowOptionsEditor
+                      options={hint.flowOptions || {}}
+                      onChange={(flowOptions) => patch({ flowOptions })}
+                    />
+                  </>
+                )}
               </HintFieldGroup>
               <HintFieldGroup title="Page load">
                 <LineListEditor
@@ -3007,7 +3421,7 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                   <span className="hint-option-name">Stabilize strategy</span>
                   <select
                     value={hint.stabilizeStrategy || ""}
-                    onChange={(event) => patch({ stabilizeStrategy: event.target.value })}
+                    onChange={(event) => patch({ stabilizeStrategy: event.target.value || undefined })}
                   >
                     <option value="">Default (network_idle — 500ms no network traffic)</option>
                     <option value="network_idle">network_idle (500ms no network traffic)</option>
@@ -3043,7 +3457,7 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                 <UrlListEditor
                   label="Test URLs"
                   meta="test only — no effect on extraction"
-                  help="Real https:// URLs to test this hint against. The Test pane runs them live."
+                  help="Real http(s):// URLs to test this hint against. The Test pane runs them live."
                   values={hint.testUrls || []}
                   onChange={(testUrls) => patch({ testUrls })}
                 />
@@ -3092,7 +3506,7 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
           {message.text && <p className={`message ${message.kind}`}>{message.text}</p>}
         </div>
         <div className="hints-pane hints-test-pane">
-          <HintTestPanel hint={hint} />
+          <HintTestPanel hint={cleanedHint} />
         </div>
       </div>
     </section>
@@ -3109,6 +3523,9 @@ function HintTestPanel({ hint }) {
   const runningRef = useRef(false);
   const lastHintSigRef = useRef("");
   const hintSig = JSON.stringify(hint);
+  useEffect(() => {
+    if (!testUrl && hint?.testUrls?.[0]) setTestUrl(hint.testUrls[0]);
+  }, [hint, testUrl]);
   const runTest = useCallback(async () => {
     if (!testUrl || runningRef.current) return;
     runningRef.current = true;
@@ -3176,20 +3593,28 @@ function HintTestPanel({ hint }) {
     <div className="hint-test">
       <h3 className="hint-test-head">Test on page</h3>
       <div className="hint-test-controls">
-        <input
-          className="mono"
-          type="url"
-          placeholder="https://example.com/page"
-          value={testUrl}
-          onChange={(event) => {
-            setTestUrl(event.target.value);
-            setResult(null);
-            setScreenshot("");
+        <form
+          className="hint-test-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            runTest();
           }}
-        />
-        <button className="button primary" disabled={!testUrl || running} onClick={runTest}>
-          {running ? "Running…" : "▶ Run test"}
-        </button>
+        >
+          <input
+            className="mono"
+            type="url"
+            placeholder="https://example.com/page"
+            value={testUrl}
+            onChange={(event) => {
+              setTestUrl(event.target.value);
+              setResult(null);
+              setScreenshot("");
+            }}
+          />
+          <button className="button primary" type="submit" disabled={!testUrl || running}>
+            {running ? "Running…" : "▶ Run test"}
+          </button>
+        </form>
       </div>
       <label className="hint-check">
         <input type="checkbox" checked={rerun} onChange={(event) => setRerun(event.target.checked)} />

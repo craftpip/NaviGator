@@ -673,11 +673,36 @@ describe("mcp-server HTTP endpoints", () => {
       const webFetch = body.result.tools.find((tool) => tool.name === "web_fetch");
       expect(webFetch.inputSchema.additionalProperties).toBe(false);
       expect(Object.keys(webFetch.inputSchema.properties).sort()).toEqual([
-        "bypassCache", "maxChars", "ref_id", "ref_ids", "url", "urls"
+        "bypassCache", "maxChars", "ref_ids", "urls"
       ]);
     });
 
-    it("does not advertise a separate engine allowlist", async () => {
+    it("advertises plural-only inputs for web_search, web_page_screenshot, and web_page_links", async () => {
+      const { status, body } = await mcpPost({
+        jsonrpc: "2.0", id: 58, method: "tools/list"
+      });
+
+      expect(status).toBe(200);
+      const tools = body.result.tools;
+
+      const webSearch = tools.find((tool) => tool.name === "web_search");
+      const searchProps = Object.keys(webSearch.inputSchema.properties);
+      expect(searchProps).toContain("queries");
+      expect(searchProps).not.toContain("query");
+
+      const screenshot = tools.find((tool) => tool.name === "web_page_screenshot");
+      const screenshotProps = Object.keys(screenshot.inputSchema.properties);
+      expect(screenshotProps).toContain("urls");
+      expect(screenshotProps).toContain("ref_ids");
+      expect(screenshotProps).not.toContain("url");
+      expect(screenshotProps).not.toContain("ref_id");
+
+      const links = tools.find((tool) => tool.name === "web_page_links");
+      const linksProps = Object.keys(links.inputSchema.properties);
+      expect(linksProps).toEqual(["ref_ids"]);
+    });
+
+    it("advertises only the singular engine param for web_search", async () => {
       const { status, body } = await mcpPost({
         jsonrpc: "2.0", id: 57, method: "tools/list"
       });
@@ -685,7 +710,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(status).toBe(200);
       const webSearch = body.result.tools.find((tool) => tool.name === "web_search");
       expect(webSearch.inputSchema.properties.engine.enum).toBeUndefined();
-      expect(webSearch.inputSchema.properties.engines.items.enum).toBeUndefined();
+      expect(webSearch.inputSchema.properties.engines).toBeUndefined();
     });
 
     it("responds to initialize via session transport with SSE stream", async () => {
@@ -747,6 +772,87 @@ describe("mcp-server HTTP endpoints", () => {
       expect(text).toContain("Multi Result");
     });
 
+    it("renders per-query sections when multiple queries are searched", async () => {
+      const searchMod = await import("../src/search.js");
+      const makeResults = (prefix, count) =>
+        Array.from({ length: count }, (_, i) => ({
+          title: `${prefix} Result ${i + 1}`,
+          url: `https://example.com/${prefix.replace(/\s+/g, "-")}-${i + 1}`,
+          snippet: `snippet ${i + 1} for ${prefix}`,
+        }));
+
+      searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
+        query: "god of war",
+        queries: ["god of war", "life of pi"],
+        queryCount: 2,
+        results: makeResults("god of war", 5),
+        queryResults: [
+          {
+            query: "god of war",
+            resultCount: 5,
+            results: makeResults("god of war", 5),
+            directAnswers: [],
+            directAnswerCount: 0,
+            errors: [],
+          },
+          {
+            query: "life of pi",
+            resultCount: 5,
+            results: makeResults("life of pi", 5),
+            directAnswers: [],
+            directAnswerCount: 0,
+            errors: [],
+          },
+        ],
+      }));
+
+      const { status, body } = await mcpPost({
+        jsonrpc: "2.0", id: 17, method: "tools/call",
+        params: {
+          name: "web_search",
+          arguments: { query: "god of war", queries: ["god of war", "life of pi"], limit: 5 },
+        },
+      });
+
+      expect(status).toBe(200);
+      const text = body.result.content[0].text;
+      expect(text).toContain("**Queries:** god of war");
+      expect(text).toContain("**Results (5):**");
+      expect(text).toContain("god of war Result 1");
+      expect(text).toContain("_(queries: god of war)_");
+      expect(text).toContain("**Queries:** life of pi");
+      expect(text).toContain("life of pi Result 5");
+      expect(text).toContain("_(queries: life of pi)_");
+    });
+
+    it("renders a single Instant Answer before Results", async () => {
+      const searchMod = await import("../src/search.js");
+      searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
+        query: "answer to everything",
+        results: [
+          { title: "Result One", url: "https://example.com/result-one", snippet: "snippet one" },
+        ],
+        directAnswers: [
+          { source: "instant_answer", text: "42 is the answer", url: "https://example.com/answer" },
+        ],
+        directAnswerCount: 1,
+      }));
+
+      const { status, body } = await mcpPost({
+        jsonrpc: "2.0", id: 18, method: "tools/call",
+        params: { name: "web_search", arguments: { query: "answer to everything" } },
+      });
+
+      expect(status).toBe(200);
+      const text = body.result.content[0].text;
+      const answerIdx = text.indexOf("**Instant Answer:**");
+      const resultIdx = text.indexOf("**Results (");
+      expect(answerIdx).toBeGreaterThan(-1);
+      expect(resultIdx).toBeGreaterThan(answerIdx);
+      expect(text).toContain("42 is the answer");
+      expect(text).not.toContain("**Direct Answers:**");
+    });
+
     it("handles web_search with limit parameter", async () => {
       const searchMod = await import("../src/search.js");
       searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
@@ -767,11 +873,11 @@ describe("mcp-server HTTP endpoints", () => {
       expect(status).toBe(200);
       expect(body.result.content[0].text).toContain("Limited Result");
       expect(searchMod.browserSearch).toHaveBeenCalledWith(
-        expect.objectContaining({ query: "limited search", limit: 3 })
+        expect.objectContaining({ queries: ["limited search"], limit: 3 })
       );
     });
 
-    it("handles web_search with engines array", async () => {
+    it("handles web_search with singular engine parameter", async () => {
       const searchMod = await import("../src/search.js");
       searchMod.browserSearch.mockResolvedValueOnce(makeMockSearchPayload({
         query: "engine test",
@@ -786,7 +892,7 @@ describe("mcp-server HTTP endpoints", () => {
           name: "web_search",
           arguments: {
             query: "engine test",
-            engines: ["duckduckgo_api", "bing_lp"],
+            engine: "duckduckgo_api",
           },
         },
       });
@@ -794,7 +900,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(status).toBe(200);
       expect(body.result.content[0].text).toContain("Engine Result");
       expect(searchMod.browserSearch).toHaveBeenCalledWith(
-        expect.objectContaining({ engines: ["duckduckgo_api", "bing_lp"] })
+        expect.objectContaining({ engines: ["duckduckgo_api"] })
       );
     });
 
@@ -847,7 +953,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(text).toContain("Vitest Guide");
       expect(text).toMatch(/- \*\*Vitest Guide\*\* \[\d+\] \(vitest.dev\)/);
       expect(text).not.toContain("https://vitest.dev/guide");
-      expect(text).toContain("*Square brackets contain reference IDs.*");
+      expect(text).toContain("*Square brackets contain ref_ids.*");
     });
 
     it("handles web_fetch with url", async () => {

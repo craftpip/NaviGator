@@ -60,14 +60,14 @@ describe("domain hints", () => {
     (_, hint) => {
       expect(hint.domain).toMatch(/^[a-z0-9.-]+$/);
       expect(hint.pathPattern).toMatch(/^\//);
-      expect(hint.pageType).toEqual(expect.any(String));
+      if (hint.pageType !== undefined) expect(hint.pageType).toEqual(expect.any(String));
       expect(hint.comment).toEqual(expect.any(String));
       for (const testUrl of hint.testUrls || []) {
-        expect(testUrl).toMatch(/^https:\/\//);
+        expect(testUrl).toMatch(/^https?:\/\//);
         expect(findDomainHint(testUrl, rawHints)).toBe(hint);
       }
 
-      if (hint.waitForSelector) {
+      if (hint.waitForSelector && (!Array.isArray(hint.waitForSelector) || hint.waitForSelector.length)) {
         expect(() => validateSelector(hint.waitForSelector)).not.toThrow();
       }
       for (const selector of hint.skipSelectors || []) {
@@ -88,10 +88,6 @@ describe("domain hints", () => {
       }
       expect([undefined, "content", "disabled"]).toContain(hint.tableExtraction);
       expect([undefined, true, false]).toContain(hint.preferReadability);
-      expect([undefined, true, false]).toContain(hint.flags?.authWall);
-      expect([undefined, true, false]).toContain(hint.flags?.visualOnly);
-      expect([undefined, true, false]).toContain(hint.flags?.botProtected);
-      expect([undefined, true, false]).toContain(hint.flags?.requiresChromium);
     }
   );
 
@@ -133,7 +129,6 @@ describe("validateHintRule", () => {
     preferReadability: false,
     tableExtraction: "content",
     stabilizeStrategy: "network_idle",
-    flags: { authWall: false, requiresChromium: true },
     content: {
       sections: [
         { selector: "main article", label: "Article", priority: "high", itemLabel: "Post", fields: [{ selector: "h1", label: "Title", format: "text" }] }
@@ -186,11 +181,46 @@ describe("validateHintRule", () => {
     expect(errors.map((e) => e.field)).toContain("requireSelector");
   });
 
-  it("rejects a non-string or empty requireSelector", () => {
-    for (const bad of [123, [], "", "   "]) {
+  it("rejects a non-string requireSelector", () => {
+    for (const bad of [123, [], {}]) {
       const { errors } = validateHintRule({ requireSelector: bad }, { scope: "test" });
       expect(errors.map((e) => e.field)).toContain("requireSelector");
     }
+  });
+
+  it("treats an empty optional requireSelector as unset (not an error)", () => {
+    for (const empty of ["", "   "]) {
+      const { errors } = validateHintRule({ requireSelector: empty }, { scope: "test" });
+      expect(errors.map((e) => e.field)).not.toContain("requireSelector");
+    }
+  });
+
+  it("treats empty tableExtraction and stabilizeStrategy as unset but rejects bogus values", () => {
+    for (const hint of [{ tableExtraction: "" }, { stabilizeStrategy: "" }, { tableExtraction: "", stabilizeStrategy: "" }]) {
+      const { errors } = validateHintRule(hint, { scope: "test" });
+      expect(errors.map((e) => e.field)).not.toContain("tableExtraction");
+      expect(errors.map((e) => e.field)).not.toContain("stabilizeStrategy");
+    }
+    const bogus = validateHintRule({ tableExtraction: "bogus", stabilizeStrategy: "x" }, { scope: "test" });
+    expect(bogus.errors.map((e) => e.field)).toEqual(expect.arrayContaining(["tableExtraction", "stabilizeStrategy"]));
+  });
+
+  it("accepts a bare skeleton hint (console emptyHint shape) with no errors beyond domain", () => {
+    const skeleton = {
+      domain: "example.com",
+      pathPattern: "/**",
+      comment: "",
+      testUrls: [],
+      waitForSelector: [],
+      skipSelectors: [],
+      preferReadability: true,
+      contentSelectors: [],
+      content: {},
+      flowOptions: {}
+    };
+    const { errors, warnings } = validateHintRule(skeleton, { scope: "test" });
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
   });
 
   it("rejects an invalid selector inside a waitForSelector array", () => {
@@ -227,16 +257,278 @@ describe("validateHintRule", () => {
     expect(fields).toContain("content.sections[0].fields[0].format");
   });
 
-  it("rejects non-boolean flags and warns on unknown flags", () => {
-    const { errors, warnings } = validateHintRule({ ...validHint, flags: { authWall: "yes", mysteryFlag: true } });
-    expect(errors.map((e) => e.field)).toContain("flags.authWall");
-    expect(warnings.map((w) => w.field)).toContain("flags.mysteryFlag");
+  it("warns on a leftover flags field (removed from hints — detected per page instead)", () => {
+    const { errors, warnings } = validateHintRule({ ...validHint, flags: { authWall: true } });
+    expect(errors).toEqual([]);
+    expect(warnings.map((w) => w.field)).toContain("flags");
   });
 
   it("warns on unknown top-level keys", () => {
     const { errors, warnings } = validateHintRule({ ...validHint, bogusField: 1 });
     expect(errors).toEqual([]);
     expect(warnings.map((w) => w.field)).toContain("bogusField");
+  });
+});
+
+describe("validateHintRule flow and blocks", () => {
+  const flowExtract = { action: "extract", label: "Stage", content: { blocks: [{ selector: "main", label: "Main", priority: "high", format: "text" }] } };
+  const flowClick = { action: "click", selector: "#show", waitForSelector: ".revealed" };
+
+  it("accepts a valid extract -> click -> extract flow", () => {
+    const { errors, warnings } = validateHintRule(
+      { flow: [flowExtract, flowClick, { ...flowExtract, label: "Second" }] },
+      { scope: "test" }
+    );
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("accepts wait, type, and navigate steps", () => {
+    const { errors } = validateHintRule(
+      {
+        flow: [
+          flowExtract,
+          { action: "type", selector: "input[name=q]", text: "wireless", submit: true, waitForSelector: "ol.results" },
+          { action: "wait", selector: "li.review", state: "visible", timeoutMs: 5000 },
+          { action: "navigate", url: "/detail", waitForSelector: "main.detail" },
+          flowExtract
+        ]
+      },
+      { scope: "test" }
+    );
+    expect(errors).toEqual([]);
+  });
+
+  it("rejects flow that is not a non-empty array", () => {
+    for (const bad of [null, [], "flow", {}]) {
+      const { errors } = validateHintRule({ flow: bad }, { scope: "test" });
+      expect(errors.map((e) => e.field)).toContain("flow");
+    }
+  });
+
+  it("rejects more than 8 steps", () => {
+    const steps = [];
+    for (let i = 0; i < 9; i += 1) steps.push(flowExtract);
+    const { errors } = validateHintRule({ flow: steps }, { scope: "test" });
+    expect(errors.map((e) => e.message).join(" ")).toMatch(/at most 8 steps/);
+  });
+
+  it("bounds clicks: 8 steps with 4 clicks is valid (the step cap governs)", () => {
+    const flow = [
+      flowClick,
+      { ...flowExtract, label: "A" },
+      flowClick,
+      { ...flowExtract, label: "B" },
+      flowClick,
+      { ...flowExtract, label: "C" },
+      flowClick,
+      { ...flowExtract, label: "D" }
+    ];
+    const { errors } = validateHintRule({ flow }, { scope: "test" });
+    expect(errors).toEqual([]);
+  });
+
+  it("rejects an unknown action", () => {
+    const { errors } = validateHintRule(
+      { flow: [{ action: "hover", selector: "a" }, flowExtract] },
+      { scope: "test" }
+    );
+    expect(errors.map((e) => e.field)).toContain("flow[0].action");
+  });
+
+  it("rejects unknown per-action properties with a warning", () => {
+    const { warnings } = validateHintRule(
+      { flow: [{ action: "click", selector: "#show", waitForSelector: ".x", delay: 100 }, flowExtract] },
+      { scope: "test" }
+    );
+    expect(warnings.map((w) => w.field)).toContain("flow[0].delay");
+  });
+
+  it("requires a valid click selector and waitForSelector", () => {
+    const { errors } = validateHintRule(
+      { flow: [{ action: "click", selector: "a[", waitForSelector: "b[" }, flowExtract] },
+      { scope: "test" }
+    );
+    const fields = errors.map((e) => e.field);
+    expect(fields).toContain("flow[0].selector");
+    expect(fields).toContain("flow[0].waitForSelector");
+  });
+
+  it("requires an extract label and content", () => {
+    const { errors } = validateHintRule(
+      { flow: [{ action: "extract", content: { blocks: [] } }, flowClick] },
+      { scope: "test" }
+    );
+    const fields = errors.map((e) => e.field);
+    expect(fields).toContain("flow[0].label");
+    expect(fields).toContain("flow[0].content.blocks");
+  });
+
+  it("enforces timeoutMs range", () => {
+    const { errors } = validateHintRule(
+      { flow: [{ action: "wait", selector: "li", timeoutMs: 100 }, flowExtract] },
+      { scope: "test" }
+    );
+    expect(errors.map((e) => e.field)).toContain("flow[0].timeoutMs");
+  });
+
+  it("rejects two adjacent interaction steps", () => {
+    const { errors } = validateHintRule(
+      { flow: [flowClick, { action: "navigate", url: "/next", waitForSelector: "main" }, flowExtract] },
+      { scope: "test" }
+    );
+    expect(errors.map((e) => e.message).join(" ")).toMatch(/must separate them/);
+  });
+
+  it("requires at least one extract step", () => {
+    const { errors } = validateHintRule(
+      { flow: [{ action: "wait", selector: "li", timeoutMs: 500 }, flowClick] },
+      { scope: "test" }
+    );
+    expect(errors.map((e) => e.message).join(" ")).toMatch(/at least one extract/);
+  });
+
+  it("requires the flow to end with an extract", () => {
+    const { errors } = validateHintRule(
+      { flow: [flowExtract, flowClick] },
+      { scope: "test" }
+    );
+    expect(errors.map((e) => e.message).join(" ")).toMatch(/end with an extract/);
+  });
+
+  it("requires waitForSelector on a submitting type step", () => {
+    const { errors } = validateHintRule(
+      { flow: [flowExtract, { action: "type", selector: "input", text: "hi", submit: true }, flowExtract] },
+      { scope: "test" }
+    );
+    expect(errors.map((e) => e.field)).toContain("flow[1].waitForSelector");
+  });
+
+  it("rejects a bad navigate url", () => {
+    const { errors } = validateHintRule(
+      { flow: [{ action: "navigate", url: "http://", waitForSelector: "main" }, flowExtract] },
+      { scope: "test" }
+    );
+    expect(errors.map((e) => e.field)).toContain("flow[0].url");
+  });
+
+  it("validates flowOptions.totalTimeoutMs cap and continueOnEmptyExtract type", () => {
+    const over = validateHintRule(
+      { flow: [flowExtract, flowExtract], flowOptions: { totalTimeoutMs: 999999 } },
+      { scope: "test" }
+    );
+    expect(over.errors.map((e) => e.field)).toContain("flowOptions.totalTimeoutMs");
+
+    const badType = validateHintRule(
+      { flow: [flowExtract, flowExtract], flowOptions: { continueOnEmptyExtract: "yes" } },
+      { scope: "test" }
+    );
+    expect(badType.errors.map((e) => e.field)).toContain("flowOptions.continueOnEmptyExtract");
+
+    const ok = validateHintRule(
+      { flow: [flowExtract, flowExtract], flowOptions: { totalTimeoutMs: 45000, continueOnEmptyExtract: true } },
+      { scope: "test" }
+    );
+    expect(ok.errors).toEqual([]);
+  });
+
+  it("warns when both content and flow are present", () => {
+    const { warnings } = validateHintRule(
+      { content: { blocks: [{ selector: "main", label: "Main", priority: "high", format: "text" }] }, flow: [flowExtract] },
+      { scope: "test" }
+    );
+    expect(warnings.map((w) => w.message).join(" ")).toMatch(/ignored when a flow is present/);
+  });
+
+  it("does not validate top-level content when a flow is present (it is ignored at runtime)", () => {
+    const { errors, warnings } = validateHintRule(
+      {
+        content: { blocks: [{ priority: "high", format: "text" }] },
+        flow: [flowExtract],
+      },
+      { scope: "test" }
+    );
+    expect(errors.map((e) => e.field)).not.toContain("content.blocks[0].selector");
+    expect(warnings.map((w) => w.message).join(" ")).toMatch(/ignored when a flow is present/);
+  });
+
+  it("accepts leaf and record blocks", () => {
+    const { errors } = validateHintRule(
+      {
+        content: {
+          blocks: [
+            { selector: ".summary", label: "Summary", priority: "high", format: "readability_to_markdown" },
+            {
+              selector: ".answer",
+              label: "Answers",
+              itemLabel: "Answer",
+              priority: "high",
+              fields: [
+                { selector: ".vote", label: "Votes", format: "text" },
+                { selector: ".body", label: "Content", format: "markdown" }
+              ]
+            }
+          ]
+        }
+      },
+      { scope: "test" }
+    );
+    expect(errors).toEqual([]);
+  });
+
+  it("rejects a block that has both format and fields", () => {
+    const { errors } = validateHintRule(
+      {
+        content: {
+          blocks: [
+            { selector: "main", label: "Main", priority: "high", format: "text", fields: [{ selector: "h1", label: "Title", format: "text" }] }
+          ]
+        }
+      },
+      { scope: "test" }
+    );
+    expect(errors.map((e) => e.message).join(" ")).toMatch(/leaf block \(with "format"\) or a record block/);
+  });
+
+  it("rejects a block with neither format nor fields", () => {
+    const { errors } = validateHintRule(
+      { content: { blocks: [{ selector: "main", label: "Main", priority: "high" }] } },
+      { scope: "test" }
+    );
+    expect(errors.map((e) => e.message).join(" ")).toMatch(/leaf block \(with "format"\) or a record block/);
+  });
+
+  it("rejects an invalid block format and invalid nested field format", () => {
+    const badFormat = validateHintRule(
+      { content: { blocks: [{ selector: "main", label: "Main", priority: "high", format: "pictures" }] } },
+      { scope: "test" }
+    );
+    expect(badFormat.errors.map((e) => e.field)).toContain("content.blocks[0].format");
+
+    const badFieldFormat = validateHintRule(
+      {
+        content: {
+          blocks: [
+            { selector: ".answer", label: "Answers", priority: "high", fields: [{ selector: ".vote", label: "Votes", format: "table" }] }
+          ]
+        }
+      },
+      { scope: "test" }
+    );
+    expect(badFieldFormat.errors.map((e) => e.field)).toContain("content.blocks[0].fields[0].format");
+  });
+
+  it("warns when both blocks and legacy sections are present", () => {
+    const { warnings } = validateHintRule(
+      {
+        content: {
+          blocks: [{ selector: "main", label: "Main", priority: "high", format: "text" }],
+          sections: [{ selector: "main", label: "Legacy", priority: "high" }]
+        }
+      },
+      { scope: "test" }
+    );
+    expect(warnings.map((w) => w.message).join(" ")).toMatch(/blocks take priority/);
   });
 });
 

@@ -138,9 +138,73 @@ Control how tables are extracted. Currently supports:
 
 Tables are extracted before sections run (`src/search.js:863-870`). After extraction, all `<table>` elements are removed from the DOM so sections don't pick up table content a second time.
 
-### `content.sections` (optional)
+### `content.blocks` (optional) — recommended over `sections`
 
-Structured extraction via CSS selectors. When sections are defined and produce output, they take priority over Readability and the fallback path (`src/search.js:872-911`).
+Structured extraction via CSS selectors — the modern replacement for `content.sections`.
+Priority, overlap, and zero-match rules are the same as sections. When both exist,
+`blocks` wins and a warning is emitted. Blocks live at `content.blocks` and inside each
+`extract` step of a flow.
+
+Each block is either a **leaf** (one flat value per matching element) or a **record**
+(one item per matching element, rendered from nested fields):
+
+```json
+{
+  "content": {
+    "blocks": [
+      {
+        "selector": "div.js-profile-editable-area",
+        "label": "Profile",
+        "priority": "high",
+        "format": "markdown"
+      },
+      {
+        "selector": "li[role='listitem']",
+        "label": "Issues",
+        "priority": "high",
+        "itemLabel": "Issue",
+        "fields": [
+          { "selector": "a", "label": "Title", "format": "text" },
+          { "selector": "span.opened-by", "label": "Meta", "format": "text" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+| Field | Leaf | Record | Description |
+|-------|------|--------|-------------|
+| `selector` | yes | yes | CSS selector for one or more elements |
+| `label` | yes | yes | Block heading in the output (`### Label`) |
+| `priority` | yes | yes | `"high"` / `"medium"` / `"low"` |
+| `format` | yes | no | Output format for this leaf (see below) |
+| `itemLabel` | no | yes | Per-item heading prefix (`#### Issue 1`, `#### Issue 2`, …) |
+| `fields` | no | yes | Non-empty array of leaf blocks, one per matched element |
+
+A block must be a leaf **XOR** a record — exactly one of `format` / `fields` must be present.
+
+#### Block formats (leaf)
+
+| Format | Output |
+|--------|--------|
+| `"text"` | Single line, whitespace-cleaned `textContent` |
+| `"list"` | `- item` per matched element |
+| `"html"` | Raw inner HTML in a fenced ` ```html ` block |
+| `"html_to_markdown"` | Inner HTML converted via `htmlToMarkdown()` |
+| `"readability_to_markdown"` | Inner HTML passed through Readability, then markdown |
+| `"table"` | Tables inside the element, appended as structured `### Table N` blocks |
+| `"table_json"` | Tables rendered as fenced ` ```json ` |
+| `"table_csv"` | Tables rendered as fenced ` ```csv ` |
+
+`"markdown"` is accepted as a legacy alias for `"html_to_markdown"`. Record `fields`
+use the same field formats as sections — `text` / `list` / `markdown` / `html` /
+`html_to_markdown` / `readability_to_markdown`.
+
+### `content.sections` (optional) — legacy
+
+Structured extraction via CSS selectors — superseded by `content.blocks`. Still
+validated and used only when `content.blocks` is empty.
 
 Each section has:
 
@@ -201,25 +265,82 @@ HTML → remove NON_CONTENT_SELECTORS → remove skipSelectors → extract table
                                                                                                               collectCandidateBlocks fallback
 ```
 
+### `flow` (optional) — multi-step interactive extraction
+
+Runs a scripted sequence of steps against the live page and merges each step's
+extraction into one response. `flow` and top-level `content` are **mutually
+exclusive strategies** — when `flow` is present, the top-level `content` is ignored
+(and skipped by validation); every `extract` step defines its own blocks via
+`content.blocks`. The console editor presents this as a mode switch
+("Static blocks" vs "Interactive flow") so only the active strategy is edited.
+
+A flow is a non-empty array of steps; each step has an `action`:
+
+| Action | Fields | Effect |
+|--------|--------|--------|
+| `extract` | `label`, `content` | Captures the current page state and extracts the step's blocks |
+| `click` | `selector`, `waitForSelector`, `timeoutMs` | Clicks the element (must match exactly **one** visible element) then waits for the post-click selector |
+| `wait` | `selector`, `state`, `timeoutMs` | Blocks until the selector reaches the state (`visible` / `attached` / `hidden`) |
+| `type` | `selector`, `text`, `clear`, `submit`, `waitForSelector`, `timeoutMs` | Focuses the element, types `text`; `submit` presses Enter and then requires `waitForSelector` |
+| `navigate` | `url`, `waitForSelector`, `timeoutMs` | Navigates (relative URLs resolve against the current page) and waits for the destination selector |
+
+Example — search a site and extract both states:
+
+```json
+{
+  "domain": "example.com",
+  "pathPattern": "/search",
+  "flow": [
+    { "action": "extract", "label": "Search form", "content": { "blocks": [{ "selector": "form.search", "label": "Form", "priority": "high", "format": "markdown" }] } },
+    { "action": "type", "selector": "input#q", "text": "llm", "submit": true, "waitForSelector": "div.results" },
+    { "action": "extract", "label": "Results", "content": { "blocks": [{ "selector": "li.result", "label": "Results", "priority": "high", "itemLabel": "Result", "fields": [{ "selector": "a", "label": "Title", "format": "text" }] }] } }
+  ]
+}
+```
+
+Validation rules (enforced at save time and live):
+
+- Max **8 steps** and max **4 `click` steps**.
+- At least one `extract` step; the **last** step must be `extract`.
+- `click` / `type` / `navigate` are interactions and cannot be adjacent — an `extract`
+  or `wait` step must separate them.
+- `click` and `navigate` require a `waitForSelector` gate; `type` requires it when
+  `submit` is true.
+- Per-step `timeoutMs` defaults to 20000 (range 250–20000). The whole flow has a
+  default budget of 45000ms (see `flowOptions`).
+
+Output semantics:
+
+- Each `extract` step renders under `## <label>`; stages appear in flow order, so the
+  response reads top-to-bottom as the page changed.
+- Tables stay with the stage where they were extracted; links are deduplicated across
+  stages.
+- The final URL and title come from the last page state (after the last `extract`).
+- An `extract` that produces no content fails the flow with a step-specific error,
+  unless `flowOptions.continueOnEmptyExtract` is `true` — then the stage is skipped
+  with a warning.
+- A bot challenge aborts the remaining steps with a step-specific error.
+
+### `flowOptions` (optional)
+
+Per-hint execution policy for the flow:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `totalTimeoutMs` | integer ≤ 45000 | 45000 | Whole-flow budget; when it expires the current step fails |
+| `continueOnEmptyExtract` | boolean | `false` | Skip empty `extract` stages instead of failing the flow |
+
 ### `contentSelectors` (optional)
 
 Additional CSS selectors for the "wait for content" polling step and the SEO snapshot. These are appended to the default content selectors (`main, article, [role='main'], .content, #content`, etc.) when checking if the page has rendered meaningful text (`src/search.js:2179-2182`, `2201`).
 
-### `flags` (optional)
+### `flags` — REMOVED (auto-detected per page instead)
 
-An object for boolean flags that change extraction behavior.
-
-```json
-"flags": { "botProtected": true }
-```
-
-Known flags:
-
-| Flag | Effect |
-|------|--------|
-| `authWall` | Returns immediately with "Auth wall — page requires login" error |
-| `visualOnly` | Returns immediately with "Visual-only page" error |
-| `requiresChromium` | Informational — suggests the chromium backend |
+Flags are no longer part of the hint schema. Conditions like auth walls, visual-only
+pages, and bot protection are **detected automatically on the page** at fetch time and
+reported in the `web_fetch` response as `⚠` warnings (auth walls / visual-only) or a
+hard error (bot challenges). Leaving a `flags` field in a hint produces a
+"unknown field (ignored)" validation warning.
 
 ## Extraction pipeline
 
@@ -370,33 +491,36 @@ FUNCTION browserOpenAndExtract(url, maxChars = DEFAULT_MAX_CHARS)
     → After extraction, ALL <table> elements are removed from DOM
       (prevents sections/Readability from double-including table content)
 
-  ──── 2e. SECTIONS path ──────────────────────────────────────────
-  IF hint.content.sections is an array with length > 0:
+  ──── 2e. BLOCKS / SECTIONS path ─────────────────────────────────
+  IF hint.flow is an array with length > 0:
+    → INTERACTIVE path — run each flow step against the live page
+      → executeFlow(): extract / click / wait / type / navigate (see `flow` above)
+      → each extract step renders its blocks under "## <step label>"
+      → stages merged in order: text joined, tables kept per stage, links deduped
+      → RETURN { title (final state), url (final state), text, tables, links }
+      → Readability and fallback are NEVER reached
+
+  blocks = hint.content.blocks  OR  (fallback) hint.content.sections
+  IF blocks is an array with length > 0:
     sectionOutput = []
-    SORT sections by priority order: high(0) < medium(1) < low(2)
+    SORT blocks by priority order: high(0) < medium(1) < low(2)
 
     FOR each section in sorted list:
       elements = doc.querySelectorAll(section.selector)
-      IF no elements match → SKIP (continue to next section)
+      IF no elements match → record warning, SKIP (continue to next section)
 
       BUILD markdown content:
-        IF section has fields:
-          FOR each element (with optional index for itemLabel):
-            content = renderHintFields(element, section.fields, url)
-              → for each field:
-                nodes = element.querySelectorAll(field.selector)
-                FORMAT by field.format:
-                  "text"      → cleanWhitespace(node.textContent) — single line
-                  "list"      → "**Label:**" then "- value" per node — bullet list
-                  "markdown"  → htmlToMarkdown(node.innerHTML) — multi-line (default)
-                → join all field outputs
-            IF content is empty → skip this element
-            PREPEND section.itemLabel as "#### Label N" if itemLabel is set
-          → concat all element outputs separated by "\n\n"
-        ELSE (no fields):
-          FOR each element:
-            markdown += htmlToMarkdown(element.innerHTML) + "\n"
-            → full innerHTML of each matched element converted to markdown
+        IF section has fields (record block) → per-item fields as before
+        IF section.format is a block format:
+          "text" → cleanWhitespace(textContent)
+          "list" → "- value" per matched element
+          "html" → ```html fenced innerHTML
+          "html_to_markdown" → htmlToMarkdown(innerHTML)
+          "readability_to_markdown" → Readability over the element, then markdown
+          "table" → tables from the element → structured "### Table N" blocks
+          "table_json" / "table_csv" → fenced JSON/CSV of the tables
+          "markdown" → legacy alias for "html_to_markdown"
+        ELSE → htmlToMarkdown(element.innerHTML) per element (legacy section shape)
 
       markdown = markdown.trim()
       IF markdown is empty → SKIP (continue to next section)

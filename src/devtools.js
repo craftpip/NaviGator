@@ -284,7 +284,7 @@ export async function captureTargetScreenshot(args = {}) {
   assertEnabled(manager);
   const state = getTargetState(args.targetId);
 
-  const normalizedFormat = args.format === "jpeg" ? "jpeg" : "png";
+  const normalizedFormat = "jpeg";
   const normalizedQuality =
     normalizedFormat === "jpeg"
       ? Math.max(1, Math.min(100, Math.floor(Number.isFinite(args.quality) ? args.quality : 75)))

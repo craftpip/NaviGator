@@ -1,36 +1,7 @@
 import { JSDOM } from "jsdom";
 import { ApiSearchDriver } from "./api-driver.js";
-import { cleanWhitespace, dedupeDirectAnswers, fetchTextWithTimeout, normalizeUrl } from "./util.js";
-
-function collectDuckDuckGoInstantAnswers(payload) {
-  const answers = [];
-  const sourceUrl = cleanWhitespace(payload?.AbstractURL || payload?.AbstractSource || "https://duckduckgo.com/");
-  if (payload?.Answer) {
-    answers.push({ source: "instant_answer", text: payload.Answer, url: sourceUrl });
-  }
-  if (payload?.AbstractText) {
-    answers.push({ source: "abstract", text: payload.AbstractText, url: sourceUrl });
-  }
-  if (payload?.Definition) {
-    answers.push({ source: "definition", text: payload.Definition, url: sourceUrl });
-  }
-
-  const related = Array.isArray(payload?.RelatedTopics) ? payload.RelatedTopics : [];
-  for (const item of related.slice(0, 5)) {
-    if (item?.Text) {
-      answers.push({ source: "related_topic", text: item.Text, url: cleanWhitespace(item.FirstURL || sourceUrl) });
-      continue;
-    }
-    if (Array.isArray(item?.Topics)) {
-      for (const topic of item.Topics.slice(0, 2)) {
-        if (topic?.Text) {
-          answers.push({ source: "related_topic", text: topic.Text, url: cleanWhitespace(topic.FirstURL || sourceUrl) });
-        }
-      }
-    }
-  }
-  return dedupeDirectAnswers(answers);
-}
+import { parseDuckDuckGoInstantAnswers } from "./instant-answers.js";
+import { cleanWhitespace, fetchTextWithTimeout, normalizeUrl } from "./util.js";
 
 function parseDuckDuckGoHtmlResults(html) {
   const safeHtml = String(html || "");
@@ -92,7 +63,7 @@ export class DuckDuckGoApiDriver extends ApiSearchDriver {
     let directAnswers = [];
     if (answerText) {
       try {
-        directAnswers = collectDuckDuckGoInstantAnswers(JSON.parse(answerText)).map((item) => ({ ...item, engine: this.id }));
+        directAnswers = parseDuckDuckGoInstantAnswers(JSON.parse(answerText)).map((item) => ({ ...item, engine: this.id }));
       } catch {
         directAnswers = [];
       }

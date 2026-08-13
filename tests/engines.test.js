@@ -261,6 +261,52 @@ describe("api drivers", () => {
   });
 });
 
+describe("browser driver block detection", () => {
+  it("duckduckgo_cb throws on an anomaly/bot page", async () => {
+    const dom = domFromHtml('<div id="anomaly-modal"><h1>unusual traffic</h1></div>');
+    try {
+      const driver = getEngineDriver("duckduckgo_cb", {});
+      const page = makeFakePage(dom, "https://duckduckgo.com/?q=test");
+      await expect(driver.assertNotBlocked(page)).rejects.toThrow(/blocked/);
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it("duckduckgo_cb passes on a normal results page", async () => {
+    const dom = domFromHtml('<article data-testid="result"><a href="https://x.example">x</a></article>');
+    try {
+      const driver = getEngineDriver("duckduckgo_cb", {});
+      const page = makeFakePage(dom, "https://duckduckgo.com/?q=test");
+      await expect(driver.assertNotBlocked(page)).resolves.toBeUndefined();
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it("bing_cb throws on a CAPTCHA/verification page", async () => {
+    const dom = domFromHtml('<div>Please verify you are a human — captcha required.</div>');
+    try {
+      const driver = getEngineDriver("bing_cb", {});
+      const page = makeFakePage(dom, "https://www.bing.com/search");
+      await expect(driver.assertNotBlocked(page)).rejects.toThrow(/blocked/);
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it("bing_cb passes on a normal results page", async () => {
+    const dom = domFromHtml('<ol id="b_results"><li class="b_algo"><h2><a href="https://y.example">y</a></h2></li></ol>');
+    try {
+      const driver = getEngineDriver("bing_cb", {});
+      const page = makeFakePage(dom, "https://www.bing.com/search");
+      await expect(driver.assertNotBlocked(page)).resolves.toBeUndefined();
+    } finally {
+      dom.window.close();
+    }
+  });
+});
+
 describe("browser warmup filtering", () => {
   it("keeps only browser routes, in order, deduplicated", () => {
     expect(getBrowserWarmupEngines([

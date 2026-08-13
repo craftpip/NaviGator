@@ -289,7 +289,7 @@ export async function loadConfig() {
     headless,
     userAgent:
       process.env.BROWSER_USER_AGENT ||
-      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
     mcpApiPort: parseNumber(process.env.MCP_API_PORT || process.env.HEALTH_PORT, 3000),
     mcpApiHost: process.env.MCP_API_HOST || "http://localhost",
     enableHttpHealth: parseBoolean(process.env.ENABLE_HTTP_HEALTH, false),
@@ -323,6 +323,7 @@ export async function loadConfig() {
     startupUrl: process.env.STARTUP_URL || "about:blank",
     debug: parseBoolean(process.env.DEBUG, false),
     logToolErrors: parseBoolean(process.env.LOG_TOOL_ERRORS, true),
+    enableInstantAnswers: parseBoolean(process.env.ENABLE_INSTANT_ANSWERS, true),
     disableTools: parseToolList(process.env.DISABLE_TOOLS),
     domainHintsPath,
     stabilizeStrategy: parseStabilizeStrategy(process.env.STABILIZE_STRATEGY, "network_idle"),

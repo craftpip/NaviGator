@@ -12,7 +12,7 @@ export const CONFIG_SCHEMA = [
   { key: "CLOAKBROWSER_BINARY_PATH", category: "backend", type: "string", fallback: "auto-detect", applies: "recreate", description: "Path to the cloakbrowser chrome binary." },
   { key: "PRELAUNCH_BROWSER", category: "backend", type: "boolean", fallback: true, applies: "recreate", description: "Pre-launch browser on server start." },
   { key: "STARTUP_URL", category: "backend", type: "string", fallback: "about:blank", applies: "recreate", description: "URL opened in the browser on launch." },
-  { key: "BROWSER_USER_AGENT", category: "backend", type: "string", fallback: "Chromium UA", applies: "recreate", description: "User agent string used by the browsers." },
+  { key: "BROWSER_USER_AGENT", category: "backend", type: "string", fallback: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36", applies: "recreate", description: "User agent string used by the browsers." },
 
   { key: "SEARCH_ROUTE_WARMUP_ENGINES", category: "search", type: "engines", fallback: ["brave_cb", "duckduckgo_api", "duckduckgo_cb"], applies: "hot", description: "Browser routes prewarmed on start." },
   { key: "SEARCH_ENABLED_ENGINES", category: "search", type: "engines", fallback: DEFAULT_SEARCH_ENABLED_ENGINES, applies: "hot", description: "Search routes eligible for automatic select_best scheduling." },
