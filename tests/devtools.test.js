@@ -4,6 +4,26 @@ vi.mock("../src/browser.js", () => ({
   getBrowserManager: vi.fn(),
 }));
 
+const dbMock = vi.hoisted(() => {
+  const links = [];
+  return {
+    links,
+    rememberRefLink: (url) => {
+      const id = links.length + 1;
+      links.push({ id, url });
+      return id;
+    },
+    getRefLinkById: (id) => links.find((link) => link.id === id) || null,
+    getRefLinkByUrl: (url) => links.find((link) => link.url === url) || null,
+  };
+});
+
+vi.mock("../src/db.js", () => ({
+  rememberRefLink: dbMock.rememberRefLink,
+  getRefLinkById: dbMock.getRefLinkById,
+  getRefLinkByUrl: dbMock.getRefLinkByUrl,
+}));
+
 vi.mock("cloakbrowser", () => ({}));
 vi.mock("cloakbrowser/puppeteer", () => ({ launch: vi.fn() }));
 

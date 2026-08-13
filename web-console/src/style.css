@@ -2248,12 +2248,16 @@ select.config-input option {
 .hint-field select,
 .hint-field textarea {
   width: 100%;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
   color: var(--text);
-  font: 12px var(--sans);
+  font: 13px var(--sans);
+}
+.hint-field select {
+  width: fit-content;
+  max-width: 100%;
 }
 .hint-field textarea {
   resize: vertical;
@@ -2261,7 +2265,7 @@ select.config-input option {
 .hint-field .mono,
 .hint-json {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
 }
 .hint-field-head > span {
   text-transform: uppercase;
@@ -2381,13 +2385,14 @@ select.config-input option {
   text-transform: uppercase;
 }
 .hint-option select {
-  width: 100%;
-  padding: 6px 8px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
   color: var(--text);
-  font: 12px var(--sans);
+  font: 13px var(--sans);
 }
 .hint-option-check {
   min-height: 30px;
@@ -2407,6 +2412,8 @@ select.config-input option {
 }
 .hint-check input {
   margin: 0;
+  width: auto;
+  flex: none;
 }
 .hint-section-row {
   padding: 8px;
@@ -2419,8 +2426,26 @@ select.config-input option {
 }
 .hint-section-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) 90px minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 2fr) minmax(0, 0.8fr) auto 30px;
   gap: 6px;
+  align-items: stretch;
+}
+.hint-section-grid > * {
+  min-width: 0;
+}
+.hint-section-grid select {
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  font: 13px var(--sans);
+}
+.hint-section-grid .button {
+  height: 100%;
+  padding: 0;
 }
 .hint-fields {
   display: flex;
@@ -2436,19 +2461,23 @@ select.config-input option {
 }
 .hint-field-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) 110px auto;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto auto;
   gap: 6px;
   align-items: center;
 }
 .hint-field-row input,
 .hint-field-row select {
   width: 100%;
-  padding: 5px 7px;
+  padding: 7px 9px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
   color: var(--text);
-  font: 11px var(--sans);
+  font: 12px var(--sans);
+}
+.hint-field-row select {
+  width: fit-content;
+  max-width: 100%;
 }
 .hint-field-row .mono {
   font-family: var(--mono);
@@ -2483,6 +2512,12 @@ select.config-input option {
 }
 .hint-block-format .hint-option-name {
   min-width: 110px;
+}
+.hint-block-format select,
+.hint-block-format input {
+  width: auto;
+  flex: 0 1 auto;
+  max-width: 260px;
 }
 .hint-warn {
   color: var(--amber);
@@ -2523,7 +2558,10 @@ select.config-input option {
   gap: 8px;
 }
 .hint-step-options {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 8px 24px;
 }
 .hint-narrow {
   max-width: 160px;
@@ -2533,7 +2571,7 @@ select.config-input option {
   cursor: not-allowed;
 }
 .hint-field input[type="number"] {
-  font: 12px var(--mono);
+  font: 13px var(--mono);
 }
 .hint-mode-switch {
   display: flex;
@@ -2567,6 +2605,12 @@ select.config-input option {
 .hint-mode-switch button.active em {
   color: var(--blue);
 }
+.hints-test-pane {
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
 .hint-test {
   display: flex;
   flex-direction: column;
@@ -2589,12 +2633,12 @@ select.config-input option {
 .hint-test-form input {
   flex: 1;
   min-width: 0;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--panel);
   color: var(--text);
-  font: 11px var(--mono);
+  font: 12px var(--mono);
 }
 .hint-test-result {
   display: flex;
@@ -2642,9 +2686,54 @@ select.config-input option {
 .hint-output-tabs button:first-child {
   border-left: 0;
 }
+.hint-output-tabs .hint-refresh-btn {
+  border-left: 1px solid var(--line);
+  color: var(--blue);
+}
 .hint-output-tabs button.active {
   background: var(--blue-bg);
   color: var(--blue);
+}
+.hint-output-html {
+  font: 12px var(--sans);
+  line-height: 1.55;
+}
+.hint-output-html h1,
+.hint-output-html h2,
+.hint-output-html h3,
+.hint-output-html h4 {
+  margin: 10px 0 4px;
+}
+.hint-output-html p {
+  margin: 6px 0;
+}
+.hint-output-html ul,
+.hint-output-html ol {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+.hint-output-html table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 11px;
+}
+.hint-output-html th,
+.hint-output-html td {
+  border: 1px solid var(--line);
+  padding: 4px 8px;
+}
+.hint-output-html code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--panel2);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.hint-output-html pre {
+  background: var(--panel2);
+  padding: 10px;
+  border-radius: 4px;
+  overflow: auto;
 }
 .hint-output {
   max-height: 560px;

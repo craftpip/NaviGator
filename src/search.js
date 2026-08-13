@@ -35,15 +35,15 @@ const DEFAULT_CONTENT_SELECTORS = [
   "[itemprop='articleBody']"
 ];
 
-async function waitForContent(page, { pollInterval = 300, stableMs = 500, minChars = 500, maxWait = 4000, extraSelectors } = {}) {
+async function waitForContent(page, { pollInterval = 300, stableMs = 500, minChars = 500, maxWait = 4000, extraSelectors, targetSelector } = {}) {
   const start = Date.now();
   let lastLength = -1;
   let lastStable = start;
 
   const selectorBase = DEFAULT_CONTENT_SELECTORS.join(",");
-  const selectorStr = extraSelectors?.length
+  const selectorStr = targetSelector || (extraSelectors?.length
     ? [...extraSelectors, ...DEFAULT_CONTENT_SELECTORS].join(",")
-    : selectorBase;
+    : selectorBase);
 
   while (Date.now() - start < maxWait) {
     const len = await page.evaluate((sel) => {
@@ -761,18 +761,19 @@ function renderHintFields(element, fields, baseUrl) {
     }).filter(Boolean);
     if (!values.length) continue;
 
+    const label = (field.label || "").trim();
     if (field.format === "list") {
-      output.push(`**${field.label}:**`);
+      if (label) output.push(`**${label}:**`);
       output.push(...values.map((value) => `- ${value}`));
       continue;
     }
 
     if (field.format === "text") {
-      output.push(`**${field.label}:** ${values.join(" ")}`);
+      output.push(label ? `**${label}:** ${values.join(" ")}` : values.join(" "));
       continue;
     }
 
-    output.push(`**${field.label}:**`);
+    if (label) output.push(`**${label}:**`);
     output.push(values.join("\n\n"));
   }
   return output.join("\n\n");
@@ -899,7 +900,8 @@ function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = ""
     markdown = markdown.trim();
     if (!markdown && !blockHadTable) continue;
     if (block.priority === "medium" && markdown.length < 50 && !blockHadTable) continue;
-    output.push(`### ${block.label}`);
+    const blockLabel = (block.label || "").trim();
+    if (blockLabel) output.push(`### ${blockLabel}`);
     output.push("");
     output.push(markdown);
     output.push("");
@@ -1995,10 +1997,10 @@ async function firstMatchingHint(page, candidates) {
 const FLOW_STAGE_CAPTURE_LIMIT = 60000;
 const FLOW_STEP_DEFAULT_TIMEOUT_MS = 10000;
 
-async function stabilizePage(page, hint, config) {
+async function stabilizePage(page, hint, config, strategyOverride, contentTargetSelector) {
   const stabilizeStrategy =
+    strategyOverride ||
     hint?.default?.stabilizeStrategy ||
-    hint?.flowOptions?.stabilizeStrategy ||
     config.stabilizeStrategy ||
     "network_idle";
   if (stabilizeStrategy === "network_idle") {
@@ -2008,7 +2010,8 @@ async function stabilizePage(page, hint, config) {
   } else if (stabilizeStrategy === "content_idle") {
     await waitForContent(page, {
       maxWait: 5000,
-      extraSelectors: hint?.default?.waitForContent
+      extraSelectors: hint?.default?.waitForContent,
+      ...(contentTargetSelector ? { targetSelector: contentTargetSelector } : {})
     }).catch(() => {});
   } else if (stabilizeStrategy === "mutation") {
     await waitForMutations(page, { maxWait: 5000 }).catch(() => {});
@@ -2094,12 +2097,11 @@ function extractHintStage(pageState, hint, step, maxChars, debug) {
 
 function renderExtractedStage(label, extracted) {
   let text = extracted?.text || "";
-  if (extracted?.tables?.length) {
-    text = insertTablesInline(text, extracted.tables);
-  }
-  const heading = `## ${label}`;
+  const parts = [];
+  if (label) parts.push(`## ${label}`, "");
+  parts.push(text.trim());
   return {
-    text: `${heading}\n\n${text.trim()}`,
+    text: parts.join("\n"),
     tables: extracted?.tables || [],
     warnings: extracted?.warnings || [],
     textOriginalLength: extracted?.textOriginalLength || 0
@@ -2129,6 +2131,9 @@ function mergeExtractedStages(stages, maxChars, preCollectedLinks = []) {
   if (text.length > maxChars) {
     text = safeTruncateText(text, maxChars);
     textWasTruncated = text.endsWith("...");
+  }
+  if (tables.length) {
+    text = insertTablesInline(text, tables);
   }
   return {
     text,
@@ -2183,8 +2188,9 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
           if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
         }
         const extracted = extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug);
-        const stage = renderExtractedStage(step.label, extracted);
-        const emptyStage = !stage.text.trim() || stage.text.trim() === `## ${step.label}`;
+        const stageLabel = (step.label || "").trim();
+        const stage = renderExtractedStage(stageLabel, extracted);
+        const emptyStage = !stage.text.trim() || stage.text.trim() === (stageLabel ? `## ${stageLabel}` : "");
         if (emptyStage) {
           const message = `Domain hint flow step ${stepIndex} extract "${step.label}" produced no content`;
           if (!continueOnEmptyExtract) {
@@ -2206,15 +2212,22 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
           throw new Error(`Domain hint flow step ${stepIndex} click failed: ${String(error?.message || error)}`);
         });
         const clickTimeout = step.timeoutMs ?? FLOW_STEP_DEFAULT_TIMEOUT_MS;
-        await withPageTimeout("flow_click_wait", () =>
-          page.waitForSelector(step.waitForSelector, { timeout: clickTimeout })
-        ).catch((error) => {
-          throw new Error(
-            `Domain hint flow step ${stepIndex} click: post-click selector "${step.waitForSelector}" not found after ${clickTimeout}ms: ${String(error?.message || error)}`
-          );
-        });
-        await stabilizePage(page, hint, config);
-        await checkBot();
+        if (step.waitForSelector) {
+          await withPageTimeout("flow_click_wait", () =>
+            page.waitForSelector(step.waitForSelector, { timeout: clickTimeout })
+          ).catch((error) => {
+            throw new Error(
+              `Domain hint flow step ${stepIndex} click: post-click selector "${step.waitForSelector}" not found after ${clickTimeout}ms: ${String(error?.message || error)}`
+            );
+          });
+          if (step.stabilizeStrategy !== "none") {
+            await stabilizePage(page, hint, config, step.stabilizeStrategy, step.waitForSelector);
+            await checkBot();
+          }
+        } else if (step.stabilizeStrategy !== undefined && step.stabilizeStrategy !== "" && step.stabilizeStrategy !== "none") {
+          await stabilizePage(page, hint, config, step.stabilizeStrategy);
+          await checkBot();
+        }
       } else if (step.action === "wait") {
         const waitTimeout = step.timeoutMs ?? FLOW_STEP_DEFAULT_TIMEOUT_MS;
         await withPageTimeout("flow_wait", () =>
@@ -2224,6 +2237,10 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
             `Domain hint flow step ${stepIndex} wait failed: selector "${step.selector}" (state "${step.state || "visible"}"): ${String(error?.message || error)}`
           );
         });
+        if (step.stabilizeStrategy !== "none") {
+          await stabilizePage(page, hint, config, step.stabilizeStrategy, step.selector);
+          await checkBot();
+        }
       } else if (step.action === "type") {
         await withPageTimeout("flow_type_focus", () => page.click(step.selector, { delay: 20 })).catch((error) => {
           throw new Error(`Domain hint flow step ${stepIndex} type failed: cannot focus "${step.selector}": ${String(error?.message || error)}`);
@@ -2247,8 +2264,10 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
               `Domain hint flow step ${stepIndex} type: results selector "${step.waitForSelector}" not found after ${typeTimeout}ms: ${String(error?.message || error)}`
             );
           });
-          await stabilizePage(page, hint, config);
-          await checkBot();
+          if (step.stabilizeStrategy !== "none") {
+            await stabilizePage(page, hint, config, step.stabilizeStrategy, step.waitForSelector);
+            await checkBot();
+          }
         }
       } else if (step.action === "navigate") {
         const target = new URL(step.url, page.url()).href;
@@ -2263,7 +2282,7 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
             `Domain hint flow step ${stepIndex} navigate: destination selector "${step.waitForSelector}" not found after ${navTimeout}ms: ${String(error?.message || error)}`
           );
         });
-        await stabilizePage(page, hint, config);
+        await stabilizePage(page, hint, config, step.stabilizeStrategy, step.waitForSelector);
         await checkBot();
       }
     } finally {

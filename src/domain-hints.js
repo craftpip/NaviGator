@@ -243,10 +243,10 @@ export const FLOW_STATES = ["visible", "attached", "hidden"];
 
 const FLOW_ACTION_KEYS = {
   extract: ["action", "label", "content"],
-  click: ["action", "selector", "waitForSelector", "timeoutMs"],
-  wait: ["action", "selector", "state", "timeoutMs"],
-  type: ["action", "selector", "text", "clear", "submit", "waitForSelector", "timeoutMs"],
-  navigate: ["action", "url", "waitForSelector", "timeoutMs"]
+  click: ["action", "selector", "waitForSelector", "timeoutMs", "stabilizeStrategy"],
+  wait: ["action", "selector", "state", "timeoutMs", "stabilizeStrategy"],
+  type: ["action", "selector", "text", "clear", "submit", "waitForSelector", "timeoutMs", "stabilizeStrategy"],
+  navigate: ["action", "url", "waitForSelector", "timeoutMs", "stabilizeStrategy"]
 };
 
 const FLOW_INTERACTION_ACTIONS = new Set(["click", "type", "navigate"]);
@@ -276,8 +276,8 @@ function validateField(field, errors, fieldPrefix) {
     const selectorError = validateSelector(field.selector);
     if (selectorError) errors.push({ field: `${prefix}selector`, message: `invalid CSS selector: ${selectorError}` });
   }
-  if (typeof field.label !== "string" || !field.label.trim()) {
-    errors.push({ field: `${prefix}label`, message: "required" });
+  if (field.label !== undefined && typeof field.label !== "string") {
+    errors.push({ field: `${prefix}label`, message: "must be a string (optional — blank means no label in output)" });
   }
   if (field.format !== undefined && !FIELD_FORMATS.includes(field.format)) {
     errors.push({ field: `${prefix}format`, message: `must be one of ${FIELD_FORMATS.map((f) => `"${f}"`).join(", ")}` });
@@ -296,8 +296,8 @@ function validateBlock(block, errors, fieldPrefix) {
     const selectorError = validateSelector(block.selector);
     if (selectorError) errors.push({ field: `${prefix}selector`, message: `invalid CSS selector: ${selectorError}` });
   }
-  if (typeof block.label !== "string" || !block.label.trim()) {
-    errors.push({ field: `${prefix}label`, message: "required" });
+  if (block.label !== undefined && typeof block.label !== "string") {
+    errors.push({ field: `${prefix}label`, message: "must be a string (optional — blank means no heading in output)" });
   }
   if (block.priority !== undefined && !["high", "medium", "low"].includes(block.priority)) {
     errors.push({ field: `${prefix}priority`, message: 'must be one of "high", "medium", "low"' });
@@ -398,10 +398,14 @@ function validateFlow(flow, errors, warnings, fieldPrefix = "flow") {
       }
     }
 
+    if (step.stabilizeStrategy !== undefined && step.stabilizeStrategy !== "" && !STEP_STABILIZE_STRATEGIES.includes(step.stabilizeStrategy)) {
+      errors.push({ field: `${stepField}.stabilizeStrategy`, message: `must be one of ${STEP_STABILIZE_STRATEGIES.map((s) => `"${s}"`).join(", ")}` });
+    }
+
     if (action === "extract") {
       extractCount += 1;
-      if (typeof step.label !== "string" || !step.label.trim() || step.label.length > 80) {
-        errors.push({ field: `${stepField}.label`, message: "required, 1-80 characters" });
+      if (step.label !== undefined && (typeof step.label !== "string" || step.label.length > 80)) {
+        errors.push({ field: `${stepField}.label`, message: "optional; when present must be a string up to 80 characters" });
       }
       if (step.content === undefined) {
         errors.push({ field: `${stepField}.content`, message: "required" });
@@ -411,7 +415,9 @@ function validateFlow(flow, errors, warnings, fieldPrefix = "flow") {
     } else if (action === "click") {
       clickCount += 1;
       validateSelectorField(step, "selector", errors, stepField);
-      validateSelectorField(step, "waitForSelector", errors, stepField);
+      if (step.waitForSelector !== undefined) {
+        validateSelectorField(step, "waitForSelector", errors, stepField);
+      }
     } else if (action === "wait") {
       validateSelectorField(step, "selector", errors, stepField);
       if (step.state !== undefined && !FLOW_STATES.includes(step.state)) {
@@ -483,11 +489,8 @@ function validateFlowOptions(hint, errors, warnings) {
   if (flowOptions.continueOnEmptyExtract !== undefined && typeof flowOptions.continueOnEmptyExtract !== "boolean") {
     errors.push({ field: "flowOptions.continueOnEmptyExtract", message: "must be a boolean" });
   }
-  if (flowOptions.stabilizeStrategy !== undefined && flowOptions.stabilizeStrategy !== "" && !STABILIZE_STRATEGIES.includes(flowOptions.stabilizeStrategy)) {
-    errors.push({ field: "flowOptions.stabilizeStrategy", message: `must be one of ${STABILIZE_STRATEGIES.map((s) => `"${s}"`).join(", ")}` });
-  }
   for (const key of Object.keys(flowOptions)) {
-    if (!["totalTimeoutMs", "continueOnEmptyExtract", "stabilizeStrategy"].includes(key)) {
+    if (!["totalTimeoutMs", "continueOnEmptyExtract"].includes(key)) {
       warnings.push({ field: `flowOptions.${key}`, message: "unknown field (ignored)" });
     }
   }
@@ -505,8 +508,8 @@ function validateSection(section, errors, fieldPrefix) {
     const selectorError = validateSelector(section.selector);
     if (selectorError) errors.push({ field: `${prefix}selector`, message: `invalid CSS selector: ${selectorError}` });
   }
-  if (typeof section.label !== "string") {
-    errors.push({ field: `${prefix}label`, message: "required" });
+  if (section.label !== undefined && typeof section.label !== "string") {
+    errors.push({ field: `${prefix}label`, message: "must be a string (optional — blank means no heading in output)" });
   }
   if (section.priority !== undefined && !["high", "medium", "low"].includes(section.priority)) {
     errors.push({ field: `${prefix}priority`, message: 'must be one of "high", "medium", "low"' });
@@ -526,8 +529,8 @@ function validateSection(section, errors, fieldPrefix) {
       const selectorError = validateSelector(field.selector);
       if (selectorError) errors.push({ field: `${fieldPrefix2}.selector`, message: `invalid CSS selector: ${selectorError}` });
     }
-    if (typeof field.label !== "string") {
-      errors.push({ field: `${fieldPrefix2}.label`, message: "required" });
+    if (field.label !== undefined && typeof field.label !== "string") {
+      errors.push({ field: `${fieldPrefix2}.label`, message: "must be a string (optional — blank means no label in output)" });
     }
     if (field.format !== undefined && !["markdown", "text", "list"].includes(field.format)) {
       errors.push({ field: `${fieldPrefix2}.format`, message: 'must be one of "markdown", "text", "list"' });
@@ -537,6 +540,7 @@ function validateSection(section, errors, fieldPrefix) {
 
 const DEFAULT_TABLES = ["all", "content", "disabled"];
 const STABILIZE_STRATEGIES = ["network_idle", "content_idle", "mutation"];
+const STEP_STABILIZE_STRATEGIES = ["none", ...STABILIZE_STRATEGIES];
 const TOP_LEVEL_KEYS = [
   "domain", "pathPattern", "pageType", "comment", "testUrls",
   "requireSelector", "default", "flow", "flowOptions"

@@ -340,10 +340,13 @@ describe("browserOpenAndExtract", () => {
     await fs.writeFile(hintsPath, JSON.stringify([{
       domain: "example.com",
       pathPattern: "/**",
-      navigationWait: 0,
-      content: {
-        sections: [{ selector: ".profile", label: "Profile", priority: "high" }]
-      }
+      flow: [
+        {
+          action: "extract",
+          label: "Page content",
+          content: { blocks: [{ selector: ".profile", label: "Profile", priority: "high", format: "text" }] }
+        }
+      ]
     }]));
 
     mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
@@ -759,6 +762,65 @@ describe("browserOpenAndExtract with flow hints", () => {
     }
   });
 
+  it("click without waitForSelector moves straight on (no gate, no stabilization)", async () => {
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Before", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "click", selector: "#show" },
+      { action: "extract", label: "After", content: { blocks: [{ selector: ".extra", label: "Extra", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, page, tempDir } = await makeFlowManager(interactiveStates, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(page.waitForSelector).not.toHaveBeenCalled();
+      expect(page.waitForNetworkIdle).toHaveBeenCalledTimes(1);
+      expect(result.text).toContain("Revealed extra content after the click.");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("click without waitForSelector still stabilizes when a strategy is set", async () => {
+    const hint = interactiveFlowHint([
+      { action: "click", selector: "#show", stabilizeStrategy: "network_idle" },
+      { action: "extract", label: "After", content: { blocks: [{ selector: ".extra", label: "Extra", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, page, tempDir } = await makeFlowManager(interactiveStates, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(page.waitForSelector).not.toHaveBeenCalled();
+      expect(page.waitForNetworkIdle).toHaveBeenCalledTimes(2);
+      expect(result.text).toContain("Revealed extra content after the click.");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("extract step without a label prints no stage heading", async () => {
+    const hint = interactiveFlowHint([
+      { action: "extract", content: { blocks: [{ selector: ".summary", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, tempDir } = await makeFlowManager(interactiveStates, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.text).toContain("Initial summary content.");
+      expect(result.text).not.toMatch(/^##\s/m);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("tables stay with their stage and links are deduplicated", async () => {
     const states = [
       {
@@ -798,10 +860,12 @@ describe("browserOpenAndExtract with flow hints", () => {
 
       expect(result.text).toContain("### Table");
       expect(result.text).toContain("Visitors | 12345");
+      expect(result.text.split("Visitors | 12345")).toHaveLength(2);
+      expect(result.text.split("### Table")).toHaveLength(2);
       const tableIndex = result.text.indexOf("### Table");
       const revealedIndex = result.text.indexOf("## Revealed");
       expect(tableIndex).toBeGreaterThan(-1);
-      expect(tableIndex).toBeLessThan(revealedIndex);
+      expect(tableIndex).toBeGreaterThan(revealedIndex);
       expect(result.links.map((l) => l.href).sort()).toEqual(["https://example.com/a", "https://example.com/b"]);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -903,6 +967,41 @@ describe("browserOpenAndExtract with flow hints", () => {
       const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
 
       expect(page.waitForSelector).toHaveBeenCalledWith(".delayed", { state: "visible", timeout: 5000 });
+      expect(result.text).toContain("### Delayed");
+      expect(result.text).toContain("Delayed content arrived.");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("step-level content_idle waits on the step's own element, not default.waitForContent", async () => {
+    const html = `<!doctype html><html><head><title>Page A</title></head><body>
+      <div class="summary"><p>Initial content.</p></div>
+      <div class="delayed"><p>Delayed content arrived.</p></div>
+    </body></html>`;
+    const states = [{ url: "https://example.com/page", title: "Page A", html }];
+    const hint = {
+      domain: "example.com",
+      pathPattern: "/**",
+      default: { waitForContent: ["#not-the-gate"] },
+      flow: [
+        { action: "wait", selector: ".delayed", state: "visible", timeoutMs: 5000, stabilizeStrategy: "content_idle" },
+        { action: "extract", label: "Delayed", content: { blocks: [{ selector: ".delayed", label: "Delayed", priority: "high", format: "text" }] } }
+      ]
+    };
+    const { manager, page, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      const contentWaitArgs = page.evaluate.mock.calls
+        .filter(([fn]) => String(fn).includes("document.querySelector(sel)"))
+        .map(([, arg]) => arg);
+      expect(contentWaitArgs.length).toBeGreaterThan(0);
+      expect(contentWaitArgs.every((arg) => arg === ".delayed")).toBe(true);
+      expect(contentWaitArgs.some((arg) => arg.includes("#not-the-gate"))).toBe(false);
       expect(result.text).toContain("### Delayed");
       expect(result.text).toContain("Delayed content arrived.");
     } finally {

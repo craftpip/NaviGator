@@ -36,7 +36,7 @@ vi.mock("../src/devtools.js", () => ({
 vi.mock("cloakbrowser", () => ({}));
 vi.mock("cloakbrowser/puppeteer", () => ({ launch: vi.fn() }));
 
-const MCP_PORT = 18991;
+const MCP_PORT = 18992;
 const MCP_BASE = `http://localhost:${MCP_PORT}`;
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hints-api-"));
@@ -183,7 +183,7 @@ describe("domain hints API", () => {
     it("test scope allows omitting domain and pathPattern", async () => {
       const { status, body } = await jsonRequest("/console/api/hints/validate", {
         method: "POST",
-        body: JSON.stringify({ scope: "test", hint: { waitForSelector: "main p" } }),
+        body: JSON.stringify({ scope: "test", hint: { default: { waitForSelector: "main p" } } }),
       });
       expect(status).toBe(200);
       expect(body.valid).toBe(true);
@@ -282,7 +282,9 @@ describe("domain hints API", () => {
         links: [],
         tables: [],
       });
-      const candidate = { waitForSelector: "main p", content: { sections: [{ selector: "main p", label: "Main", priority: "high" }] } };
+      const candidate = {
+        flow: [{ action: "extract", label: "Stage", content: { blocks: [{ selector: "main p", label: "Main", priority: "high", format: "text" }] } }]
+      };
       const { status } = await jsonRequest(`/extract?url=https://example.com&hint=${encodeURIComponent(JSON.stringify(candidate))}`);
       expect(status).toBe(200);
       expect(searchMod.browserOpenAndExtract).toHaveBeenCalledTimes(1);

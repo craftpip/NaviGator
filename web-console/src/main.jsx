@@ -2298,6 +2298,14 @@ function HintField({ label, meta, help, children }) {
 
 function LineListEditor({ label, values, onChange, placeholder, mono, help }) {
   const lines = (values || []).join("\n");
+  const [text, setText] = useState(lines);
+  const lastPushed = useRef(lines);
+  useEffect(() => {
+    if (lines !== lastPushed.current) {
+      lastPushed.current = lines;
+      setText(lines);
+    }
+  }, [lines]);
   return (
     <label className="hint-field">
       <span>{label}</span>
@@ -2305,15 +2313,17 @@ function LineListEditor({ label, values, onChange, placeholder, mono, help }) {
         className={mono ? "mono" : ""}
         rows={Math.max(2, Math.min(6, (values || []).length + 1))}
         placeholder={placeholder}
-        value={lines}
-        onChange={(event) =>
-          onChange(
-            event.target.value
-              .split("\n")
-              .map((line) => line.trim())
-              .filter(Boolean),
-          )
-        }
+        value={text}
+        onChange={(event) => {
+          const raw = event.target.value;
+          const parsed = raw
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean);
+          lastPushed.current = parsed.join("\n");
+          setText(raw);
+          onChange(parsed);
+        }}
       />
       {help ? <em className="hint-field-help">{help}</em> : null}
     </label>
@@ -2392,7 +2402,7 @@ function FieldRowEditor({ fields, onChange }) {
             onChange={(event) => setField(index, "selector", event.target.value)}
           />
           <input
-            placeholder="label"
+            placeholder="label (optional)"
             value={field.label || ""}
             onChange={(event) => setField(index, "label", event.target.value)}
           />
@@ -2445,7 +2455,7 @@ function BlockRowEditor({ block, onChange, onRemove }) {
           onChange={(event) => set("selector", event.target.value)}
         />
         <input
-          placeholder="label"
+          placeholder="label (optional — blank = no heading)"
           value={block.label || ""}
           onChange={(event) => set("label", event.target.value)}
         />
@@ -2587,6 +2597,17 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
       onChange={(event) => set("waitForSelector", event.target.value)}
     />
   );
+  const stabilizeStrategyField = (
+    <select
+      value={step.stabilizeStrategy || "network_idle"}
+      onChange={(event) => set("stabilizeStrategy", event.target.value || undefined)}
+    >
+      <option value="network_idle">network_idle (500ms no network traffic)</option>
+      <option value="content_idle">content_idle (waits for rendered text)</option>
+      <option value="mutation">mutation (waits for DOM to stop changing)</option>
+      <option value="none">none (no stabilization)</option>
+    </select>
+  );
   return (
     <div className="hint-section-row hint-step-row">
       <div className="hint-step-head">
@@ -2607,7 +2628,7 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
         <>
           <div className="hint-field">
             <input
-              placeholder="Step label — e.g. Initial page"
+              placeholder="Step label (optional — blank = no ## heading)"
               value={step.label || ""}
               onChange={(event) => set("label", event.target.value)}
             />
@@ -2626,12 +2647,16 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
             <input className="mono" placeholder="button.next" value={step.selector || ""} onChange={(event) => set("selector", event.target.value)} />
           </div>
           <div className="hint-field">
-            <span>Wait for selector after click (required)</span>
+            <span>Wait for selector after click (optional — blank = click and move on)</span>
             {waitForSelectorField}
           </div>
           <div className="hint-field hint-narrow">
             <span>Timeout (ms)</span>
             {timeoutField}
+          </div>
+          <div className="hint-field">
+            <span>Stabilize strategy</span>
+            {stabilizeStrategyField}
           </div>
         </div>
       )}
@@ -2654,6 +2679,10 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
           <div className="hint-field hint-narrow">
             <span>Timeout (ms)</span>
             {timeoutField}
+          </div>
+          <div className="hint-field">
+            <span>Stabilize strategy</span>
+            {stabilizeStrategyField}
           </div>
         </div>
       )}
@@ -2685,6 +2714,12 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
               {waitForSelectorField}
             </div>
           )}
+          {step.submit && (
+            <div className="hint-field hint-narrow">
+              <span>Stabilize strategy</span>
+              {stabilizeStrategyField}
+            </div>
+          )}
         </>
       )}
       {step.action === "navigate" && (
@@ -2700,6 +2735,10 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
           <div className="hint-field hint-narrow">
             <span>Timeout (ms)</span>
             {timeoutField}
+          </div>
+          <div className="hint-field">
+            <span>Stabilize strategy</span>
+            {stabilizeStrategyField}
           </div>
         </div>
       )}
@@ -2771,9 +2810,6 @@ function FlowOptionsEditor({ options, onChange }) {
   const set = (key, value) => onChange({ ...(options || {}), [key]: value });
   return (
     <div className="hint-field">
-      <div className="hint-field-head">
-        <span>Flow options</span>
-      </div>
       <div className="hint-step-grid hint-step-options">
         <div className="hint-field hint-narrow">
           <span>Total timeout (ms)</span>
@@ -2804,22 +2840,6 @@ function FlowOptionsEditor({ options, onChange }) {
           />
           Continue when an extract returns empty content
         </label>
-        <div className="hint-field hint-narrow">
-          <span>Stabilize strategy</span>
-          <select
-            value={options?.stabilizeStrategy || ""}
-            onChange={(event) => set("stabilizeStrategy", event.target.value || undefined)}
-          >
-            <option value="">Default (network_idle)</option>
-            <option value="network_idle">network_idle (500ms no network traffic)</option>
-            <option value="content_idle">content_idle (waits for rendered text)</option>
-            <option value="mutation">mutation (waits for DOM to stop changing)</option>
-          </select>
-          <span className="hint-option-hint">
-            Applies after click, type (submit), and navigate steps — how long the page
-            must settle before the next step or extract. Same strategies as default extraction.
-          </span>
-        </div>
       </div>
     </div>
   );
@@ -3134,7 +3154,14 @@ function Hints() {
         index={editor.index}
         initial={editingHint}
         onClose={() => closeEditor(false)}
-        onSaved={() => closeEditor(true)}
+        onSaved={async ({ index: savedIndex } = {}) => {
+          await load();
+          if (editor.index === null && savedIndex !== undefined) {
+            const path = `/console/hints/edit/${savedIndex}`;
+            if (location.pathname !== path) window.history.replaceState({}, "", path);
+            setEditor({ index: savedIndex });
+          }
+        }}
       />
     );
   }
@@ -3298,13 +3325,18 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
     setSaving(true);
     setMessage({ kind: "", text: "" });
     try {
+      const isCreate = index === null;
       const options = {
-        method: index === null ? "POST" : "PUT",
+        method: isCreate ? "POST" : "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ hint: cleanedHint }),
       };
-      await request(index === null ? "/console/api/hints" : `/console/api/hints/${index}`, options);
-      onSaved();
+      const response = await request(
+        isCreate ? "/console/api/hints" : `/console/api/hints/${index}`,
+        options,
+      );
+      await onSaved({ index: response?.index });
+      setMessage({ kind: "ok", text: "Saved — live now, no restart needed." });
     } catch (err) {
       setMessage({ kind: "err", text: err.message });
       if (err.validation) setValidation(err.validation);
@@ -3582,7 +3614,9 @@ function HintTestPanel({ hint }) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [showScreenshot, setShowScreenshot] = useState(false);
+  const [showHtml, setShowHtml] = useState(false);
   const [screenshot, setScreenshot] = useState("");
+  const [shotVersion, setShotVersion] = useState(0);
   const runningRef = useRef(false);
   const lastHintSigRef = useRef("");
   const hintSig = JSON.stringify(hint);
@@ -3634,7 +3668,7 @@ function HintTestPanel({ hint }) {
     const loadScreenshot = async () => {
       try {
         const response = await fetch(
-          `/screenshot?url=${encodeURIComponent(testUrl)}&format=jpeg&quality=low&fullPage=false`,
+          `/screenshot?url=${encodeURIComponent(testUrl)}&format=jpeg&quality=low&fullPage=true`,
           { cache: "no-store" },
         );
         const body = await response.text();
@@ -3650,7 +3684,7 @@ function HintTestPanel({ hint }) {
     return () => {
       cancelled = true;
     };
-  }, [showScreenshot, testUrl, result?.ok]);
+  }, [showScreenshot, testUrl, result?.ok, shotVersion]);
   const warnings = result?.warnings || [];
   return (
     <div className="hint-test">
@@ -3711,17 +3745,41 @@ function HintTestPanel({ hint }) {
           )}
           <div className="hint-output-tabs">
             <button
-              className={!showScreenshot ? "active" : ""}
-              onClick={() => setShowScreenshot(false)}
+              className={!showHtml && !showScreenshot ? "active" : ""}
+              onClick={() => {
+                setShowHtml(false);
+                setShowScreenshot(false);
+              }}
             >
               Text
             </button>
             <button
+              className={showHtml ? "active" : ""}
+              onClick={() => {
+                setShowHtml(true);
+                setShowScreenshot(false);
+              }}
+            >
+              HTML
+            </button>
+            <button
               className={showScreenshot ? "active" : ""}
-              onClick={() => setShowScreenshot(true)}
+              onClick={() => {
+                setShowHtml(false);
+                setShowScreenshot(true);
+              }}
             >
               Screenshot
             </button>
+            {showScreenshot && (
+              <button
+                className="hint-refresh-btn"
+                title="Re-take the screenshot"
+                onClick={() => setShotVersion((version) => version + 1)}
+              >
+                ⟳ Refresh
+              </button>
+            )}
           </div>
           {showScreenshot ? (
             screenshot ? (
@@ -3729,6 +3787,11 @@ function HintTestPanel({ hint }) {
             ) : (
               <p className="hint">No screenshot available.</p>
             )
+          ) : showHtml ? (
+            <div
+              className="hint-output hint-output-html"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(result.text) }}
+            />
           ) : (
             <pre className="hint-output">{result.text}</pre>
           )}

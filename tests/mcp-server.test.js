@@ -27,7 +27,7 @@ vi.mock("../src/search.js", () => ({
   getEngineProfiles: vi.fn().mockReturnValue([]),
 }));
 vi.mock("../src/devtools.js", () => ({
-  devtoolsToolDefinitions: [],
+  devtoolsToolDefinitions: [{ name: "Target.createTarget" }, { name: "Runtime.evaluate" }],
   formatDevtoolsToolResponse: vi.fn(),
   handleDevtoolsToolCall: vi.fn(),
   captureTargetScreenshot: vi.fn(),
@@ -331,7 +331,7 @@ describe("mcp-server HTTP endpoints", () => {
       const payload = await created.json();
       expect(created.status).toBe(200);
       expect(payload.key).toMatch(/^nvg_/);
-      const key = payload.keys.find((entry) => entry.preview === `${payload.key.slice(0, 4)}...${payload.key.slice(-4)}`);
+      const key = payload.keys.find((entry) => entry.preview === `${payload.key.slice(0, 12)}...${payload.key.slice(-12)}`);
       expect(key).toMatchObject({ name: "Console test key", preview: expect.any(String), createdAt: expect.any(Number), allowedTools: ["web_search"] });
 
       const tools = await mcpPost(

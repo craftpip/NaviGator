@@ -410,6 +410,8 @@ right selectors for a tricky page; the panel is where you iterate and commit the
 
   **Content type hint in selector comment:** Mention what the selector targets — single text (one line), list (multiple items), mixed (text block, multi-line).
 
+  **Labels are optional everywhere** (flow step labels, block labels, section labels, field labels). An empty/blank label prints no markdown heading: no `## step`, `### block`, or `**field:**` prefix — the content itself is emitted bare. Validation only rejects non-string labels (and flow step labels over 80 chars).
+
   **Rule of thumb for section selectors:**
    - Selectors must NOT overlap — one element should not be a child of another selected element.
    - `high` priority sections always included. `medium` sections included only if they have 50+ chars of text.
@@ -460,6 +462,21 @@ before writing the flow steps:
 
 For multi-page flows (navigate steps), use the linked page URL and verify its content
 container the same way.
+
+**Per-step `stabilizeStrategy`:** stabilization tuning lives on the step, not on
+`flowOptions`. Every gated step (`wait`, `click`, `type` with submit, `navigate`) carries
+a `stabilizeStrategy` (`network_idle` | `content_idle` | `mutation`, default `network_idle`
+falls back to `default.stabilizeStrategy` / config `STABILIZE_STRATEGY`). The engine
+stabilizes immediately after that step's selector gate succeeds. `none` opts out — the
+step gates on its selector and moves on without stabilizing. A `wait` step always acts as
+"wait for selector, then stabilize" unless `stabilizeStrategy: "none"`. A `click` step's
+`waitForSelector` is optional — without it the step clicks and moves on, stabilizing only
+when `stabilizeStrategy` is explicitly set (a gated click keeps the default stabilization
+when unset). With step-level
+`content_idle`, the content wait is scoped to the step's own gate element (the step's
+`selector` / `waitForSelector` target) — `default.waitForContent` is only consulted by the
+default (non-flow) stabilization method. There is no `flowOptions.stabilizeStrategy` — that
+field is rejected as unknown.
 
 ### Known pitfalls
 
