@@ -96,6 +96,13 @@ export function normalizeUrl(rawUrl) {
         if (redirect) return redirect;
       }
     }
+    if (parsed.hostname === "r.search.yahoo.com") {
+      const ru = parsed.pathname.split("/").find((seg) => seg.startsWith("RU="));
+      if (ru) {
+        const decoded = Buffer.from(ru.slice(3), "base64url").toString("utf8");
+        if (/^https?:\/\//.test(decoded)) return decoded;
+      }
+    }
     return parsed.toString();
   } catch {
     return "";

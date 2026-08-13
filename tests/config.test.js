@@ -177,7 +177,7 @@ describe("loadConfig (parse engine behavior)", () => {
     const config = await loadConfig();
     expect(config.searchEnabledEngines).toEqual([
       "duckduckgo_api", "brave_cb", "google_lp", "google_cb", "duckduckgo_cb",
-      "bing_cb", "bing_lp", "google_ch", "duckduckgo_ch", "mojeek_lp"
+      "bing_cb", "bing_lp", "google_ch", "duckduckgo_ch", "mojeek_lp", "yahoo_cb"
     ]);
   });
 
@@ -329,7 +329,7 @@ describe("loadConfig (parse engine behavior)", () => {
     expect(config.searchRouteCircuitOpenMs).toBe(300000);
     expect(config.searchEnabledEngines).toEqual([
       "duckduckgo_api", "brave_cb", "google_lp", "google_cb", "duckduckgo_cb",
-      "bing_cb", "bing_lp", "google_ch", "duckduckgo_ch", "mojeek_lp"
+      "bing_cb", "bing_lp", "google_ch", "duckduckgo_ch", "mojeek_lp", "yahoo_cb"
     ]);
     expect(config.searchQueueMinIntervalMs).toBe(300000);
     expect(config.searchQueueMaxIntervalMs).toBe(3600000);

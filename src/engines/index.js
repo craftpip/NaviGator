@@ -9,6 +9,7 @@ import { BingCbDriver } from "./bing-cb.js";
 import { BingLpDriver } from "./bing-lp.js";
 import { BraveCbDriver } from "./brave-cb.js";
 import { MojeekLpDriver } from "./mojeek-lp.js";
+import { YahooCbDriver } from "./yahoo-cb.js";
 
 const DRIVER_CLASSES = [
   BingCbDriver,
@@ -20,7 +21,8 @@ const DRIVER_CLASSES = [
   GoogleCbDriver,
   GoogleChDriver,
   GoogleLpDriver,
-  MojeekLpDriver
+  MojeekLpDriver,
+  YahooCbDriver
 ];
 
 const REGISTRY = new Map();

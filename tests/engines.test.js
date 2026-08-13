@@ -34,13 +34,14 @@ afterEach(() => {
 });
 
 describe("engine registry", () => {
-  it("registers all 10 internal routes", () => {
+  it("registers all 11 internal routes", () => {
     expect([...SUPPORTED_ENGINES]).toEqual([
       "bing_cb", "bing_lp",
       "brave_cb",
       "duckduckgo_api", "duckduckgo_cb", "duckduckgo_ch",
       "google_cb", "google_ch", "google_lp",
       "mojeek_lp",
+      "yahoo_cb",
     ]);
   });
 
@@ -166,6 +167,31 @@ describe("browser driver extraction", () => {
       snippet: "Mojeek snippet five.",
       answer: "Mojeek infobox answer.",
     },
+    yahoo_cb: {
+      html: `
+        <div id="web">
+          <ol>
+            <li class="first">
+              <div class="dd algo">
+                <div class="compTitle">
+                  <a data-matarget="algo" href="https://example.com/six">Yahoo Example Six</a>
+                  <h3 class="title"><span>Yahoo Example Six</span></h3>
+                </div>
+                <div class="compText"><p>Yahoo snippet six.</p></div>
+              </div>
+            </li>
+            <li>
+              <div><h2 class="title">Searches related to test</h2></div>
+            </li>
+          </ol>
+          <div class="compCardList"><p>Yahoo card answer.</p></div>
+        </div>
+      `,
+      title: "Yahoo Example Six",
+      url: "https://example.com/six",
+      snippet: "Yahoo snippet six.",
+      answer: "Yahoo card answer.",
+    },
   };
 
   for (const [engine, sample] of Object.entries(cases)) {
@@ -221,6 +247,44 @@ describe("browser driver extraction", () => {
       const { results, directAnswers } = await driver.extract(page);
       expect(results).toEqual([]);
       expect(directAnswers).toEqual([]);
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it("yahoo_cb filters out non-result li blocks (related searches)", async () => {
+    const dom = domFromHtml(`
+      <div id="web">
+        <ol>
+          <li>
+            <div class="dd algo">
+              <div class="compTitle">
+                <a data-matarget="algo" href="https://example.com/a">A</a>
+                <h3 class="title"><span>A</span></h3>
+              </div>
+              <div class="compText"><p>Snippet A.</p></div>
+            </div>
+          </li>
+          <li><div><h2 class="title">Searches related to test</h2></div></li>
+          <li>
+            <div class="dd algo">
+              <div class="compTitle">
+                <a data-matarget="algo" href="https://example.com/b">B</a>
+                <h3 class="title"><span>B</span></h3>
+              </div>
+              <div class="compText"><p>Snippet B.</p></div>
+            </div>
+          </li>
+          <li><div><h2 class="title">Searches related to more</h2></div></li>
+        </ol>
+      </div>
+    `);
+    try {
+      const driver = getEngineDriver("yahoo_cb", {});
+      const page = makeFakePage(dom, "https://search.yahoo.com/search?p=test");
+      const { results } = await driver.extract(page);
+      expect(results).toHaveLength(2);
+      expect(results.map((r) => r.title)).toEqual(["A", "B"]);
     } finally {
       dom.window.close();
     }
@@ -327,6 +391,28 @@ describe("browser driver block detection", () => {
       dom.window.close();
     }
   });
+
+  it("yahoo_cb throws on a CAPTCHA/verification page", async () => {
+    const dom = domFromHtml('<div>We have detected unusual traffic. Please verify you are a human.</div>');
+    try {
+      const driver = getEngineDriver("yahoo_cb", {});
+      const page = makeFakePage(dom, "https://search.yahoo.com/search?p=test");
+      await expect(driver.assertNotBlocked(page)).rejects.toThrow(/blocked/);
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it("yahoo_cb passes on a normal results page", async () => {
+    const dom = domFromHtml('<div id="web"><ol><li class="first"><div class="compTitle"><a data-matarget="algo" href="https://w.example">w</a><h3 class="title"><span>w</span></h3></div></li></ol></div>');
+    try {
+      const driver = getEngineDriver("yahoo_cb", {});
+      const page = makeFakePage(dom, "https://search.yahoo.com/search?p=test");
+      await expect(driver.assertNotBlocked(page)).resolves.toBeUndefined();
+    } finally {
+      dom.window.close();
+    }
+  });
 });
 
 describe("browser warmup filtering", () => {
@@ -374,6 +460,18 @@ describe("normalizeUrl", () => {
 
   it("leaves Bing ck/a redirects intact when the u param is missing", () => {
     const url = "https://www.bing.com/ck/a?!&&ptn=3&ntb=1";
+    expect(normalizeUrl(url)).toBe(url);
+  });
+
+  it("unwraps Yahoo r.search redirects via the RU segment", () => {
+    const target = Buffer.from("https://example.com/yahoo-result").toString("base64url");
+    expect(
+      normalizeUrl(`https://r.search.yahoo.com/_ylt=X/RU=${target}/RV=1/RK=2`)
+    ).toBe("https://example.com/yahoo-result");
+  });
+
+  it("leaves Yahoo r.search redirects intact without an RU segment", () => {
+    const url = "https://r.search.yahoo.com/_ylt=X/RV=1/RK=2";
     expect(normalizeUrl(url)).toBe(url);
   });
 

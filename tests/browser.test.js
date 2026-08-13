@@ -280,6 +280,11 @@ describe("BrowserManager", () => {
       expect(manager._poolEngine("google_ch")).toBe("google_ch");
     });
 
+    it("returns the engine key for cloakbrowser routes", () => {
+      const manager = new BrowserManager(makeConfig());
+      expect(manager._poolEngine("yahoo_cb")).toBe("yahoo_cb");
+    });
+
     it("returns _shared for lightpanda routes", () => {
       const manager = new BrowserManager(makeConfig());
       expect(manager._poolEngine("bing_lp")).toBe("_shared");
@@ -306,6 +311,7 @@ describe("BrowserManager", () => {
       ["brave_cb", "cloakbrowser"],
       ["duckduckgo_cb", "cloakbrowser"],
       ["google_cb", "cloakbrowser"],
+      ["yahoo_cb", "cloakbrowser"],
       ["duckduckgo_ch", "chromium"],
       ["google_ch", "chromium"],
       ["bing_lp", "lightpanda"],
