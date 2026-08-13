@@ -1354,13 +1354,14 @@ function Manage({ config, reload }) {
   const [kind, setKind] = useState("");
   const envSignature = useRef("");
   const rawFor = (entry) =>
+    config.configValues?.[entry.key] ??
     config.env?.[entry.key] ??
-    config.config?.[entry.key.toLowerCase()] ??
     entry.fallback ??
     "";
   useEffect(() => {
     const signature = JSON.stringify({
       env: config.env || {},
+      config: config.config || {},
       schema: (config.schema || []).map((entry) => entry.key),
     });
     if (signature === envSignature.current) return;

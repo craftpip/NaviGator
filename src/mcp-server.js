@@ -371,6 +371,16 @@ async function isVncRunning(novncPort = 7900) {
   return vncRunningCache.running;
 }
 
+const ENV_KEY_TO_CONFIG_KEY = {
+  BROWSER_BACKEND: "defaultBackend",
+  DEVTOOLS_BROWSER_BACKEND: "devtoolsBackend"
+};
+
+function envKeyToConfigKey(key) {
+  if (ENV_KEY_TO_CONFIG_KEY[key]) return ENV_KEY_TO_CONFIG_KEY[key];
+  return key.toLowerCase().replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
 const envFileState = { mtimeMs: null, size: null, changed: false };
 async function checkEnvFileChanged(filePath) {
   try {
@@ -393,6 +403,9 @@ async function getConsoleConfigPayload(manager) {
   return {
     config: manager.config,
     env: getConfigEnvSubset(),
+    configValues: Object.fromEntries(
+      CONFIG_SCHEMA.map((entry) => [entry.key, manager.config[envKeyToConfigKey(entry.key)]])
+    ),
     envFile: { path: envPath, changedOnDisk: envFileState.changed, backup: backupPath },
     engines: enabledEngines.map((id) => CONSOLE_ENGINE_BY_ID.get(id)).filter(Boolean),
     availableEngines: CONSOLE_ENGINE_REGISTRY,
