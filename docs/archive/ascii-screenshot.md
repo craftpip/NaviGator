@@ -1,4 +1,6 @@
-# Plan: Annotated Screenshot Tool — Chafa-style Half-Block Rendering with Element Selectors
+# Archived ASCII Screenshot Reference
+
+> Archived: superseded by `docs/architecture/browser-runtime.md` and `docs/code/support-modules.md`. Retained for historical research only; do not treat its implementation details as current.
 
 ## The Vision
 

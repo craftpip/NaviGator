@@ -1,4 +1,6 @@
-# Web Fetch — Extraction Pipeline Documentation
+# Archived Web Fetch Reference
+
+> Archived: superseded by `docs/extraction/extraction-and-hints.md` and `docs/code/core-server-search.md`. Retained for historical research only; do not treat its implementation details as current.
 
 > Last updated: 2026-07-26
 > Status: Active development
@@ -127,7 +129,7 @@ web_fetch()
 ### Strategy 0: Domain Hint Flow (interactive)
 
 **When:** URL matches a hint with a non-empty `flow`
-**How:** Runs each step against the live page — extract / click / wait / type / navigate. See `docs/domain-hints.md` `flow` section for the full schema and bounds.
+**How:** Runs each step against the live page — extract / click / wait / type / navigate. See [Domain Hint Reference](domain-hints-reference.md) for the full flow schema and bounds.
 **Output:** Stages under `## <step label>`, in flow order; tables stay with their stage; links deduped; final URL/title from the last page state.
 **Returns early** — Readability never runs.
 

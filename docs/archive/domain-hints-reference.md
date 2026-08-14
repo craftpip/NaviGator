@@ -1,4 +1,6 @@
-# Domain Hints
+# Archived Domain Hint Reference
+
+> Archived: superseded by `docs/extraction/extraction-and-hints.md` and `docs/code/support-modules.md`. Retained for historical research only; do not treat its implementation details as current.
 
 Domain hints tell the extraction engine how to handle specific websites. Instead of guessing which parts of a page have real content, you write a hint that says "wait for this selector", "skip this section", or "extract these exact elements".
 
