@@ -194,6 +194,18 @@ describe("validateHintRule", () => {
     }
   });
 
+  it("accepts 'none' as a default stabilizeStrategy", () => {
+    for (const hint of [
+      { default: { stabilizeStrategy: "none" } },
+      { default: { stabilizeStrategy: "content_idle" } },
+      { default: { stabilizeStrategy: "mutation" } },
+      { default: { stabilizeStrategy: "network_idle" } }
+    ]) {
+      const { errors } = validateHintRule(hint, { scope: "test" });
+      expect(errors.map((e) => e.field)).not.toContain("default.stabilizeStrategy");
+    }
+  });
+
   it("treats empty default.tables and default.stabilizeStrategy as unset but rejects bogus values", () => {
     for (const hint of [{ default: { tables: "" } }, { default: { stabilizeStrategy: "" } }, { default: { tables: "", stabilizeStrategy: "" } }]) {
       const { errors } = validateHintRule(hint, { scope: "test" });

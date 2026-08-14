@@ -37,6 +37,7 @@ export const CONFIG_SCHEMA = [
   { key: "LOG_TOOL_ERRORS", category: "ops", type: "boolean", fallback: true, applies: "hot", description: "Log tool errors to logs/tool-errors.log." },
   { key: "DISABLE_TOOLS", category: "ops", type: "toolList", fallback: [], applies: "hot", description: "MCP tools to hide/reject (comma-separated)." },
   { key: "DOMAIN_HINTS_PATH", category: "ops", type: "string", fallback: "domain-hints.json", applies: "recreate", description: "Path to extraction hints file." },
+  { key: "NON_CONTENT_SELECTORS", category: "ops", type: "string", fallback: "script,style,noscript,template,svg,canvas,iframe,nav,aside,select,option,.cookie,.cookies,[class*='cookie'],[id*='cookie'],[class*='consent'],[id*='consent'],[class*='subscribe'],[id*='subscribe'],[class*='banner'],[id*='banner'],[role='dialog']", applies: "hot", description: "DOM elements stripped before extraction (comma-separated CSS selectors). Leave empty to keep everything." },
   { key: "ENABLE_HANG_RESTART", category: "ops", type: "boolean", fallback: false, applies: "hot", description: "Exit process on hung top-level ops so Docker restarts." },
   { key: "HANG_RESTART_TIMEOUT_MS", category: "ops", type: "number", fallback: 120000, applies: "hot", description: "Hang threshold for forced restart (ms)." },
 

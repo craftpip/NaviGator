@@ -77,6 +77,17 @@ export function parseToolList(value) {
   return [...new Set(parsed)];
 }
 
+export function parseSelectorList(value, fallback) {
+  if (value === undefined || value === null) return fallback;
+  const text = String(value).trim();
+  if (!text) return [];
+  const parsed = text
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return [...new Set(parsed)];
+}
+
 export function parseApiKeys(value) {
   if (!value || typeof value !== "string") return [];
   return [...new Set(value
@@ -222,6 +233,30 @@ export async function findLightpandaPath() {
 
 const headlessDefault = !process.env.DISPLAY;
 export const DEFAULT_MAX_CHARS = parseInteger(process.env.WEB_FETCH_MAX_CHARS, 90000);
+export const DEFAULT_NON_CONTENT_SELECTORS = Object.freeze([
+  "script",
+  "style",
+  "noscript",
+  "template",
+  "svg",
+  "canvas",
+  "iframe",
+  "nav",
+  "aside",
+  "select",
+  "option",
+  ".cookie",
+  ".cookies",
+  "[class*='cookie']",
+  "[id*='cookie']",
+  "[class*='consent']",
+  "[id*='consent']",
+  "[class*='subscribe']",
+  "[id*='subscribe']",
+  "[class*='banner']",
+  "[id*='banner']",
+  "[role='dialog']"
+]);
 export const DEFAULT_SEARCH_ENABLED_ENGINES = Object.freeze([
   "duckduckgo_api",
   "brave_cb",
@@ -328,6 +363,7 @@ export async function loadConfig() {
     enableInstantAnswers: parseBoolean(process.env.ENABLE_INSTANT_ANSWERS, true),
     disableTools: parseToolList(process.env.DISABLE_TOOLS),
     domainHintsPath,
+    nonContentSelectors: parseSelectorList(process.env.NON_CONTENT_SELECTORS, DEFAULT_NON_CONTENT_SELECTORS),
     stabilizeStrategy: parseStabilizeStrategy(process.env.STABILIZE_STRATEGY, "network_idle"),
     searchRouteWarmupEngines: process.env.SEARCH_ROUTE_WARMUP_ENGINES === undefined
       ? ["brave_cb", "duckduckgo_api", "duckduckgo_cb"]

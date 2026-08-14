@@ -1,4 +1,4 @@
-import { parseApiKeys, parseBoolean, parseEngines, parseToolList, parseStabilizeStrategy } from "./config.js";
+import { parseApiKeys, parseBoolean, parseEngines, parseSelectorList, parseToolList, parseStabilizeStrategy } from "./config.js";
 
 const WAIT_UNTIL_VALUES = new Set(["load", "domcontentloaded", "networkidle0", "networkidle2"]);
 
@@ -83,6 +83,7 @@ const HOT_APPLYERS = {
   DEBUG: (config, value) => { config.debug = value; },
   LOG_TOOL_ERRORS: (config, value) => { config.logToolErrors = value; },
   DISABLE_TOOLS: (config, value) => { config.disableTools = value; },
+  NON_CONTENT_SELECTORS: (config, value) => { config.nonContentSelectors = parseSelectorList(value, []); },
   ENABLE_HANG_RESTART: (config, value) => { config.enableHangRestart = value; },
   HANG_RESTART_TIMEOUT_MS: (config, value) => { config.hangRestartTimeoutMs = value; },
   ENABLE_VNC: (config, value) => { config.vncEnabled = value; },

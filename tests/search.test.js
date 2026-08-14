@@ -405,6 +405,32 @@ describe("browserOpenAndExtract", () => {
     }
   });
 
+  it("honors the configured NON_CONTENT_SELECTORS list (empty = keep everything)", async () => {
+    const html = `<!doctype html><html><head><title>Nav page</title></head><body>
+      <nav><a href="/home">Home</a></nav>
+      <main><p>Main content.</p></main>
+    </body></html>`;
+    const hint = {
+      domain: "example.com",
+      pathPattern: "/**",
+      content: { blocks: [{ selector: "body", label: "", priority: "high", format: "text" }] }
+    };
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-nav-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([hint]));
+
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({ hintsPath, html }));
+    const { browserOpenAndExtract } = await import("../src/search.js");
+    const stripped = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+    expect(stripped.text).not.toContain("Home");
+    expect(stripped.text).toContain("Main content.");
+
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({ hintsPath, html, configOverrides: { nonContentSelectors: [] } }));
+    const kept = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+    expect(kept.text).toContain("Home");
+    expect(kept.text).toContain("Main content.");
+  });
+
   it("renders structured hint fields without post UI noise", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-hints-"));
     const hintsPath = path.join(tempDir, "domain-hints.json");

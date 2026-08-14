@@ -1384,7 +1384,10 @@ function compareDraftValue(entry, a, b) {
 }
 function Manage({ config, reload }) {
   const [draft, setDraft] = useState({});
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => {
+    const focus = new URLSearchParams(location.search).get("focus");
+    return focus ? String(focus) : "";
+  });
   const [message, setMessage] = useState(
     "Changes persist to .env. Green fields apply now; amber fields need a container recreate.",
   );
@@ -3453,55 +3456,61 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                       that tunes default extraction — load behavior, content format, tables —
                       lives here. Switch to <em>Interactive flow</em> to script your own steps.
                     </p>
-                    <HintFieldGroup title="Page load">
-                      <LineListEditor
-                        label="Wait for selectors (one per line)"
-                        help="Waits until ALL of these elements appear (up to 20s) before extracting. Use only when the content loads after the page — e.g. SPA sites."
-                        values={
-                          Array.isArray(hint.default?.waitForSelector)
-                            ? hint.default.waitForSelector
-                            : hint.default?.waitForSelector
-                              ? [hint.default.waitForSelector]
-                              : []
-                        }
-                        onChange={(waitForSelector) => patchDefault({ waitForSelector })}
-                        placeholder={"turbo-frame#repo-content-turbo-frame"}
-                        mono
-                      />
-                      <div className="hint-option">
-                        <span className="hint-option-name">Stabilize strategy</span>
-                        <select
-                          value={hint.default?.stabilizeStrategy || ""}
-                          onChange={(event) => patchDefault({ stabilizeStrategy: event.target.value || undefined })}
-                        >
-                          <option value="">Default (network_idle — 500ms no network traffic)</option>
-                          <option value="network_idle">network_idle (500ms no network traffic)</option>
-                          <option value="content_idle">content_idle (waits for rendered text)</option>
-                          <option value="mutation">mutation (waits for DOM to stop changing)</option>
-                        </select>
-                        <span className="hint-option-hint">
-                          Always runs after Wait for selector (or alone when none is set).
-                          network_idle = 500ms of no network traffic · content_idle = wait
-                          for rendered text · mutation = wait for DOM changes.
-                        </span>
-                      </div>
-                      <LineListEditor
-                        label="Wait for content selectors (one per line)"
-                        help="Waits for content to appear in these selectors — so if the content is lazy-loaded, the page keeps waiting until it's there. Only needed when your content container isn't already covered (main, article, .content…)."
-                        values={hint.default?.waitForContent || []}
-                        onChange={(waitForContent) => patchDefault({ waitForContent })}
-                        placeholder={"article\n[data-testid=\"content\"]"}
-                        mono
-                      />
-                      <LineListEditor
-                        label="Skip selectors (one per line)"
-                        help="Elements to strip before extraction — one CSS selector per line. e.g. .navbox, .sidebar"
-                        values={hint.default?.skipSelectors || []}
-                        onChange={(skipSelectors) => patchDefault({ skipSelectors })}
-                        placeholder={".navbox\n.sidebar"}
-                        mono
-                      />
-                    </HintFieldGroup>
+                    <LineListEditor
+                      label="Wait for selectors (one per line)"
+                      help="Waits until ALL of these elements appear (up to 20s) before extracting. Use only when the content loads after the page — e.g. SPA sites."
+                      values={
+                        Array.isArray(hint.default?.waitForSelector)
+                          ? hint.default.waitForSelector
+                          : hint.default?.waitForSelector
+                            ? [hint.default.waitForSelector]
+                            : []
+                      }
+                      onChange={(waitForSelector) => patchDefault({ waitForSelector })}
+                      placeholder={"turbo-frame#repo-content-turbo-frame"}
+                      mono
+                    />
+                    <div className="hint-option">
+                      <span className="hint-option-name">Stabilize strategy</span>
+                      <select
+                        value={hint.default?.stabilizeStrategy || ""}
+                        onChange={(event) => patchDefault({ stabilizeStrategy: event.target.value || undefined })}
+                      >
+                        <option value="">Default (network_idle — 500ms no network traffic)</option>
+                        <option value="none">none (skip stabilization — extract right after load)</option>
+                        <option value="network_idle">network_idle (500ms no network traffic)</option>
+                        <option value="content_idle">content_idle (waits for rendered text)</option>
+                        <option value="mutation">mutation (waits for DOM to stop changing)</option>
+                      </select>
+                      <span className="hint-option-hint">
+                        Always runs after Wait for selector (or alone when none is set).
+                        network_idle = 500ms of no network traffic · content_idle = wait
+                        for rendered text · mutation = wait for DOM changes.
+                      </span>
+                    </div>
+                    <LineListEditor
+                      label="Wait for content selectors (one per line)"
+                      help="Waits for content to appear in these selectors — so if the content is lazy-loaded, the page keeps waiting until it's there. Only needed when your content container isn't already covered (main, article, .content…)."
+                      values={hint.default?.waitForContent || []}
+                      onChange={(waitForContent) => patchDefault({ waitForContent })}
+                      placeholder={"article\n[data-testid=\"content\"]"}
+                      mono
+                    />
+                    <LineListEditor
+                      label="Skip selectors (one per line)"
+                      help={
+                        <>
+                          Elements to strip before extraction — one CSS selector per line. e.g. .navbox, .sidebar{" "}
+                          <a href="/console/manage?focus=NON_CONTENT_SELECTORS">
+                            View / edit the built-in default skip selectors →
+                          </a>
+                        </>
+                      }
+                      values={hint.default?.skipSelectors || []}
+                      onChange={(skipSelectors) => patchDefault({ skipSelectors })}
+                      placeholder={".navbox\n.sidebar"}
+                      mono
+                    />
                     <div className="hint-options-grid">
                       <div className="hint-option">
                         <span className="hint-option-name">Format (content)</span>

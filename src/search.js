@@ -1,5 +1,5 @@
 import { getBrowserManager } from "./browser.js";
-import { DEFAULT_MAX_CHARS, DEFAULT_SEARCH_ENABLED_ENGINES } from "./config.js";
+import { DEFAULT_MAX_CHARS, DEFAULT_SEARCH_ENABLED_ENGINES, DEFAULT_NON_CONTENT_SELECTORS } from "./config.js";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { performance } from "node:perf_hooks";
@@ -310,31 +310,6 @@ function normalizeEngines(engines, fallback) {
   }
   return normalized.length ? [...new Set(normalized)] : fallback;
 }
-
-const NON_CONTENT_SELECTORS = [
-  "script",
-  "style",
-  "noscript",
-  "template",
-  "svg",
-  "canvas",
-  "iframe",
-  "nav",
-  "aside",
-  "select",
-  "option",
-  ".cookie",
-  ".cookies",
-  "[class*='cookie']",
-  "[id*='cookie']",
-  "[class*='consent']",
-  "[id*='consent']",
-  "[class*='subscribe']",
-  "[id*='subscribe']",
-  "[class*='banner']",
-  "[id*='banner']",
-  "[role='dialog']"
-];
 
 const SEMANTIC_CONTENT_SELECTORS = [
   "main",
@@ -948,7 +923,7 @@ function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = ""
   };
 }
 
-function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, debug = false, strict = false }) {
+function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, debug = false, strict = false, nonContentSelectors = DEFAULT_NON_CONTENT_SELECTORS }) {
   const tFunc = performance.now();
   if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml called`);
   const rawHtml = typeof html === "string" ? html : "";
@@ -962,7 +937,9 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
 
   try {
     const doc = dom.window.document;
-    doc.querySelectorAll(NON_CONTENT_SELECTORS.join(",")).forEach((node) => node.remove());
+    if (nonContentSelectors.length) {
+      doc.querySelectorAll(nonContentSelectors.join(",")).forEach((node) => node.remove());
+    }
 
     if (hint?.default?.skipSelectors?.length) {
       for (const sel of hint.default.skipSelectors) {
@@ -2110,7 +2087,7 @@ async function capturePageState(page) {
   return { html, url, title, browserText };
 }
 
-function extractHintStage(pageState, hint, step, maxChars, debug) {
+function extractHintStage(pageState, hint, step, maxChars, debug, nonContentSelectors) {
   return extractTextFromHtml({
     html: pageState.html,
     url: pageState.url,
@@ -2119,7 +2096,8 @@ function extractHintStage(pageState, hint, step, maxChars, debug) {
     hint: { ...hint, content: step.content },
     browserText: pageState.browserText,
     debug,
-    strict: true
+    strict: true,
+    nonContentSelectors
   });
 }
 
@@ -2181,7 +2159,7 @@ function isInteractionFreeFlow(flow) {
   );
 }
 
-async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNote }) {
+async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNote, nonContentSelectors }) {
   const flow = hint.flow;
   const flowOptions = hint.flowOptions || {};
   const continueOnEmptyExtract = flowOptions.continueOnEmptyExtract === true;
@@ -2196,7 +2174,7 @@ async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNo
     for (const link of stageLinks) {
       if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
     }
-    const extracted = extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug);
+    const extracted = extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, nonContentSelectors);
     if (extracted.tables?.length && !(extracted.text || "").trim()) {
       extracted.text = insertTablesInline("", extracted.tables);
       extracted.tables = [];
@@ -2242,7 +2220,7 @@ async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNo
   };
 }
 
-async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, debugLog, withPageTimeout, operationTimeoutMs }) {
+async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, debugLog, withPageTimeout, operationTimeoutMs, nonContentSelectors }) {
   const flow = hint.flow;
   const flowOptions = hint.flowOptions || {};
   const totalTimeoutMs = Math.min(
@@ -2285,7 +2263,7 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
         for (const link of stageLinks) {
           if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
         }
-        const extracted = extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug);
+    const extracted = extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, nonContentSelectors);
         if (extracted.tables?.length && !(extracted.text || "").trim()) {
           extracted.text = insertTablesInline("", extracted.tables);
           extracted.tables = [];
@@ -2397,7 +2375,7 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
   return { stages, links: [...linksByHref.values()], warnings };
 }
 
-async function runFlowExtraction({ page, hint, config, maxChars, debug, debugLog, withPageTimeout, operationTimeoutMs, includeSeoAnalysis, hintNote, startTime }) {
+async function runFlowExtraction({ page, hint, config, maxChars, debug, debugLog, withPageTimeout, operationTimeoutMs, includeSeoAnalysis, hintNote, startTime, nonContentSelectors }) {
   const botChallenge = await withPageTimeout("check_bot", () => detectBotChallenge(page));
   if (botChallenge) {
     const pageTitle = await page.title().catch(() => "");
@@ -2412,7 +2390,8 @@ async function runFlowExtraction({ page, hint, config, maxChars, debug, debugLog
     debug,
     debugLog,
     withPageTimeout,
-    operationTimeoutMs
+    operationTimeoutMs,
+    nonContentSelectors
   });
 
   const finalState = await withPageTimeout("flow_final_state", () => capturePageState(page));
@@ -2479,6 +2458,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
   const manager = await getBrowserManager();
   const maxChars = requestedMaxChars ?? manager.config.maxChars ?? DEFAULT_MAX_CHARS;
   const debug = manager.config.debug === true;
+  const nonContentSelectors = manager.config.nonContentSelectors ?? DEFAULT_NON_CONTENT_SELECTORS;
   const debugLog = (label, t) => {
     if (debug) console.log(`[web_fetch] [${url}] ${label}: ${Math.round(performance.now() - t)}ms`);
   };
@@ -2505,7 +2485,8 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         hint,
         maxChars,
         debug,
-        hintNote
+        hintNote,
+        nonContentSelectors
       });
       if (debug) console.log(`[web_fetch] [${url}] cached flow replay: ${Math.round(performance.now() - tCache)}ms (browser skipped)`);
       return replayed;
@@ -2519,7 +2500,8 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         fallbackTitle: "",
         hint,
         browserText: "",
-        debug
+        debug,
+        nonContentSelectors
       });
       const links = extractLinksFromHtml({ html: cached, url });
       let finalText = extracted.text || "";
@@ -2636,7 +2618,8 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
           operationTimeoutMs,
           includeSeoAnalysis,
           hintNote,
-          startTime: tOverall
+          startTime: tOverall,
+          nonContentSelectors
         });
         if (flowHtml && !flowResult.error) {
           return { ...flowResult, html: flowHtml };
@@ -2694,7 +2677,8 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         fallbackTitle: pageTitle,
         hint,
         browserText,
-        debug
+        debug,
+        nonContentSelectors
       });
       debugLog("extract_text_from_html", t);
 

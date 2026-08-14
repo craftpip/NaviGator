@@ -2300,6 +2300,11 @@ select.config-input option {
   font: 10px var(--sans);
   font-style: normal;
 }
+.hint-field-help a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .hint-guide {
   border: 1px solid var(--line);
   border-radius: 4px;

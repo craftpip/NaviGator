@@ -541,8 +541,8 @@ function validateSection(section, errors, fieldPrefix) {
 }
 
 const DEFAULT_TABLES = ["all", "content", "disabled"];
-const STABILIZE_STRATEGIES = ["network_idle", "content_idle", "mutation"];
-const STEP_STABILIZE_STRATEGIES = ["none", ...STABILIZE_STRATEGIES];
+const STABILIZE_STRATEGIES = ["none", "network_idle", "content_idle", "mutation"];
+const STEP_STABILIZE_STRATEGIES = STABILIZE_STRATEGIES;
 const TOP_LEVEL_KEYS = [
   "domain", "pathPattern", "pageType", "comment", "testUrls",
   "requireSelector", "default", "flow", "flowOptions"
