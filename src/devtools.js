@@ -5,6 +5,7 @@ import { clearTab, touchTab } from "./tab-timers.js";
 
 const MAX_TARGETS = 20;
 const MAX_CONSOLE_MESSAGES = 200;
+const MAX_NETWORK_REQUESTS = 200;
 const MAX_QUERY_RESULTS = 25;
 const DEFAULT_HTML_LIMIT = 20000;
 const INACTIVITY_TIMEOUT_MS = 300_000;
@@ -40,6 +41,19 @@ function assertString(value, field) {
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`Invalid input: ${field} must be a non-empty string`);
   }
+}
+
+function parseViewport(value) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid input: viewport must be an object with positive width and height");
+  }
+  const width = Math.floor(Number(value.width));
+  const height = Math.floor(Number(value.height));
+  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+    throw new Error("Invalid input: viewport.width and viewport.height must be positive numbers");
+  }
+  return { width, height };
 }
 
 function assertEnabled(manager) {
@@ -78,12 +92,20 @@ function recordConsoleMessage(state, entry) {
   }
 }
 
+function recordNetworkRequest(state, entry) {
+  state.networkRequests.push(entry);
+  while (state.networkRequests.length > MAX_NETWORK_REQUESTS) {
+    state.networkRequests.shift();
+  }
+}
+
 function buildTargetSummary(state) {
   return {
     targetId: state.targetId,
     backend: state.backend,
     url: state.page.url(),
     title: state.lastTitle || "",
+    viewport: state.viewport,
     createdAt: state.createdAt,
     lastActiveAt: state.lastActiveAt,
     consoleMessageCount: state.consoleMessages.length
@@ -132,6 +154,7 @@ startInactivityCleanup();
 
 function installPageObservers(state) {
   const { page } = state;
+  const pendingRequests = new Map();
 
   page.on("console", async (message) => {
     let args = [];
@@ -176,6 +199,49 @@ function installPageObservers(state) {
     });
   });
 
+  page.on("request", (request) => {
+    pendingRequests.set(request.id(), {
+      method: request.method(),
+      url: request.url(),
+      resourceType: request.resourceType() || "other",
+      startedAt: Date.now()
+    });
+  });
+
+  page.on("response", (response) => {
+    const request = response.request();
+    const pending = pendingRequests.get(request.id());
+    recordNetworkRequest(state, {
+      method: request.method(),
+      url: response.url(),
+      resourceType: request.resourceType() || "other",
+      status: response.status(),
+      ok: response.ok(),
+      fromCache: response.fromCache(),
+      durationMs: pending ? Date.now() - pending.startedAt : null,
+      failed: false,
+      startedAt: pending?.startedAt || null
+    });
+    pendingRequests.delete(request.id());
+  });
+
+  page.on("requestfailed", (request) => {
+    const pending = pendingRequests.get(request.id());
+    recordNetworkRequest(state, {
+      method: request.method(),
+      url: request.url(),
+      resourceType: request.resourceType() || "other",
+      status: null,
+      ok: false,
+      fromCache: false,
+      durationMs: pending ? Date.now() - pending.startedAt : null,
+      failed: true,
+      error: request.failure()?.errorText || "request failed",
+      startedAt: pending?.startedAt || null
+    });
+    pendingRequests.delete(request.id());
+  });
+
   page.on("framenavigated", async (frame) => {
     if (frame !== page.mainFrame()) return;
     state.lastActiveAt = new Date().toISOString();
@@ -196,6 +262,7 @@ async function createTarget(args = {}) {
   }
 
   const backend = normalizeBackend(manager);
+  const viewport = parseViewport(args.viewport);
   const customTargetId = typeof args.targetId === "string" && args.targetId.trim()
     ? args.targetId.trim()
     : null;
@@ -213,15 +280,18 @@ async function createTarget(args = {}) {
   }
 
   const page = await manager.newPage({ backend });
+  if (viewport) await page.setViewport(viewport);
 
   const state = {
     targetId: customTargetId || randomBytes(6).toString("hex"),
     backend,
     page,
     consoleMessages: [],
+    networkRequests: [],
     createdAt: new Date().toISOString(),
     lastActiveAt: new Date().toISOString(),
     lastTitle: "",
+    viewport,
     sourceUrl: url
   };
 
@@ -353,6 +423,104 @@ async function navigatePage(args = {}) {
   });
   await refreshTitle(state);
   return { ...buildTargetSummary(state), created: false };
+}
+
+async function reloadPage(args = {}) {
+  assertString(args.targetId, "targetId");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const ignoreCache = Boolean(args.ignoreCache);
+  let cacheToggled = false;
+
+  if (ignoreCache) {
+    try {
+      await state.page.setCacheEnabled(false);
+      cacheToggled = true;
+    } catch {
+      // Some browser backends do not implement Network.setCacheDisabled.
+    }
+  }
+
+  try {
+    await state.page.reload({
+      waitUntil: manager.config.navWaitUntil,
+      timeout: manager.config.browserOpTimeoutMs
+    });
+  } finally {
+    if (cacheToggled) {
+      try {
+        await state.page.setCacheEnabled(true);
+      } catch {
+        // Best-effort cache restoration after a supported hard refresh.
+      }
+    }
+  }
+
+  await refreshTitle(state);
+  return { ...buildTargetSummary(state), reloaded: true, ignoreCache: cacheToggled };
+}
+
+async function goHistory(args = {}, direction) {
+  assertString(args.targetId, "targetId");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const options = {
+    waitUntil: manager.config.navWaitUntil,
+    timeout: manager.config.browserOpTimeoutMs
+  };
+  const response = direction === "forward"
+    ? await state.page.goForward(options)
+    : await state.page.goBack(options);
+  await refreshTitle(state);
+  return { ...buildTargetSummary(state), direction, navigated: Boolean(response) };
+}
+
+async function dispatchKeyEvent(args = {}) {
+  assertString(args.targetId, "targetId");
+  assertString(args.key, "key");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const modifiers = Array.isArray(args.modifiers) ? args.modifiers.map(String) : [];
+
+  for (const modifier of modifiers) await state.page.keyboard.down(modifier);
+  try {
+    await state.page.keyboard.press(args.key, args.text ? { text: String(args.text) } : {});
+  } finally {
+    for (const modifier of [...modifiers].reverse()) await state.page.keyboard.up(modifier);
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, manager.config.humanTypingDelay || 0));
+  return { ...buildTargetSummary(state), pressed: args.key, modifiers };
+}
+
+async function getNetworkRequests(args = {}) {
+  assertString(args.targetId, "targetId");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(args.targetId);
+  const limit = Math.min(Math.max(1, Math.floor(Number(args.limit)) || 25), MAX_NETWORK_REQUESTS);
+  const filter = typeof args.filter === "string" && args.filter.trim()
+    ? args.filter.trim().toLowerCase()
+    : null;
+  const failedOnly = Boolean(args.failedOnly);
+  const statusFilter = Number.isFinite(Number(args.status)) ? Number(args.status) : null;
+
+  let entries = state.networkRequests;
+  if (failedOnly) entries = entries.filter((entry) => entry.failed);
+  if (filter) entries = entries.filter((entry) => entry.url.toLowerCase().includes(filter));
+  if (statusFilter !== null) entries = entries.filter((entry) => entry.status === statusFilter);
+
+  return {
+    targetId: state.targetId,
+    url: state.page.url(),
+    total: state.networkRequests.length,
+    shown: Math.min(entries.length, limit),
+    failed: entries.filter((entry) => entry.failed).length,
+    requests: entries.slice(-limit).reverse()
+  };
 }
 
 async function evaluateRuntime(args = {}) {
@@ -1358,13 +1526,23 @@ async function insertText(args = {}) {
 export const devtoolsToolDefinitions = [
   {
     name: "Target.createTarget",
-    description: "Create a persistent browser tab for interactive testing. Provide a url, or a ref_id from a prior web_search / web_fetch to open that page. Targets close automatically after 5 minutes of no interaction.",
+    description: "Create a persistent browser tab for interactive testing. Provide a url, ref_id, and optional viewport to apply before navigation. Targets close automatically after 5 minutes of no interaction.",
     inputSchema: {
       type: "object",
       properties: {
         targetId: { type: "string", description: "Optional custom target id. If omitted, a random id is generated." },
         url: { type: "string", description: "Optional starting URL. Defaults to about:blank." },
-        ref_id: { type: "number", description: "Optional numeric reference from a prior web_search or web_fetch to open. Overridden by url when both are given." }
+        ref_id: { type: "number", description: "Optional numeric reference from a prior web_search or web_fetch to open. Overridden by url when both are given." },
+        viewport: {
+          type: "object",
+          description: "Optional page viewport applied before navigation, e.g. { width: 390, height: 844 }.",
+          properties: {
+            width: { type: "number", description: "Viewport width in CSS pixels." },
+            height: { type: "number", description: "Viewport height in CSS pixels." }
+          },
+          required: ["width", "height"],
+          additionalProperties: false
+        }
       },
       additionalProperties: false
     }
@@ -1404,6 +1582,43 @@ export const devtoolsToolDefinitions = [
     }
   },
   {
+    name: "Page.reload",
+    description: "Reload the current page in an existing testing tab. Set ignoreCache: true for a hard refresh that bypasses the HTTP cache during the reload.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        ignoreCache: { type: "boolean", default: false, description: "Hard refresh: disable the HTTP cache for this reload, then re-enable it." }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "Page.goBack",
+    description: "Navigate to the previous entry in the tab's session history (browser back button). Returns navigated: false when there is no back history.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string", description: "Target id from Target.createTarget." }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "Page.goForward",
+    description: "Navigate to the next entry in the tab's session history (browser forward button). Returns navigated: false when there is no forward history.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string", description: "Target id from Target.createTarget." }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
     name: "Runtime.evaluate",
     description: "Evaluate a JavaScript expression in the page context and return the result serialized as JSON. Objects/arrays are capped at 25 entries (with a [+more] marker) and depth 4; [Circular] and [MaxDepth] markers indicate truncation.",
     inputSchema: {
@@ -1424,6 +1639,22 @@ export const devtoolsToolDefinitions = [
       properties: {
         targetId: { type: "string" },
         limit: { type: "number", default: 30 }
+      },
+      required: ["targetId"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "Network.getRequests",
+    description: "List the network requests the tab has made (per-target rolling buffer of the last 200). Each entry shows method, url, status, resourceType, ok/failed, and fromCache. Filter by URL substring, failed-only, or exact status. Useful to see what a page actually loaded and which requests failed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        limit: { type: "number", default: 25, description: "Max requests to return (newest first), 1-200." },
+        filter: { type: "string", description: "Case-insensitive substring matched against the request URL." },
+        failedOnly: { type: "boolean", default: false, description: "Return only failed requests." },
+        status: { type: "number", description: "Return only requests with this HTTP status (e.g. 404)." }
       },
       required: ["targetId"],
       additionalProperties: false
@@ -1549,6 +1780,21 @@ export const devtoolsToolDefinitions = [
       required: ["targetId", "text"],
       additionalProperties: false
     }
+  },
+  {
+    name: "Input.dispatchKeyEvent",
+    description: "Press a keyboard key in the page, such as Enter, Tab, Escape, Backspace, ArrowUp, F1-F12, Space, or a character, optionally with modifier keys held down. Synthetic key events cannot trigger browser-level shortcuts such as Ctrl+R or F12; use Page.reload for refreshing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        targetId: { type: "string", description: "Target id from Target.createTarget." },
+        key: { type: "string", description: "Key to press: a single character or a key name such as Enter, Tab, Escape, ArrowUp, F1-F12, Space, Meta, Control, Shift, or Alt." },
+        modifiers: { type: "array", items: { type: "string" }, description: "Modifier keys to hold during the press, e.g. [\"Shift\", \"Control\"]. Pressed in array order and released in reverse." },
+        text: { type: "string", description: "Optional text to inject for the key (used for keys that insert text)." }
+      },
+      required: ["targetId", "key"],
+      additionalProperties: false
+    }
   }
 ];
 
@@ -1557,8 +1803,12 @@ export async function handleDevtoolsToolCall(name, args = {}) {
   if (name === "Target.getTargets") return listTargets(args);
   if (name === "Target.closeTarget") return closeTarget(args);
   if (name === "Page.navigate") return navigatePage(args);
+  if (name === "Page.reload") return reloadPage(args);
+  if (name === "Page.goBack") return goHistory(args, "back");
+  if (name === "Page.goForward") return goHistory(args, "forward");
   if (name === "Runtime.evaluate") return evaluateRuntime(args);
   if (name === "Runtime.getConsoleMessages") return getConsoleMessages(args);
+  if (name === "Network.getRequests") return getNetworkRequests(args);
   if (name === "DOM.getDocument") return getDocument(args);
   if (name === "DOM.querySelector") return querySelector(args, false);
   if (name === "DOM.querySelectorAll") return querySelector(args, true);
@@ -1567,6 +1817,7 @@ export async function handleDevtoolsToolCall(name, args = {}) {
   if (name === "DOM.scrollIntoViewIfNeeded") return scrollIntoViewIfNeeded(args);
   if (name === "Input.dispatchMouseEvent") return dispatchMouseEvent(args);
   if (name === "Input.insertText") return insertText(args);
+  if (name === "Input.dispatchKeyEvent") return dispatchKeyEvent(args);
   throw new Error(`Unknown developer browser tool: ${name}`);
 }
 

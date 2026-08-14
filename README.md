@@ -1,10 +1,10 @@
-# 🐊 NaviGator
+# 🐊 navigator
 
 [![CI](https://github.com/craftpip/navigator/actions/workflows/test.yml/badge.svg)](https://github.com/craftpip/navigator/actions/workflows/test.yml)
 [![Docker](https://ghcr-badge.egpl.dev/craftpip/navigator/latest_tag?label=ghcr.io/craftpip/navigator)](https://github.com/craftpip/navigator/pkgs/container/navigator)
 [![License](https://img.shields.io/github/license/craftpip/navigator)](LICENSE)
 
-NaviGator gives your MCP client a real browser for:
+navigator gives your MCP client a real browser for:
 
 - web search
 - readable page extraction

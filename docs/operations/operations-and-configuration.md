@@ -66,7 +66,7 @@ The base URL is resolved from `--url`, then `NAVIGATOR_URL`, then `.env` `MCP_AP
 
 ## Web Console
 
-The React/Vite console lives in `web-console/` and is served at `/console` (`/ui` and `/dashboard` are aliases). Build it on the host:
+The React/Vite console lives in `src/web-console/` and is served at `/console` (`/ui` and `/dashboard` are aliases). Build it on the host:
 
 ```bash
 npm run console:build
@@ -79,6 +79,7 @@ It provides:
 - MCP tool runner: dynamically generated forms from tool schemas.
 - API key management: creation, revocation, and tool allow-lists.
 - Domain hint editor: list, validate, test a candidate page extraction, create, update, and delete rules.
+- Remote Desktop controls: enable the VNC/noVNC stack, then open or close it from one grouped control.
 
 ## Error Logging
 

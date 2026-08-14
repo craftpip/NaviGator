@@ -42,7 +42,7 @@ npm run console:build
 docker compose up -d
 ```
 
-The server serves generated files from `web-console/dist` at `/console/`. Do not edit hashed files in that directory; edit `web-console/src/` and rebuild. The console polls live health, stats, activity, configuration, logs, API keys, and domain hints. Its activity feed has separate cursors for searches and page operations (`since` and `sinceOps`); consumers must retain both so rows are not skipped.
+The server serves generated files from `src/web-console/dist` at `/console/`. Do not edit hashed files in that directory; edit `src/web-console/src/` and rebuild. The console polls live health, stats, activity, configuration, logs, API keys, and domain hints. Its activity feed has separate cursors for searches and page operations (`since` and `sinceOps`); consumers must retain both so rows are not skipped.
 
 ## Host CLI
 
@@ -116,4 +116,4 @@ The suite is organized by behavior, not by a strict unit/integration split:
 - `domain-hints*.test.js` cover hint matching, validation, persistence/API behavior, and optional live-site checks. Live tests require `LIVE_DOMAIN_HINTS=1` and should not be treated as deterministic CI tests.
 - `activity.test.js`, `env-file.test.js`, `ref-memory.test.js`, `markdown.test.js`, and `mcp-api-auth.test.js` cover persistence, console data, formatting, references, and authentication boundaries.
 
-After a user-facing change, test the relevant MCP flow and inspect the browser console/request failures when applicable. For console changes, build the assets, open `/console/`, and verify the actual generated asset referenced by `web-console/dist/index.html` is served.
+After a user-facing change, test the relevant MCP flow and inspect the browser console/request failures when applicable. For console changes, build the assets, open `/console/`, and verify the actual generated asset referenced by `src/web-console/dist/index.html` is served.

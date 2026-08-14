@@ -2,7 +2,7 @@
 
 ## Purpose
 
-NaviGator is a Node.js Model Context Protocol server that uses real browser backends for web search, readable page extraction, screenshots, and optional browser automation. It runs over stdio or Streamable HTTP, with an HTTP status/management console for long-running deployments.
+navigator is a Node.js Model Context Protocol server that uses real browser backends for web search, readable page extraction, screenshots, and optional browser automation. It runs over stdio or Streamable HTTP, with an HTTP status/management console for long-running deployments.
 
 ## Main Components
 
@@ -14,7 +14,7 @@ NaviGator is a Node.js Model Context Protocol server that uses real browser back
 | Extraction | `src/search.js`, `src/domain-hints.js`, `src/markdown.js` | Navigation, stabilization, article extraction, tables, links, and hint-driven flows |
 | Persistent inspection | `src/devtools.js`, `src/tab-timers.js` | Long-lived browser tabs and CDP-style inspection/input tools |
 | State and operations | `src/db.js`, `src/activity.js`, `src/config*.js`, `src/env-file.js` | SQLite telemetry, config parsing/updates, API keys, and reference IDs |
-| Console and desktop | `web-console/`, `src/vnc-manager.js` | React management UI and optional headful VNC/noVNC stack |
+| Console and desktop | `src/web-console/`, `src/vnc-manager.js` | React management UI and optional headful VNC/noVNC stack |
 
 ## Startup Lifecycle
 

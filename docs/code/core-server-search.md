@@ -8,7 +8,7 @@ An MCP tool call first passes disabled-tool and API-key scope checks, then is re
 
 The server exposes `web_search`, `web_fetch`, screenshots, link resolution, ASCII capture, and, when enabled, persistent devtools tools. It rejects unknown or disabled tools with a useful error. Tool errors are also written as redacted JSONL records in `logs/tool-errors.log` when logging is enabled. Sensitive argument names are masked and typed text is retained only as a character count.
 
-HTTP request bodies are limited to 1 MiB. The health endpoint reports browser, page-limiter, circuit-breaker, and VNC state; `/stats` adds process, cache, request, engine-attempt, activity, and browser-instance data. The web console is optional and its assets are resolved beneath `web-console/dist` to prevent path traversal.
+HTTP request bodies are limited to 1 MiB. The health endpoint reports browser, page-limiter, circuit-breaker, and VNC state; `/stats` adds process, cache, request, engine-attempt, activity, and browser-instance data. The web console is optional and its assets are resolved beneath `src/web-console/dist` to prevent path traversal.
 
 Source: MCP dispatch and HTTP routing in `src/mcp-server.js`; browser operations in `src/search.js`.
 

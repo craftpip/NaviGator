@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a problem with NaviGator
+about: Report a problem with navigator
 title: "[Bug] "
 labels: bug
 assignees: ""

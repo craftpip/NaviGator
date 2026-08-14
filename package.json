@@ -8,9 +8,7 @@
   "files": [
     "src",
     "docker",
-    "web-console",
     "scripts",
-    "Dockerfile",
     "docker-compose.yml",
     "README.md",
     "LICENSE"
@@ -34,15 +32,15 @@
   ],
   "scripts": {
     "start": "node src/mcp-server.js",
-    "console:dev": "vite --config web-console/vite.config.js",
-    "console:build": "vite build --config web-console/vite.config.js",
+    "console:dev": "vite --config src/web-console/vite.config.js",
+    "console:build": "vite build --config src/web-console/vite.config.js",
     "build": "docker compose up --build -d",
     "bench": "node benchmark/web-search-benchmark.mjs",
     "test:hints": "vitest run tests/domain-hints.test.js",
     "test:hints:live": "LIVE_DOMAIN_HINTS=1 vitest run tests/domain-hints-live.test.js",
     "docs": "typedoc src/ --out doc",
-    "lint": "eslint src/ scripts/ tests/ web-console/src/",
-    "lint:fix": "eslint --fix src/ scripts/ tests/ web-console/src/",
+    "lint": "eslint src/ scripts/ tests/ --ignore-pattern src/web-console/dist/**",
+    "lint:fix": "eslint --fix src/ scripts/ tests/ --ignore-pattern src/web-console/dist/**",
     "release:patch": "npm version patch",
     "release:minor": "npm version minor",
     "release:major": "npm version major"

@@ -2,10 +2,7 @@
 
 ## Plan Status
 
-**Status: IN PROGRESS (gathering requirements)** — created 2026-08-11. Frontend
-environment mapped. User is dictating improvements live; everything lands in
-[User Request Log](#user-request-log) and gets worked into
-[Improvement Areas](#improvement-areas).
+**Status: COMPLETE** — the remaining next-area decision was discarded 2026-08-14.
 
 ### Checklist
 
@@ -13,7 +10,6 @@ environment mapped. User is dictating improvements live; everything lands in
 - [x] `style.css` fully rewritten (~700 readable lines, was the old 7-line minified file) to style all new component classes.
 - [x] Lint clean over `web-console/src/`, `console:build` succeeds.
 - [x] **Deployed 2026-08-11**: image rebuilt (`docker build -t navigator:latest .`), container recreated with exact captured env/volumes/ports. All 4 modes verified live.
-- [ ] Decide next: Area A (code health — split + format + baseline tests) vs Areas B–E. `plans/console-redesign.md` tracks the status-page reorg + SQLite separately.
 
 ---
 

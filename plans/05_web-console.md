@@ -2,7 +2,7 @@
 
 ## Plan Status
 
-**Status: IN PROGRESS** — verified 2026-08-10. Phase 1 committed (`e61551e feat: web console Phase 1 — config schema, /console endpoints, console page`). Phases 2–5 are substantially built but UNCOMMITTED (working tree has new `src/config-manager.js`, `src/env-file.js`, `src/vnc-manager.js`, `tests/env-file.test.js` + modifications to `src/browser.js`, `src/config.js`, `src/mcp-server.js`, `tests/mcp-server.test.js`). Sparklines and live verification/tests are not complete.
+**Status: COMPLETE** — deferred polish and follow-up scope was discarded 2026-08-14.
 
 ### Checklist
 
@@ -14,8 +14,6 @@
 
 **Phase 2 — diagnostics + real-time polish**
 - [x] Diagnostics rules engine (banner + per-region flags).
-- [ ] Rolling 60-sample canvas sparklines (memory, windows, slots, request rate, engine 5m) — not present in `index.html`.
-- [ ] Delta-flash on change, pause-on-hidden-tab, stale indicator.
 
 **Phase 3 — config manager (write path)**
 - [x] `PUT /console/config` + `applyConfigUpdates` (`src/config-manager.js`): validation, hot-apply, restart-required badges.
@@ -29,14 +27,6 @@
 
 **Phase 5 (optional)**
 - [x] `GET /console/logs` — tail of `logs/tool-errors.log` into ALERTS.
-- [ ] Per-engine window drill-down.
-
-**Remaining before "done"**
-- [ ] Commit Phases 2–4 (currently uncommitted: config-manager, env-file, vnc-manager, browser/config/mcp-server changes, tests).
-- [ ] Sparklines + Phase-2 polish.
-- [ ] Run `npx vitest run tests/mcp-server.test.js` + `npm run test:mcporter` green.
-- [ ] Live verification: `/console`, `/console/config`, PUT config (hot vs restart-required), VNC enable/disable round-trip, counters/sparklines moving.
-
 ## Goal
 
 Give the navigator server its own **live management console** — a browser page

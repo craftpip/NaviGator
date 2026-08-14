@@ -1,6 +1,6 @@
-# NaviGator Documentation
+# navigator Documentation
 
-This folder is the project documentation. It describes how NaviGator is built and how its MCP server, browser runtime, search routes, extraction pipeline, storage, and console work. The repository `README.md` is only the introduction and quick-start guide.
+This folder is the project documentation. It describes how navigator is built and how its MCP server, browser runtime, search routes, extraction pipeline, storage, and console work. The repository `README.md` is only the introduction and quick-start guide.
 
 ## Read This First
 

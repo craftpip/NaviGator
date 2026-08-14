@@ -125,7 +125,7 @@ All tool schemas are defined in `getToolsListResponse()`:
 | `web_page_screenshot` | `src/mcp-server.js` | 980–1027 |
 | `web_page_links` | `src/mcp-server.js` | 1096–1113 |
 | `web_page_ascii` | `src/mcp-server.js` | 1114–1141 |
-| Devtools tools (14) | `src/devtools.js` | 884–1062 |
+| Devtools tools (19) | `src/devtools.js` | tool definitions and handlers |
 
 ### Tool Call Dispatch
 
@@ -176,7 +176,7 @@ mcp-server --> engines
 
 `src/engines/index.js` imports no `search.js` / `browser.js` / `config.js`. `config.js` imports `SUPPORTED_ENGINES` from it.
 
-**Driver contract** (`src/engines/driver.js`): instance properties `id`, `backend` (`api` | `cloakbrowser` | `chromium` | `lightpanda`), `pool` (`engine` | `shared`, browser drivers only), `exposedInMcp`, `homeUrl` (null for API drivers), `inputSelectors`, `resultSelectors`; methods `searchUrl(query)`, `search({ query })` (API only), `submit(page, query)`, `extract(page)`, `assertNotBlocked(page)` (browser drivers). Every driver returns `{ results, directAnswers }` with each item tagged `engine: this.id`.
+**Driver contract** (`src/engines/driver.js`): instance properties `id`, `backend` (`api` | `cloakbrowser` | `chromium` | `lightpanda`), `pool` (`engine` | `shared`, browser drivers only), `homeUrl` (null for API drivers), `inputSelectors`, `resultSelectors`; methods `searchUrl(query)`, `search({ query })` (API only), `submit(page, query)`, `extract(page)`, `assertNotBlocked(page)` (browser drivers). Every driver returns `{ results, directAnswers }` with each item tagged `engine: this.id`.
 
 - `BrowserSearchDriver.submit()` = goto → body wait → 500ms settle → `waitForAnySelector` with before/after `assertNotBlocked`.
 - DuckDuckGo overrides `submit()` (set the form value, wait for form-submission navigation). Google and Mojeek override `assertNotBlocked()` for their block checks.
@@ -185,8 +185,7 @@ mcp-server --> engines
 - Driver `extract()` functions are plain functions referencing global `document`; tests run them via jsdom `eval` with `runScripts: "outside-only"`.
 
 **Registry** (`src/engines/index.js`) — load-time validation (unique ids, known backends, API routes have no pool/homeUrl, browser routes have homeUrl + valid pool). Exports:
-- `SUPPORTED_ENGINES` — ordered, frozen array of all internal ids (10).
-- `MCP_SEARCH_ENGINES` — the `exposedInMcp` subset (8).
+- `SUPPORTED_ENGINES` — ordered, frozen array of all registered ids (12).
 - `getEngineDriver(engine, config)` — instantiates a driver or throws for an unknown id.
 - `getEngineMetadata(engine)` — `{ backend, pool, homeUrl, isBrowser }`; **must NOT throw for unknown engines** (`browser.newPage()` receives arbitrary engine names).
 - `getBrowserWarmupEngines(engines)` — filters configured engine ids to browser drivers only.
@@ -196,11 +195,11 @@ mcp-server --> engines
 | backend | pool | routes |
 |---|---|---|
 | `api` | — | `duckduckgo_api` (the only API route — `brave_api` was removed 2026-08-01) |
-| `cloakbrowser` | engine | `duckduckgo_cb`, `google_cb`, `bing_cb`, `brave_cb` |
+| `cloakbrowser` | engine | `duckduckgo_cb`, `google_cb`, `bing_cb`, `brave_cb`, `startpage_cb`, `yahoo_cb` |
 | `chromium` | engine | `duckduckgo_ch`, `google_ch` (valid internal routes, not advertised via MCP) |
 | `lightpanda` | shared | `google_lp`, `bing_lp`, `mojeek_lp` |
 
-**Adding a route** = implement a driver in `src/engines/`, register it in `index.js`, and choose `exposedInMcp`. Do not re-add engine maps to `src/search.js` — use the registry functions so one representation cannot drift. Keep the MCP enum exactly `["select_best", ...MCP_SEARCH_ENGINES]`; never expose the Chromium-only routes. Timing logs stay in `src/search.js` (the orchestrator owns them); API drivers do not log timings.
+**Adding a route** = implement a driver in `src/engines/` and register it in `index.js`. Do not re-add engine maps to `src/search.js` — use the registry functions so one representation cannot drift. Timing logs stay in `src/search.js` (the orchestrator owns them); API drivers do not log timings.
 
 ---
 
@@ -225,7 +224,7 @@ For visual verification, call `web_page_screenshot` with the same `ref_id`.
 | `HEADLESS` | `true` | Run browser in headless mode |
 | `BROWSER_BACKEND` | `cloakbrowser` | Default backend for non-search page creation. Allowed values: `cloakbrowser`, `chromium`, `lightpanda`. This is used by `web_fetch` and `web_page_screenshot`. |
 | `BROWSER_OP_TIMEOUT_MS` | `60000` | Per-operation timeout |
-| `SEARCH_ROUTE_WARMUP_ENGINES` | `duckduckgo_api,google_cb,google_lp,bing_lp,duckduckgo_cb,bing_cb` | Engines to warm up on startup |
+| `SEARCH_ROUTE_WARMUP_ENGINES` | `brave_cb,duckduckgo_api,duckduckgo_cb` | Engines to warm up on startup; set explicitly to empty for no warmup |
 | `SEARCH_ROUTE_CIRCUIT_OPEN_MS` | `300000` | Per-route cooldown after failure |
 | `PRELAUNCH_BROWSER` | `1` | Prelaunch browser on server start |
 | `ENABLE_HTTP_MCP` | `0` | Enable Streamable HTTP transport |
@@ -236,7 +235,7 @@ For visual verification, call `web_page_screenshot` with the same `ref_id`.
 
 ### Key Notes
 
-- Reference memory is process-local and resets when the server restarts.
+- Link-reference caches are process-local, but `ref_links` in SQLite preserves URL-to-ID mappings across restarts.
 - Prefer `ref_id` / `ref_ids` immediately after a search within the same session.
 - Sticky search windows are reused for performance.
 - `BROWSER_BACKEND` is parsed in `src/config.js` into `defaultBackend`.
@@ -516,6 +515,7 @@ field is rejected as unknown.
 - **POST handler must use exact session ID match** (`mcpTransports.get(sessionId)`) — never `resolveTransport()` which falls back to any available transport. The SDK's `validateSession()` rejects requests where the session ID in the header doesn't match the transport's own session ID (returns 404), causing "Session terminated" errors and unnecessary reconnect loops.
 - **Keepalive outer catch must NOT delete transports** — if `transport._webStandardTransport` throws during a close sequence, skip it instead of calling `mcpTransports.delete(sid)`. The SDK's own `onclose` handler will clean up when the session is truly dead.
 - Container deploy flow: `docker compose build && docker compose down && docker compose up -d`. Never `npm install` on the host.
+- Project documentation explains intent, end-to-end behavior, conditions, fallbacks, decisions, operational impact, and safe change boundaries. Do not turn it into a line-by-line code paraphrase or a mechanical symbol inventory; use source references only to help maintainers trace the behavior.
 
 ## Project Learnings
 
@@ -550,7 +550,7 @@ Do not remove `console.log` / `console.error` calls from `src/search.js` or othe
 - `searches` and `page_ops` have **independent id sequences** — a single `since` cursor across both drops rows. `GET /stats/activity` takes `since` (searches) and `sinceOps` (page_ops) separately; the console tracks two refs.
 - Activity rows store `ts` as epoch ms (`Date.now()`), not ISO. `formatTime` in main.jsx must handle epoch-ms (and epoch-s < 1e12).
 - Feed merge lives in `App.load()` and `feed` is passed as a direct prop to `StatusView` — stuffing it into `snapshot` state creates a stale-closure bug because `load` is captured by the mount-once effect.
-- Console deploy: build on the host with `npm run console:build` (needs dev deps), output goes to `web-console/dist`, which the server serves from the bind mount (`cwd/web-console/dist`). No image bake, no image rebuild — `docker compose up -d` recreates the container from the existing image. Verify the new hashed `assets/index-*.js` is what `index.html` references.
+- Console deploy: build on the host with `npm run console:build` (needs dev deps), output goes to `src/web-console/dist`, which the server serves from the bind mount (`cwd/src/web-console/dist`). No image bake, no image rebuild — `docker compose up -d` recreates the container from the existing image. Verify the new hashed `assets/index-*.js` is what `index.html` references.
 - New CSS vars needed by the console: `--gold` (countdowns, most-working badge) — defined in both `:root` themes.
 
 **Unfinished:** commit is pending; plan checklist in `plans/console-redesign.md` §6 has the full log.

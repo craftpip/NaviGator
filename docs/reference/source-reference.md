@@ -16,7 +16,7 @@ This page helps maintainers locate the implementation behind each documented beh
 | Configuration | `src/config.js`, `src/config-schema.js`, `src/config-manager.js`, `src/env-file.js` | Environment parsing, editable schema, hot configuration, `.env` writes/backups |
 | Screenshots and visual output | `src/pixel-sampler.js`, `src/ascii.js` | Screenshot sampling, ANSI/plain ASCII rendering, annotation legend |
 | Desktop/VNC | `src/vnc-manager.js` | Xvfb/noVNC lifecycle and browser headful transitions |
-| CLI and console | `navigator.js`, `web-console/` | Host monitoring CLI and management UI |
+| CLI and console | `navigator.js`, `src/web-console/` | Host monitoring CLI and management UI |
 
 ## Change Paths
 

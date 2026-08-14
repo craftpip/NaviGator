@@ -2,11 +2,8 @@
 
 ## Plan Status
 
-**Status: AREAS A + B IMPLEMENTED** — created 2026-08-11. User dictated
-improvements live; implementation landed 2026-08-11 in the working tree
-(not yet deployed). An earlier improvement plan
-(`plans/web-console-improvements.md`, IN PROGRESS) covers a different
-requirement set — keep the two from colliding.
+**Status: COMPLETE** — Areas A and B were implemented; deferred deployment and
+commit scope was discarded 2026-08-14.
 
 ### Checklist
 
@@ -15,8 +12,6 @@ requirement set — keep the two from colliding.
 - [x] Write per-area implementation sub-plans.
 - [x] Implement (SQLite `src/db.js`, activity recording `src/activity.js`, tab timers `src/tab-timers.js`, console Area A + Area B).
 - [x] Build (`npm run console:build`) and lint — pass (only pre-existing `scripts/benchmark/web-search-benchmark.mjs:209` unused `fastest` error remains).
-- [ ] Deploy (image rebuild + container recreate), verify live.
-- [ ] Commit (backend + console together or in two commits).
 
 ---
 

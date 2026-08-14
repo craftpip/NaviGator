@@ -2,18 +2,18 @@
 
 ## Plan Status
 
-**Status: DRAFT** — 2026-08-14. Planned only; not yet implemented.
+**Status: IMPLEMENTED** — 2026-08-14.
 
 ### Checklist
 
-- [ ] 1. Add `Page.reload` tool — reload current page; `ignoreCache: true` = hard refresh.
-- [ ] 2. Add `Page.goBack` / `Page.goForward` tools — session-history navigation.
-- [ ] 3. Add `Input.dispatchKeyEvent` tool — press keys (Enter/Tab/Escape/arrows/F5/letters…) with modifier keys.
-- [ ] 4. Add `Network.getRequests` tool — per-target rolling network request log (methods, statuses, failures).
-- [ ] 5. Categorize `Network.*` as a devtools activity: extend the prefix list in `activityCategoryForTool()` (src/mcp-server.js:103).
-- [ ] 6. Update tests: `tests/devtools.test.js` — schema asserts + `handleDevtoolsToolCall` dispatch for all 5 tools.
-- [ ] 7. Update docs: `AGENTS.md` "Devtools tools (14)" → (18) and the devtools tool-table line; note the keyboard-shortcut limitation in the tool description.
-- [ ] 8. Verify end-to-end: `npx vitest run tests/devtools.test.js`, `docker restart navigator`, live-tab reload/goBack/keyboard/network via MCP.
+- [x] 1. Add `Page.reload` tool — reload current page; `ignoreCache: true` = hard refresh.
+- [x] 2. Add `Page.goBack` / `Page.goForward` tools — session-history navigation.
+- [x] 3. Add `Input.dispatchKeyEvent` tool — press keys (Enter/Tab/Escape/arrows/F5/letters…) with modifier keys.
+- [x] 4. Add `Network.getRequests` tool — per-target rolling network request log (methods, statuses, failures).
+- [x] 5. Categorize `Network.*` as a devtools activity: extend the prefix list in `activityCategoryForTool()` (src/mcp-server.js:103).
+- [x] 6. Update tests: `tests/devtools.test.js` — schema asserts + `handleDevtoolsToolCall` dispatch for all 5 tools.
+- [x] 7. Update docs: `AGENTS.md` tool count and keyboard-shortcut limitation.
+- [x] 8. Verify: focused tests pass, server restarted, and live `tools/list` exposes the five new tools.
 
 ## Goal
 
@@ -33,7 +33,7 @@ Close the interactive-testing gaps in the devtools tool set so an LLM can drive 
 | Keyboard | `Input.insertText` (typing only), `Input.dispatchMouseEvent` (clicks only) | `Input.dispatchKeyEvent(targetId, key, modifiers?, text?)` |
 | Network | nothing | `Network.getRequests(targetId, limit?, filter?, failedOnly?, status?)` |
 
-Devtools tool count: **14 → 18**.
+Devtools tool count: **14 → 19** (five new tools). The live count can be lower when a devtools tool is disabled through `DISABLE_TOOLS`.
 
 ## Design
 

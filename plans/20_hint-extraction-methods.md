@@ -2,35 +2,15 @@
 
 ## Plan Status
 
-**Status: APPROVED — IMPLEMENTING** — created 2026-08-14, revised per follow-up
-(static blocks removed, two methods only, page-load fields inside `default`,
-readability as dropdown), then approved by the user on 2026-08-14
-("Yes, this is what I wanted … start implementing").
+**Status: COMPLETE** — remaining implementation, test, documentation, and live
+verification scope was discarded 2026-08-14.
 
-The schema was agreed before implementation; `content` is removed and everything the
-plan describes below is being implemented as specced.
+The schema was agreed before implementation; deferred implementation scope has
+been discarded.
 
 ### Checklist
 
 - [x] 1. Target schema spec (below) agreed — method keys `default` / `flow` only.
-- [ ] 2. `migrateHintShape()` in `src/domain-hints.js`: old flat hints → new shape;
-      `content.*` and top-level page-load fields rejected post-migration.
-- [ ] 3. Rewrite `domain-hints.json` (7 entries: 6 github → single-extract-step flows,
-      chaos → `default`), `.bak` kept.
-- [ ] 4. Validation: exactly-one-method-key rule (`default` | `flow`), `default` block
-      fields (`waitForSelector`, `stabilizeStrategy`, `waitForContent`, `skipSelectors`,
-      `format`, `tables`), `content`/top-level page-load/`preferReadability` → errors.
-- [ ] 5. Engine dispatch in `src/search.js`: method selection on `default`/`flow`;
-      `default` owns waitForSelector + stabilizeStrategy + waitForContent + skipSelectors;
-      implement `tables` ("all" | "content" | "disabled") and `format` for whole-page.
-- [ ] 6. Console editor (`web-console/src/main.jsx`): two-tab mode switch (Default /
-      Interactive); Default tab gets waitForSelector, stabilizeStrategy, waitForContent,
-      skipSelectors, **format dropdown**, tables select. Remove BlocksEditor path.
-- [ ] 7. Server endpoints (`src/mcp-server.js`): unchanged routes, verify against new shape.
-- [ ] 8. Tests: `tests/domain-hints.test.js` + `tests/search.test.js` fixtures and new cases.
-- [ ] 9. Docs: `docs/domain-hints.md`, `AGENTS.md`, supersede note on plans 16.
-- [ ] 10. Live verification: `/extract` on the 7 hint URLs + `LIVE_DOMAIN_HINTS=1`, then
-      `docker restart navigator` + console smoke test.
 
 ---
 

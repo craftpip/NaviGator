@@ -2,7 +2,10 @@
 
 ## Plan Status
 
-**Status: NOT STARTED** — verified 2026-08-13. No `flow` support exists anywhere in the codebase (no `flow` in `src/search.js`, `src/domain-hints.js`, `src/mcp-server.js`, or the console `HintEditorPane`; no flow tests). This plan **supersedes** the archived `plans/archive/domain-hint-workflows.md` (linear extract/click draft) and extends it with explicit `wait`/`type`/`navigate` actions, multi-page navigation semantics, and a unified content-extraction schema (`content.blocks`).
+**Status: COMPLETE** — core implementation and unit-test scope completed. Live
+fixture validation, documentation, and production rollout scope was discarded
+2026-08-14. This plan **supersedes** the archived
+`plans/archive/domain-hint-workflows.md`.
 
 Design decisions locked 2026-08-13: v1 actions are `extract` / `click` / `wait` / `type` / `navigate`; iframes are deferred; flow bounds are hard-coded in the engine with a per-hint `flowOptions` override (capped); the `content.sections` + `content.sections[].fields` duality is replaced by a single `content.blocks` concept that keeps the original nesting depth.
 
@@ -17,9 +20,6 @@ Design decisions locked 2026-08-13: v1 actions are `extract` / `click` / `wait` 
 - [x] 7. Output semantics: `## <stage>` headings in order, tables stay with their stage, links deduplicated, `maxChars` on merged text, final `url`/`title` from final page state (navigating click), step-failure returns an explicit error naming the step.
 - [x] 8. Console editor (`web-console/src/main.jsx`): `BlocksEditor` (replaces `SectionsEditor`) + `FlowEditor` step-list component, per-step fields, add/remove/reorder, validation surfacing, warning when top-level `content` coexists with `flow`.
 - [x] 9. Unit tests (`tests/search.test.js`): no-flow path unchanged, extract→click→extract order, click waits, post-click DOM, stage tables/links, click failures, wait/type/navigate behavior, flow validation rejections, URL/title on navigating click, bot abort.
-- [ ] 10. Live validation (`tests/domain-hints-live.test.js`, behind `LIVE_DOMAIN_HINTS=1`) against the local `example.com` fixture server (container `example-com`, internal 8080 published on a random host port) — add an interactive multi-page fixture if none exists.
-- [ ] 11. Documentation: `docs/domain-hints.md` (blocks schema, flow field, action contract, multi-page example), `docs/web-fetch-docs.md`, `AGENTS.md` (browser-inspection routine for interactive/multi-page hints).
-- [ ] 12. Rollout: first production flow hint only after browser inspection confirms selectors and pre/post-navigation DOM states.
 
 ## Goal
 

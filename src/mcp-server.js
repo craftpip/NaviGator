@@ -33,7 +33,7 @@ import { loadRawDomainHints, saveDomainHints, validateHintRule } from "./domain-
 const require = createRequire(import.meta.url);
 const PACKAGE_JSON = require("../package.json");
 
-const webConsoleDir = path.join(process.cwd(), "web-console", "dist");
+const webConsoleDir = path.join(process.cwd(), "src", "web-console", "dist");
 const webConsoleIndexPath = path.join(webConsoleDir, "index.html");
 const WEB_CONSOLE_CONTENT_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -101,7 +101,7 @@ function recordRequest(tool, ok, errorMsg) {
 }
 
 function activityCategoryForTool(name) {
-  return ["Target.", "Page.", "Runtime.", "DOM.", "Input."].some((prefix) => String(name).startsWith(prefix))
+  return ["Target.", "Page.", "Runtime.", "DOM.", "Input.", "Network."].some((prefix) => String(name).startsWith(prefix))
     ? "devtools"
     : "web";
 }

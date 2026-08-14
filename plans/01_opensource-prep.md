@@ -315,7 +315,7 @@ The current README is good but long (543 lines). For an open-source project, the
 ### Suggested structure
 
 ```
-# NaviGator
+# navigator
 
 One-line tagline.
 

@@ -1,6 +1,6 @@
-# NaviGator examples
+# navigator examples
 
-These scripts talk to a running NaviGator server over the Streamable HTTP
+These scripts talk to a running navigator server over the Streamable HTTP
 MCP transport (default: `http://localhost:3000/mcp`).
 
 Start the server first:

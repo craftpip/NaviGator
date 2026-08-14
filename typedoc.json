@@ -1,7 +1,7 @@
 {
   "entryPoints": ["src/"],
   "out": "doc",
-  "name": "NaviGator",
+  "name": "navigator",
   "readme": "README.md",
   "includeVersion": true,
   "plugin": [],

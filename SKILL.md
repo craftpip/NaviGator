@@ -1,4 +1,4 @@
-# NaviGator Skill
+# navigator Skill
 
 This skill provides instructions for working with the navigator project.
 

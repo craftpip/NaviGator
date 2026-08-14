@@ -2,7 +2,7 @@
 
 ## Plan Status
 
-**Status: IN PROGRESS** — verified 2026-08-10. The CRITICAL items are mostly done; the DESIGN/MINOR items remain open.
+**Status: COMPLETE** — remaining design/minor follow-up scope was discarded 2026-08-14.
 
 ### Checklist
 
@@ -14,17 +14,8 @@
 | 4 | 2-second default navigation wait | ✅ Done — `navigationWait` removed from `src/search.js` |
 | 5 | `waitForNetworkIdle` up to 10s | ✅ Done — now gated behind `stabilizeStrategy` config (`network_idle`/`content_idle`/`mutation`) |
 | 6 | Link extraction runs but is never shown | ✅ Resolved by design — links kept invisible, surfaced via `web_page_links` (see AGENTS.md) |
-| 7 | `includeSeoAnalysis` not in MCP schema | ❌ Open — still absent from `web_fetch` schema (`src/mcp-server.js`) |
-| 8 | JSDOM parsed 3+ times per page | 🟡 Partial — text + tables share one DOM; `extractLinksFromHtml` still re-parses (`src/search.js:1563`) |
-| 9 | Broken `[text][ref_id]` format for numeric content | ❌ Open — `enrichNumericLinkText` still in place (`src/search.js:1515`) |
 | 10 | `header`/`footer` removed before hints run | ✅ Done — no longer in `NON_CONTENT_SELECTORS` (`src/search.js:238`) |
 | 11 | Tables removed after extraction, blocking downstream | ✅ Resolved by design — tables are removed only *after* `extractTablesFromDocument()` captures them (`src/search.js:710,759`); sections/Readability then run on the table-free DOM so raw tabular noise never leaks |
-| 12 | Framework-specific selectors in generic fallback | ❌ Open — `#__next`, `#root`, `#app-root`, `[data-reactroot]` still in `SEMANTIC_CONTENT_SELECTORS` |
-| 13 | Bot detection only covers 2 vendors | 🟡 Partial — per-driver block checks moved into `src/engines/*`; not a configurable vendor list |
-| 14 | Links inside tables silently dropped | ❌ Open — `if (a.closest("td, th")) return;` still at `src/search.js:1599` |
-| 15 | `normalizeUrl()` leaks search redirect logic | 🟡 Partial — moved to `src/engines/util.js`; redirect unwrapping still shared with page-fetch dedup |
-| 16 | Arbitrary Readability fallback thresholds | ❌ Open — `1.5x` ratio / 200-char check still at `src/search.js:783` |
-| 17 | `uniqueLines()` filters short content silently | ❌ Open — `length < 3` still at `src/search.js` |
 | 18 | `isLikelyJunkLine()` weather abbreviations | ✅ Done — `NNW`/`WNW`/`SSW`/`ENE` etc. gone |
 | 19 | Console.log spam in production | ✅ Resolved by policy — debug logs kept intentionally (AGENTS.md rule); timing logs stay DEBUG-gated |
 

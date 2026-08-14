@@ -40,8 +40,12 @@ describe("devtoolsToolDefinitions", () => {
     expect(names).toContain("Target.getTargets");
     expect(names).toContain("Target.closeTarget");
     expect(names).toContain("Page.navigate");
+    expect(names).toContain("Page.reload");
+    expect(names).toContain("Page.goBack");
+    expect(names).toContain("Page.goForward");
     expect(names).toContain("Runtime.evaluate");
     expect(names).toContain("Runtime.getConsoleMessages");
+    expect(names).toContain("Network.getRequests");
     expect(names).toContain("DOM.getDocument");
     expect(names).toContain("DOM.querySelector");
     expect(names).toContain("DOM.querySelectorAll");
@@ -50,6 +54,8 @@ describe("devtoolsToolDefinitions", () => {
     expect(names).toContain("DOM.scrollIntoViewIfNeeded");
     expect(names).toContain("Input.dispatchMouseEvent");
     expect(names).toContain("Input.insertText");
+    expect(names).toContain("Input.dispatchKeyEvent");
+    expect(names).toHaveLength(19);
   });
 
   it("each tool has name, description, and inputSchema", async () => {
@@ -70,10 +76,14 @@ describe("devtoolsToolDefinitions", () => {
     }
   });
 
-  it("Target.createTarget has url property but no required", async () => {
+  it("Target.createTarget has optional url and viewport properties", async () => {
     const { devtoolsToolDefinitions } = await import("../src/devtools.js");
     const tool = devtoolsToolDefinitions.find((t) => t.name === "Target.createTarget");
     expect(tool.inputSchema.properties).toHaveProperty("url");
+    expect(tool.inputSchema.properties.viewport).toMatchObject({
+      type: "object",
+      required: ["width", "height"]
+    });
     expect(tool.inputSchema.required).toBeUndefined();
   });
 
@@ -88,6 +98,21 @@ describe("devtoolsToolDefinitions", () => {
     const tool = devtoolsToolDefinitions.find((t) => t.name === "Page.navigate");
     expect(tool.inputSchema.required).toContain("targetId");
     expect(tool.inputSchema.required).toContain("url");
+  });
+
+  it("new navigation, keyboard, and network tools expose their planned inputs", async () => {
+    const { devtoolsToolDefinitions } = await import("../src/devtools.js");
+    const reload = devtoolsToolDefinitions.find((t) => t.name === "Page.reload");
+    const key = devtoolsToolDefinitions.find((t) => t.name === "Input.dispatchKeyEvent");
+    const network = devtoolsToolDefinitions.find((t) => t.name === "Network.getRequests");
+
+    expect(reload.inputSchema.required).toEqual(["targetId"]);
+    expect(reload.inputSchema.properties).toHaveProperty("ignoreCache");
+    expect(key.inputSchema.required).toEqual(["targetId", "key"]);
+    expect(key.description).toMatch(/browser-level shortcuts/);
+    expect(network.inputSchema.properties).toHaveProperty("filter");
+    expect(network.inputSchema.properties).toHaveProperty("failedOnly");
+    expect(network.inputSchema.properties).toHaveProperty("status");
   });
 
   it("Runtime.evaluate requires targetId and expression", async () => {
@@ -232,6 +257,39 @@ describe("handleDevtoolsToolCall", () => {
     expect(result.url).toBe("https://ref-example.com/article");
   });
 
+  it("Target.createTarget applies a viewport before navigation", async () => {
+    const setViewport = vi.fn().mockResolvedValue(undefined);
+    const goto = vi.fn().mockResolvedValue(undefined);
+    getBrowserManager.mockResolvedValue({
+      config: {
+        enableDevtoolsMcp: true,
+        devtoolsBackend: "chromium",
+        defaultBackend: "cloakbrowser",
+        navWaitUntil: "domcontentloaded",
+        browserOpTimeoutMs: 60000,
+      },
+      newPage: vi.fn().mockResolvedValue({
+        goto,
+        setViewport,
+        url: vi.fn().mockReturnValue("https://example.com"),
+        title: vi.fn().mockResolvedValue("Example"),
+        isClosed: vi.fn().mockReturnValue(false),
+        on: vi.fn(),
+      }),
+    });
+
+    const { handleDevtoolsToolCall } = await import("../src/devtools.js");
+    const result = await handleDevtoolsToolCall("Target.createTarget", {
+      targetId: "viewport-target",
+      url: "https://example.com",
+      viewport: { width: 390, height: 844 },
+    });
+
+    expect(setViewport).toHaveBeenCalledWith({ width: 390, height: 844 });
+    expect(setViewport.mock.invocationCallOrder[0]).toBeLessThan(goto.mock.invocationCallOrder[0]);
+    expect(result.viewport).toEqual({ width: 390, height: 844 });
+  });
+
   it("Target.createTarget rejects unknown ref_id", async () => {
     const newPage = vi.fn().mockResolvedValue({
       goto: vi.fn().mockResolvedValue(undefined),
@@ -317,6 +375,89 @@ describe("handleDevtoolsToolCall", () => {
     expect(result).toHaveProperty("html");
     expect(result.html).toContain("<main>");
     expect(result.charsAfter).toBeLessThan(result.charsBefore);
+  });
+
+  it("dispatches reload, history, keyboard, and network tools", async () => {
+    const listeners = new Map();
+    const setCacheEnabled = vi.fn().mockResolvedValue(undefined);
+    const reload = vi.fn().mockResolvedValue(undefined);
+    const goBack = vi.fn().mockResolvedValue({ status: () => 200 });
+    const goForward = vi.fn().mockResolvedValue({ status: () => 200 });
+    const down = vi.fn().mockResolvedValue(undefined);
+    const press = vi.fn().mockResolvedValue(undefined);
+    const up = vi.fn().mockResolvedValue(undefined);
+    const page = {
+      goto: vi.fn().mockResolvedValue(undefined),
+      url: vi.fn().mockReturnValue("https://example.com/second"),
+      title: vi.fn().mockResolvedValue("Example"),
+      isClosed: vi.fn().mockReturnValue(false),
+      on: vi.fn((event, handler) => {
+        const handlers = listeners.get(event) || [];
+        handlers.push(handler);
+        listeners.set(event, handlers);
+      }),
+      setCacheEnabled,
+      reload,
+      goBack,
+      goForward,
+      keyboard: { down, press, up },
+    };
+    getBrowserManager.mockResolvedValue({
+      config: {
+        enableDevtoolsMcp: true,
+        devtoolsBackend: "chromium",
+        defaultBackend: "cloakbrowser",
+        navWaitUntil: "domcontentloaded",
+        browserOpTimeoutMs: 60000,
+        humanTypingDelay: 0,
+      },
+      newPage: vi.fn().mockResolvedValue(page),
+    });
+
+    const { handleDevtoolsToolCall } = await import("../src/devtools.js");
+    const created = await handleDevtoolsToolCall("Target.createTarget", { targetId: "round-two-tools" });
+    const reloaded = await handleDevtoolsToolCall("Page.reload", { targetId: created.targetId, ignoreCache: true });
+    const backed = await handleDevtoolsToolCall("Page.goBack", { targetId: created.targetId });
+    const forwarded = await handleDevtoolsToolCall("Page.goForward", { targetId: created.targetId });
+    const pressed = await handleDevtoolsToolCall("Input.dispatchKeyEvent", {
+      targetId: created.targetId,
+      key: "Enter",
+      modifiers: ["Control", "Shift"],
+    });
+
+    const request = {
+      id: () => "request-1",
+      method: () => "GET",
+      url: () => "https://example.com/api/items",
+      resourceType: () => "fetch",
+    };
+    listeners.get("request").forEach((handler) => handler(request));
+    listeners.get("response").forEach((handler) => handler({
+      request: () => request,
+      url: () => "https://example.com/api/items",
+      status: () => 200,
+      ok: () => true,
+      fromCache: () => false,
+    }));
+    const requests = await handleDevtoolsToolCall("Network.getRequests", {
+      targetId: created.targetId,
+      filter: "/api/",
+      status: 200,
+    });
+
+    expect(reloaded).toMatchObject({ reloaded: true, ignoreCache: true });
+    expect(setCacheEnabled).toHaveBeenNthCalledWith(1, false);
+    expect(setCacheEnabled).toHaveBeenNthCalledWith(2, true);
+    expect(backed).toMatchObject({ direction: "back", navigated: true });
+    expect(forwarded).toMatchObject({ direction: "forward", navigated: true });
+    expect(pressed).toMatchObject({ pressed: "Enter", modifiers: ["Control", "Shift"] });
+    expect(down).toHaveBeenNthCalledWith(1, "Control");
+    expect(down).toHaveBeenNthCalledWith(2, "Shift");
+    expect(press).toHaveBeenCalledWith("Enter", {});
+    expect(up).toHaveBeenNthCalledWith(1, "Shift");
+    expect(up).toHaveBeenNthCalledWith(2, "Control");
+    expect(requests).toMatchObject({ total: 1, shown: 1, failed: 0 });
+    expect(requests.requests[0]).toMatchObject({ url: "https://example.com/api/items", status: 200 });
   });
 
   it("Input.insertText returns focused, clearedExistingValue, and finalValue readback", async () => {
