@@ -1,4 +1,4 @@
-import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
+import { StrictMode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import logo from "./navigator-logo.svg";
@@ -381,11 +381,25 @@ function ActivityLineChart({ buckets, range }) {
   const bottom = 32;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
-  const active = selected === null ? buckets.length - 1 : selected;
-  const bucket = buckets[active] || null;
+  const active = selected;
   const xFor = (index) => (buckets.length === 1 ? left + plotWidth / 2 : left + (index / (buckets.length - 1)) * plotWidth);
   const yFor = (value) => top + plotHeight - (value / max) * plotHeight;
-  const pointsFor = (series) => buckets.map((item, index) => `${xFor(index)},${yFor(requestValue(item, series.key))}`).join(" ");
+  const pathFor = (series) => {
+    const points = buckets.map((item, index) => ({ x: xFor(index), y: yFor(requestValue(item, series.key)) }));
+    if (points.length < 2) return "";
+    const clampY = (value) => Math.max(top, Math.min(top + plotHeight, value));
+    let path = `M ${points[0].x} ${points[0].y}`;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const previous = points[Math.max(0, index - 1)];
+      const current = points[index];
+      const next = points[index + 1];
+      const afterNext = points[Math.min(points.length - 1, index + 2)];
+      const control1 = { x: current.x + (next.x - previous.x) / 6, y: clampY(current.y + (next.y - previous.y) / 6) };
+      const control2 = { x: next.x - (afterNext.x - current.x) / 6, y: clampY(next.y - (afterNext.y - current.y) / 6) };
+      path += ` C ${control1.x} ${control1.y}, ${control2.x} ${control2.y}, ${next.x} ${next.y}`;
+    }
+    return path;
+  };
   const every = Math.max(1, Math.ceil(buckets.length / 4));
   return <>
     <div className="request-trend-chart" ref={wrapRef} role="img" aria-label="Web and DevTools request line graph" style={{ "--tscale": scale }}>
@@ -396,7 +410,7 @@ function ActivityLineChart({ buckets, range }) {
         })}
         {REQUEST_SERIES.map((series) => (
           <g key={series.key}>
-            <polyline className="request-trend-line" style={{ "--series": series.color }} points={pointsFor(series)} />
+            <path className="request-trend-line" style={{ "--series": series.color }} d={pathFor(series)} />
             {buckets.map((item, index) => (
               <circle key={item.ts} className="request-trend-dot" cx={xFor(index)} cy={yFor(requestValue(item, series.key))} r={active === index ? 3.5 : 2.25} style={{ "--series": series.color }} />
             ))}
@@ -405,22 +419,11 @@ function ActivityLineChart({ buckets, range }) {
         {buckets.map((item, index) => {
           const x = xFor(index);
           const half = buckets.length > 1 ? plotWidth / (buckets.length - 1) / 2 : plotWidth / 2;
-          return <g key={item.ts} onMouseEnter={() => setSelected(index)} onFocus={() => setSelected(index)} onClick={() => setSelected(index)} tabIndex="0"><title>{formatTrendLabel(item.ts, range)}</title><rect className="request-trend-hit" x={x - half} y={top} width={half * 2} height={plotHeight} />{(index === 0 || index === buckets.length - 1 || index % every === 0) && <text className="request-trend-label" x={x} y={height - 8} textAnchor="middle">{formatTrendLabel(item.ts, range)}</text>}</g>;
+          const tooltip = `${formatTrendLabel(item.ts, range)} · Web ${item.web?.ok || 0} ok / ${item.web?.fail || 0} fail · DevTools ${item.devtools?.ok || 0} ok / ${item.devtools?.fail || 0} fail`;
+          return <g key={item.ts} onMouseEnter={() => setSelected(index)} onMouseLeave={() => setSelected(null)}><rect className="request-trend-hit" data-tooltip={tooltip} x={x - half} y={top} width={half * 2} height={plotHeight} />{(index === 0 || index === buckets.length - 1 || index % every === 0) && <text className="request-trend-label" x={x} y={height - 8} textAnchor="middle">{formatTrendLabel(item.ts, range)}</text>}</g>;
         })}
-        {bucket && (() => {
-          const text = `${formatTrendLabel(bucket.ts, range)} · Web ${bucket.web?.ok || 0} ok / ${bucket.web?.fail || 0} fail · DevTools ${bucket.devtools?.ok || 0} ok / ${bucket.devtools?.fail || 0} fail`;
-          const rectW = (text.length * 6 + 16) / scale;
-          const rectH = 18 / scale;
-          const bx = width - right - rectW;
-          const by = top + 2 / scale;
-          return <g className="request-trend-readout">
-            <rect x={bx} y={by} width={rectW} height={rectH} rx={4 / scale} />
-            <text x={bx + 8 / scale} y={by + 13 / scale}>{text}</text>
-          </g>;
-        })()}
       </svg>
       </div>
-    <div className="request-trend-detail" aria-live="polite">{bucket ? `${formatTrendLabel(bucket.ts, range)}: Web ${bucket.web.ok} succeeded / ${bucket.web.fail} failed; DevTools ${bucket.devtools.ok} succeeded / ${bucket.devtools.fail} failed.` : "Hover or select a time point for exact counts."}</div>
   </>;
 }
 function RequestActivityTrend({ trend, range, error, setRange }) {
@@ -936,6 +939,8 @@ function formatBackend(backend) {
 }
 function ImmediateTooltip() {
   const [tooltip, setTooltip] = useState(null);
+  const [side, setSide] = useState("right");
+  const tooltipRef = useRef(null);
   useEffect(() => {
     const moveTitle = (element) => {
       const text = element.getAttribute("title");
@@ -995,7 +1000,13 @@ function ImmediateTooltip() {
       document.removeEventListener("focusout", hide, true);
     };
   }, []);
-  return tooltip ? <div className="immediate-tooltip" role="tooltip" style={{ left: tooltip.x, top: tooltip.y }}>{tooltip.text}</div> : null;
+  useLayoutEffect(() => {
+    if (!tooltip || !tooltipRef.current) return;
+    const rect = tooltipRef.current.getBoundingClientRect();
+    const nextSide = tooltip.x + rect.width + 12 > window.innerWidth - 8 ? "left" : "right";
+    if (nextSide !== side) setSide(nextSide);
+  }, [tooltip, side]);
+  return tooltip ? <div ref={tooltipRef} className={`immediate-tooltip ${side}`} role="tooltip" style={{ left: tooltip.x, top: tooltip.y }}>{tooltip.text}</div> : null;
 }
 function buildFeed(entries, pageOps) {
   const preview = (value) => String(value || "").slice(0, 80);

@@ -464,11 +464,6 @@ p,
   fill: transparent;
   cursor: crosshair;
 }
-.request-trend-hit:focus {
-  outline: none;
-  fill: var(--blue-bg);
-  fill-opacity: 0.42;
-}
 .request-trend-detail {
   min-height: 16px;
   color: var(--muted);
@@ -793,7 +788,9 @@ p,
 .immediate-tooltip {
   position: fixed;
   z-index: 1000;
-  max-width: min(360px, calc(100vw - 24px));
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 24px));
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -803,6 +800,9 @@ p,
   font: 11px/1.35 var(--sans);
   pointer-events: none;
   transform: translate(12px, 14px);
+}
+.immediate-tooltip.left {
+  transform: translate(calc(-100% - 12px), 14px);
 }
 .engine-grid {
   display: flex;

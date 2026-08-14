@@ -126,7 +126,11 @@ try {
 function persistRouteCircuitState() {
   try {
     mkdirSync(path.dirname(ROUTE_CIRCUIT_STATE_PATH), { recursive: true });
-    writeFileSync(ROUTE_CIRCUIT_STATE_PATH, JSON.stringify(Object.fromEntries(routeCircuitState), null, 2));
+    const persisted = Object.fromEntries([...routeCircuitState].map(([key, state]) => {
+      const { probeInFlight, ...durableState } = state;
+      return [key, durableState];
+    }));
+    writeFileSync(ROUTE_CIRCUIT_STATE_PATH, JSON.stringify(persisted, null, 2));
   } catch (error) {
     console.error(`⚠️  Could not persist search circuit state: ${String(error?.message || error)}`);
   }
@@ -161,9 +165,20 @@ function getRouteCircuit(engine, now = Date.now()) {
   }
   const remainingMs = Math.max(0, state.openUntil - now);
   if (remainingMs <= 0) {
+    if (state.probeInFlight) {
+      return { key, state: "half_open", open: true, remainingMs: 0, lastError: state.lastError, reason: "recovery probe in progress" };
+    }
     return { key, state: "half_open", open: false, remainingMs: 0, lastError: state.lastError };
   }
   return { key, state: "open", open: true, remainingMs, lastError: state.lastError };
+}
+
+function claimRouteCircuit(engine, now = Date.now()) {
+  const circuit = getRouteCircuit(engine, now);
+  if (circuit.open || circuit.state !== "half_open") return circuit;
+  const state = routeCircuitState.get(circuit.key);
+  state.probeInFlight = true;
+  return { ...circuit, probe: true };
 }
 
 function recordRouteSuccess(engine) {
@@ -197,7 +212,8 @@ export function getSearchBackendHealth() {
       remainingMs,
       failures: state.failures || 0,
       lastError: state.lastError || "",
-      lastFailureAt: state.lastFailureAt || ""
+      lastFailureAt: state.lastFailureAt || "",
+      probeInFlight: Boolean(state.probeInFlight)
     };
   });
 }
@@ -1528,11 +1544,15 @@ function routeConcurrencyForEngines(engines, _config) {
 }
 
 async function runSearchRoute({ manager, query, engine, config, explicit }) {
-  const circuit = getRouteCircuit(engine);
+  const circuit = claimRouteCircuit(engine);
   const routeStart = performance.now();
   if (circuit.open) {
-    recordEngineAttempt(engine, "skip", circuit.lastError || "route open");
-    throw new Error(`Search route ${circuit.key} is temporarily disabled for ${Math.ceil(circuit.remainingMs / 1000)}s: ${circuit.lastError || "previous failure"}`);
+    const reason = circuit.reason || circuit.lastError || "route open";
+    recordEngineAttempt(engine, "skip", reason);
+    const error = new Error(`Search route ${circuit.key} is temporarily disabled for ${Math.ceil(circuit.remainingMs / 1000)}s: ${reason}`);
+    error.schedulerIgnore = true;
+    error.schedulerSkip = true;
+    throw error;
   }
 
   try {
@@ -1560,6 +1580,7 @@ async function runSearchRoute({ manager, query, engine, config, explicit }) {
   } catch (error) {
     const localBrowserFailure = isLocalBrowserFailure(error);
     if (!localBrowserFailure) recordRouteFailure(engine, error, config.searchRouteCircuitOpenMs);
+    else if (circuit.probe) routeCircuitState.get(circuit.key).probeInFlight = false;
     recordEngineAttempt(engine, localBrowserFailure ? "skip" : "fail", error, 0, performance.now() - routeStart);
     error.schedulerIgnore = localBrowserFailure;
     if (explicit) throw error;
@@ -1641,6 +1662,10 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
         }
       };
     } catch (reason) {
+      if (reason.schedulerSkip) {
+        skipped.push({ engine, route: routeKey(engine), remainingMs: 0, error: readableErrorMessage(reason) });
+        continue;
+      }
       if (!reason.schedulerIgnore) engineScheduler.recordFailure(engine, readableErrorMessage(reason));
       errors.push({ engine, route: routeKey(engine), error: readableErrorMessage(reason) });
     }
