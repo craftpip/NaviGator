@@ -1,14 +1,14 @@
 # Tool Reference
 
-Navigator exposes web research tools and, when enabled, persistent-browser DevTools tools. Tool schemas reject unknown fields. MCP responses are text content; DevTools responses contain JSON encoded in that text.
+Navigator exposes web research tools and, when enabled, persistent-browser DevTools tools. Published tool schemas describe closed input contracts. MCP responses are text content; DevTools responses contain JSON encoded in that text.
 
 Tools may be absent from `tools/list` and reject calls when named in `DISABLE_TOOLS` or excluded by the calling API key's allow-list. DevTools tools also require `ENABLE_DEVTOOLS_MCP=1`.
 
 ## References, Caching, And Limits
 
 - Search and fetch results receive positive numeric reference IDs. Use a returned `ref_id` to open a result instead of repeating its URL where the tool accepts it.
-- A fetched page's links render as normal Markdown destinations, for example `[documentation](88)`. Call `web_page_links` with the page reference to list those links, then fetch a link reference.
-- `web_search` and `web_fetch` cache results in process memory for five minutes (up to 200 entries per tool). `bypassCache: true` refreshes a result. Fetch stores structured content without `maxChars`, so later callers can request a longer response without another page load.
+- A fetched page's links render as normal Markdown destinations, for example `[documentation](88)`. Call `web_page_links` with that inline link ID to resolve its URL, then fetch the same link reference.
+- `web_search` and `web_fetch` cache results in process memory for five minutes (up to 200 entries per tool). `bypassCache: true` refreshes a result. Fetch excludes `maxChars` from its cache key, so a cache entry retains the length requested by the first caller, up to 200,000 characters.
 - Reference mappings are bounded in memory and persisted in SQLite for lookup across restarts. Search/fetch caches and counters are not persistent.
 - Page and DevTools operations use `BROWSER_OP_TIMEOUT_MS`. Persistent DevTools targets close after five minutes without interaction.
 
@@ -42,7 +42,7 @@ Input: `queries` is a non-empty string array. Optional `limit` defaults to `5`; 
 
 Input: provide exactly one target mode, `urls: string[]` or `ref_ids: number[]`. Optional `maxChars` controls returned text length; `bypassCache` refreshes the cached page result.
 
-The response contains an entry for each page with readable text, extracted tables, page metadata, and a page reference. Tables are always extracted and rendered as structured Markdown. `maxChars` is applied when reading the structured result, after cache lookup; large tables may still make the complete response exceed the requested text length and a truncation notice is added.
+The response contains an entry for each page with readable text, extracted tables, page metadata, and a page reference. Tables are extracted and rendered as structured Markdown by default; a matching domain hint can limit them to content or disable them. `maxChars` is applied when reading the structured result, after cache lookup; large tables may still make the complete response exceed the requested text length and a truncation notice is added.
 
 ```json
 {"urls":["https://example.com/article"],"maxChars":8000}
@@ -58,7 +58,7 @@ Use `web_page_links` rather than trying to infer numeric link destinations from 
 
 Input: provide one of `urls: string[]`, `ref_ids: number[]`, or a persistent `targetId`. Optional `quality` is `low` (JPEG 30), `medium` (55, default), or `high` (75). `fullPage` defaults to `true`.
 
-The default `output` is inline base64 JPEG. `file` is available only when a screenshot path prefix is configured; `url` is available only when screenshot downloads are enabled. The response reports image metadata and the configured output value. A target screenshot uses the existing tab instead of creating a transient page.
+The default `output` is inline base64 JPEG. `file` is available only when a screenshot path prefix is configured; `url` is available only when screenshot downloads are enabled. The response returns inline image data, a file path, or a download URL according to the selected output. A target screenshot uses the existing tab instead of creating a transient page.
 
 ```json
 {"ref_ids":[42],"quality":"low","fullPage":false}

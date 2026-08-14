@@ -56,7 +56,7 @@ The server serves generated files from `src/web-console/dist` at `/console/`. Do
 
 `statistics` (`stats`, `stat`) prints one `/health` and `/stats` snapshot. `monitoring` (`mon`) redraws it until Ctrl+C; the default refresh interval is two seconds. The endpoint URL resolves in this order: `--url`, `NAVIGATOR_URL`, `MCP_API_HOST` and `MCP_API_PORT` from `.env`, then `http://localhost:3000`.
 
-The CLI exits non-zero for an invalid command, an unreachable service, or a failed endpoint request. It needs HTTP health enabled (`ENABLE_HTTP_HEALTH=1`); HTTP MCP alone is not enough for its health/statistics requests.
+The CLI exits non-zero for an invalid command, an unreachable service, or a failed endpoint request. The server exposes its health and statistics endpoints when either HTTP health or HTTP MCP is enabled.
 
 ## Operational Checks
 

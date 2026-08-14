@@ -62,10 +62,10 @@ It does more than dump raw HTML. The extraction flow combines several methods:
 - page navigation plus content settling, so extraction waits for meaningful content to appear
 - DOM cleanup to remove noise like scripts, styles, popups, cookie banners, and obvious non-content areas
 - Mozilla Readability for article-style extraction when possible
-- a fallback semantic candidate scoring system that scores likely main-content blocks using things like text length, link density, heading density, depth, size, and position on the page
+- a fallback semantic candidate scorer for likely main-content blocks, based on word count, sentence punctuation, and URL density
 - SEO-aware snapshotting that captures headings, canonical URL, meta description, and the best main-content candidates
 
-The final text prefers the richer main-content extraction when it beats the simpler article extraction.
+The final text uses Readability when it succeeds. When visible browser text is substantially larger, it instead converts the cleaned body HTML to Markdown; otherwise it falls back to the best semantic candidate or cleaned body text.
 
 So the output is usually much closer to what a person would want to read, not just what the DOM happened to contain.
 
@@ -83,12 +83,12 @@ Path mode is handy when the caller is on the same machine and can read the file 
 
 Link mode is handy when the caller is remote and needs an HTTP URL to fetch the image.
 
-You can enable these behaviors with:
+Enable the storage capability with:
 
 - `ENABLE_SCREENSHOT_PATH`
 - `ENABLE_SCREENSHOT_DOWNLOAD_LINK`
 
-When either storage mode is enabled, the tool writes the screenshot to disk and avoids sending the full base64 payload back in the normal response.
+Storage capability does not change the default response. Request `output: "file"` or `output: "url"` to use it; otherwise the tool returns base64 JPEG data.
 
 ### Lots of controls when you need them
 
@@ -255,9 +255,13 @@ Hints live in `domain-hints.json` at the project root. You can point to a differ
   "domain": "en.wikipedia.org",
   "pathPattern": "/wiki/**",
   "comment": "Wikipedia navbox tables are layout noise, not content. Skip them.",
-  "skipSelectors": [".navbox", ".navbox-styles"],
-  "tableExtraction": "content",
-  "contentSelectors": ["main#content"]
+  "default": {
+    "waitForSelector": "main#content",
+    "stabilizeStrategy": "content_idle",
+    "skipSelectors": [".navbox", ".navbox-styles"],
+    "format": "readability_to_markdown",
+    "tables": "content"
+  }
 }
 ```
 
@@ -267,51 +271,38 @@ Hints live in `domain-hints.json` at the project root. You can point to a differ
 |-------|---------|
 | `domain` | The domain the hint applies to |
 | `pathPattern` | Glob pattern for URL paths (`/**` for all, `/wiki/**` for specific sections) |
-| `comment` | Shown in the extraction output — explains why the hint exists |
-| `waitForSelector` | CSS selector to wait for before extracting (for SPAs that load content late) |
-| `navigationWait` | Milliseconds to wait after page load before extracting |
-| `skipSelectors` | CSS selectors for elements to remove before extraction (navboxes, popups, etc.) |
-| `contentSelectors` | CSS selectors for the main content container (when `<main>` or `<article>` are missing) |
-| `preferReadability` | Default `true`. Set to `false` to skip Readability and use SEO text instead |
-| `tableExtraction` | `"enabled"`, `"disabled"`, or `"content"` (only extract tables in content area) |
-| `flags` | Special behaviors: `authWall`, `visualOnly`, `paywall`, `botProtected`, `requiresChromium` |
-
-### Flag behaviors
-
-| Flag | What it does |
-|------|-------------|
-| `authWall: true` | Returns early with "Auth wall" error — no content to extract |
-| `visualOnly: true` | Returns early with "Visual-only page, no text content" error |
-| `paywall: true` | Notes that content may be behind paywall; extraction proceeds but may get partial content |
-| `botProtected: true` | Notes that the page has bot protection that may block extraction |
-| `requiresChromium: true` | Suggests using chromium backend (not enforced automatically) |
+| `comment` | Authoring and console metadata that explains why the rule exists |
+| `requireSelector` | Optional CSS selector that must exist for this rule to apply |
+| `default` | Normal extraction settings: `waitForSelector`, `stabilizeStrategy`, `waitForContent`, `skipSelectors`, `format`, and `tables` |
+| `flow` | Ordered interactive steps (`extract`, `click`, `wait`, `type`, `navigate`) for pages that need browser interaction |
+| `flowOptions` | Optional bounds for an interactive flow |
 
 ### How to add a hint
 
 1. Open `domain-hints.json`
 2. Add an entry with `domain`, `pathPattern`, and `comment`
-3. Add the behavioral fields that fix extraction for that site
+3. Add either a `default` object or a `flow` that fixes extraction for that site
 4. Restart the server or container
 
-The `comment` field is shown in the extraction output so you always know which hint was applied.
+The `comment` field is for maintainers and appears in the console editor, not fetch output.
 
 ### Currently shipped hints
 
-The project ships with research-backed hints for 40+ websites across news, finance, weather, e-commerce, social, developer, and regional-language categories. See `archive/websites/` for detailed research on each site.
+The shipped rules are maintained in `domain-hints.json`. Add a rule only after inspecting the live page and testing the candidate extraction.
 
 ### Disable hints
 
-To run without any hints, set `DOMAIN_HINTS_PATH` to an empty file or unset it:
+To run without any hints, point `DOMAIN_HINTS_PATH` at a JSON file containing an empty array:
 
 ```bash
-DOMAIN_HINTS_PATH=/dev/null
+DOMAIN_HINTS_PATH=/path/to/empty-domain-hints.json
 ```
 
 ---
 
 ## MCP Tools
 
-This server always exposes the three main web tools below.
+The server exposes five web tools unless one is disabled with `DISABLE_TOOLS`.
 
 If `ENABLE_DEVTOOLS_MCP=1`, it also exposes a small browser-testing tool set with CDP-style names.
 
@@ -324,13 +315,10 @@ This tool is designed to work across a pool of engines and routes rather than re
 Example input:
 
 ```json
-{ "query": "latest MCP news", "limit": 5 }
+{ "queries": ["latest MCP news"], "limit": 5 }
 ```
 
-Also supports:
-
-- `queries`
-- `engine`
+Set `engine` to a registered route only when you need that specific route.
 
 ### `web_fetch`
 
@@ -341,32 +329,34 @@ Under the hood it uses DOM cleanup, Mozilla Readability, and a semantic main-con
 Example input:
 
 ```json
-{ "url": "https://example.com", "maxChars": 8000 }
+{ "urls": ["https://example.com"], "maxChars": 8000 }
 ```
 
-Also supports:
-
-- `urls`
-- `ref_id`
-- `ref_ids`
+Use `ref_ids` instead of `urls` when fetching search results by reference.
 
 ### `web_page_screenshot`
 
 Capture a rendered screenshot of a page.
 
-By default the tool can return base64 image data. If screenshot storage is enabled, it can instead return a local file path, a download link, or both, which is much friendlier for LLM workflows.
+The default response is base64 JPEG. Provide `urls`, `ref_ids`, or an existing DevTools `targetId`. When the matching storage capability is enabled, request `output: "file"` for a local path or `output: "url"` for a download URL.
 
 Example input:
 
 ```json
-{ "url": "https://example.com", "format": "png", "fullPage": true }
+{ "urls": ["https://example.com"], "quality": "medium", "fullPage": true }
 ```
 
-Also supports:
+### `web_page_links`
 
-- `urls`
-- `ref_id`
-- `ref_ids`
+Resolve inline link reference IDs from `web_fetch` output, such as `[documentation](88)`.
+
+```json
+{ "ref_ids": [88] }
+```
+
+### `web_page_ascii`
+
+Capture a screenshot-derived ANSI or plain-text layout render with an element legend.
 
 ### Optional browser-testing tools
 
@@ -452,7 +442,6 @@ docker compose up --build -d
 When `ENABLE_VNC=1`, open one of these in your browser:
 
 - `http://127.0.0.1:7900/vnc.html`
-- `http://127.0.0.1:7901/vnc.html`
 
 This lets you watch or interact with the same browser session used by the MCP tools.
 
@@ -495,10 +484,10 @@ npm install
 npm start
 ```
 
-Test MCP integration:
+Run the test suite inside the running container:
 
 ```bash
-npm run test:mcporter
+docker compose exec navigator npx vitest run
 ```
 
 ## Releases
@@ -533,7 +522,7 @@ To report a security issue, open a private report on the GitHub security advisor
 
 Contributions are welcome.
 
-- See the `archive/websites/` directory for the site research that drives domain hints
+- Inspect and test a candidate rule before adding it to `domain-hints.json`
 - Run `npm run lint` and the test suite before opening a PR
 - Follow the tool contract documented in `AGENTS.md`
 
@@ -555,7 +544,7 @@ The repo uses semver tags and GitHub Releases. See `CHANGELOG.md` for the change
 
 - Multi-arch GHCR images (blocked: the bundled `stealthpanda` binary is x86_64-only)
 - npm publishing for `navigator-mcp`
-- More domain hints as the site research in `archive/websites/` grows
+- More domain hints as new sites are inspected and tested
 
 ## FAQ
 

@@ -14,7 +14,7 @@ Source: MCP dispatch and HTTP routing in `src/mcp-server.js`; browser operations
 
 ## Result References And Batches
 
-Search and fetch results receive process-local numeric reference IDs through `ref-memory.js`. A later fetch, screenshot, or devtools target can use those IDs instead of carrying a URL. References disappear on server restart, so consumers should resolve or use them in the same session.
+Search and fetch results receive numeric reference IDs through `ref-memory.js`. A later fetch, screenshot, or devtools target can use those IDs instead of carrying a URL. The bounded process cache resets on restart, but SQLite preserves mappings and repopulates the cache on lookup.
 
 Fetch and screenshot requests accept direct URLs or remembered IDs. Batch operations retain input order, run with configured bounded concurrency, and return a per-URL success or error entry rather than failing the full batch because one target fails. A single successful target is returned in the compact single-page shape. Extracted links are registered as references and inline Markdown links are rewritten from URLs to `[text](ref_id)`; table links are deliberately excluded.
 
@@ -22,15 +22,15 @@ Fetch and screenshot requests accept direct URLs or remembered IDs. Batch operat
 
 `web_search` and `web_fetch` have independent in-memory caches with a five-minute TTL and at most 200 entries per tool. Expired entries are pruned and oldest entries are evicted. `bypassCache` skips a read but the newly produced result is still stored.
 
-Fetch caching stores the structured, untruncated extraction result. `maxChars` is intentionally excluded from its cache key, then applied when a response is formatted. This avoids browser work for a caller asking for a smaller display while preserving tables and links. Do not move truncation before cache storage or include `maxChars` in this cache key without accepting that regression.
+Fetch caching stores the structured extraction result. `maxChars` is intentionally excluded from its cache key, so the first caller determines the stored extraction length, up to 200,000 characters. A later larger request cannot recover text beyond that cached length.
 
-The HTTP `/extract` test route also has a separate, bounded in-memory HTML cache (32 entries). It exists for iterative domain-hint testing: `cacheHtml=use` can replay extraction without a browser only for ordinary pages or interaction-free flows; `refresh` captures a new snapshot; `clear` removes selected entries. Interactive flows must use a live page.
+The HTTP `/extract` test route also has a separate, bounded in-memory HTML cache (32 entries). It exists for iterative domain-hint testing: `cacheHtml=1` can replay extraction without a browser only for ordinary pages or interaction-free flows; `refresh` captures a new snapshot; `0` clears cached HTML. Interactive flows must use a live page.
 
 Screenshot output is always JPEG. It can be returned inline, saved under the configured screenshot prefix, or exposed through a temporary download URL when those modes are configured. Download registrations expire after one hour and are capped at 200; stored files are pruned with their registrations. Do not expose a file or URL output option unless its storage configuration is present.
 
 ## Search Routing And Failure Policy
 
-`browserSearch()` normalizes and deduplicates one or more query variants. It records one durable search activity record, runs variants concurrently, then merges duplicate URLs across variants while preserving the contributing query variants. Each query may also receive a DuckDuckGo Instant Answer; that independent API request is capped at 1.5 seconds and silently contributes nothing on failure.
+`browserSearch()` normalizes and deduplicates one or more query variants. It records one durable search activity record, runs variants concurrently, then merges duplicate URLs across variants while preserving the contributing query variants. Each query may also receive a DuckDuckGo Instant Answer; search waits at most 1.5 seconds for it, while its underlying request may continue up to its own timeout.
 
 An explicit engine selection runs the requested routes and returns their individual failures. Automatic selection asks `EngineScheduler` for enabled routes, skips scheduler-disabled and circuit-open routes, and tries routes in order until one produces results. It records skipped and failed routes in the response instead of hiding degraded service. A route that returns no results is a failure for fallback selection, but a caller's explicit route is not replaced by another engine.
 
@@ -57,7 +57,7 @@ Stabilization is selected by the hint, then server configuration, then `network_
 
 Extraction works from the captured HTML in JSDOM. Domain-hint blocks or sections are preferred when they yield content. Otherwise it removes configured non-content nodes, tries Readability and HTML-to-Markdown, then falls back to scored semantic content containers. The fallback favors `article`, `main`, and substantive low-link-density text while rejecting common navigation, cookie, login, footer, and boilerplate patterns. It preserves paragraph boundaries, removes duplicate and junk lines, and safely truncates text.
 
-Tables are always extracted as structured data, including meaningful headers, captions, headings, and expanded row/column spans. Empty or layout-only tables are removed. Rendered tables are inserted near their matching heading when possible, otherwise appended. Links are always collected from non-table anchors, made absolute, deduplicated, and given nearest-heading context; they are retained in structured output but not appended as a noisy link section.
+Tables are extracted as structured data by default, including meaningful headers, captions, headings, and expanded row/column spans. A domain hint can limit tables to content or disable them. Empty or layout-only tables are removed. Rendered tables are inserted near their matching heading when possible, otherwise appended. Links are always collected from non-table anchors, made absolute, deduplicated, and given nearest-heading context; they are retained in structured output but not appended as a noisy link section.
 
 SEO analysis is optional because its live-page snapshot is additional work. It returns title, canonical URL, description, headings, and ranked visible main-content candidates. If standard extraction is empty, its leading candidate can provide the returned text.
 

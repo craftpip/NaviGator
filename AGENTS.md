@@ -27,10 +27,10 @@ Performs broad web research using multiple search engines with automatic fallbac
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `query` | `string` | — | Single search query |
-| `queries` | `string[]` | — | Multiple query variants |
+| `queries` | `string[]` | — | One or more search queries |
 | `limit` | `number` | `5` | Results per query |
-| `engine` | `enum` | `select_best` | Preferred engine: `duckduckgo_api`, `bing_lp`, `mojeek_lp`, `google_ch`, `duckduckgo_ch` |
+| `bypassCache` | `boolean` | `false` | Skip cached data and refresh the response |
+| `engine` | `string` | `select_best` | Automatic route selection, or an explicit registered route |
 
 **Output:** `results[]` containing `{ title, snippet, llmText, ref_id, link, url }`. Every search also makes an independent DuckDuckGo Instant Answer API call (`https://api.duckduckgo.com/` with `t=navigator`) regardless of which engine runs (unless disabled via `ENABLE_INSTANT_ANSWERS=0`) — when the reply contains content it is returned as a single `directAnswers[]` entry and rendered as a `**Instant Answer:**` section between the query and the results (one answer per query). The section is omitted when the DDG reply has no content. Response order is always: query → instant answer → results → errors.
 
@@ -42,14 +42,12 @@ Opens pages and returns cleaned, readable text content.
 
 **Input** (choose one mode):
 
-- `url: string` — Single URL
 - `urls: string[]` — Multiple URLs
-- `ref_id: number` — Numeric reference from a prior `web_search`
 - `ref_ids: number[]` — Multiple references
-- `maxChars: number` (default `8000`) — Maximum characters per page
-- `maxTableRows: number` (optional) — Maximum number of rows per extracted table
+- `maxChars: number` (default `90000`) — Maximum characters per page
+- `bypassCache: boolean` (default `false`) — Skip cached data and refresh the response
 
-**Output:** Per-item success/error with SEO metadata. Tables are always extracted and appended as clean pipe-separated tables. Links are always extracted and shown inline as `[text](ref_id)` (the ref_id is the markdown link destination) — use `web_page_links(ref_id: link_ref_id)` to resolve a link ref_id to its URL. The LLM calls `web_fetch(ref_id: link_ref_id)` to visit a link.
+**Output:** Per-item success/error with readable text, tables, warnings, and a page reference. Tables are extracted by default, but a domain hint may limit or disable them. Links are shown inline as `[text](ref_id)`; resolve them with `web_page_links(ref_ids: [link_ref_id])`, then fetch with `web_fetch(ref_ids: [link_ref_id])`.
 
 ---
 
@@ -57,10 +55,7 @@ Opens pages and returns cleaned, readable text content.
 
 Resolves one or more link ref_ids to their full URLs. Each inline link in a `web_fetch` result renders as `[text](ref_id)` — the parenthesized number is the link ref_id. Feed that ref_id here to get the actual URL.
 
-**Input** (choose one mode):
-
-- `ref_id: number` — Single link ref_id to resolve
-- `ref_ids: number[]` — Multiple link ref_ids to resolve in one call
+**Input:** `ref_ids: number[]` — One or more inline link reference IDs to resolve.
 
 **Output:** `- (ref_id): url` lines for each resolved ref_id.
 
@@ -73,12 +68,12 @@ Captures rendered page appearance as images.
 **Input** (choose one mode):
 
 - `targetId: string` — Target id from `Target.createTarget` to screenshot an existing persistent tab
-- `url: string` or `urls: string[]`
-- `ref_id: number` or `ref_ids: number[]`
-- `quality: number` (default `75`) — JPEG quality (1–100)
+- `urls: string[]` or `ref_ids: number[]`
+- `quality: "low" | "medium" | "high"` (default `medium`) — JPEG quality presets (30, 55, 75)
 - `fullPage: boolean` (default `true`) — Capture entire page
+- `output: "base64" | "file" | "url"` (default `base64`) — `file` and `url` depend on screenshot storage configuration
 
-**Output:** `screenshotBase64` with page metadata. Output format is always JPEG (the `format` option was removed).
+**Output:** Inline base64 JPEG, a file path, or a download URL depending on `output`. The format is always JPEG.
 
 ---
 
@@ -120,37 +115,31 @@ All tool schemas are defined in `getToolsListResponse()`:
 
 | Tool | File | Lines |
 |------|------|-------|
-| `web_search` | `src/mcp-server.js` | 916–948 |
-| `web_fetch` | `src/mcp-server.js` | 949–979 |
-| `web_page_screenshot` | `src/mcp-server.js` | 980–1027 |
-| `web_page_links` | `src/mcp-server.js` | 1096–1113 |
-| `web_page_ascii` | `src/mcp-server.js` | 1114–1141 |
+| Web tools | `src/mcp-server.js` | `getToolsListResponse()` |
 | Devtools tools (19) | `src/devtools.js` | tool definitions and handlers |
 
 ### Tool Call Dispatch
 
 | Handler | File | Lines |
 |---------|------|-------|
-| `handleToolCall()` — primary dispatcher | `src/mcp-server.js` | 1033–1182 |
-| `handleDevtoolsToolCall()` — devtools dispatcher | `src/devtools.js` | 1064–1079 |
-| `CallToolRequestSchema` handler (session mode) | `src/mcp-server.js` | 1250–1261 |
-| `handleStatelessMcpPost()` (stateless HTTP) | `src/mcp-server.js` | 1212 |
+| `handleToolCall()` — primary dispatcher | `src/mcp-server.js` | `handleToolCall()` |
+| `handleDevtoolsToolCall()` — devtools dispatcher | `src/devtools.js` | `handleDevtoolsToolCall()` |
+| MCP session/stateless handlers | `src/mcp-server.js` | `createMcpServer()`, `maybeStartHttpServer()` |
 
 ### MCP Server Setup
 
 | Component | File | Lines |
 |-----------|------|-------|
-| `createMcpServer()` | `src/mcp-server.js` | 1230–1278 |
-| HTTP transport (`maybeStartHttpServer`) | `src/mcp-server.js` | 1280–1673 |
-| Stdio transport | `src/mcp-server.js` | 1775–1779 |
-| Server startup | `src/mcp-server.js` | 1676–1684 |
+| `createMcpServer()` | `src/mcp-server.js` | MCP server construction |
+| HTTP transport (`maybeStartHttpServer`) | `src/mcp-server.js` | HTTP server and MCP transport |
+| Stdio transport | `src/mcp-server.js` | startup path |
 
 ### Key Implementation Files
 
 | File | Purpose |
 |------|---------|
 | `src/mcp-server.js` | Main MCP server — tool definitions, dispatch, HTTP/stdio transport, SSE keepalive, caching, screenshot storage |
-| `src/ascii.js` | ASCII wireframe transformer — `generateWireframe()`, `formatLegend()`, `transform()` |
+| `src/ascii.js` | ANSI/plain screenshot transformer — `buildCellGrid()`, `placeMarkers()`, `renderGrid()`, `renderPlain()`, `formatLegend()`, `transform()` |
 | `src/devtools.js` | Devtools tool definitions and handlers (CDP-based browser interaction) |
 | `src/search.js` | `browserSearch()`, `browserOpenAndExtract()`, `browserCaptureScreenshot()` |
 | `src/browser.js` | `BrowserManager`, page lifecycle, `newPage()` |
@@ -207,10 +196,10 @@ mcp-server --> engines
 
 1. Call `web_search` with the user's intent.
 2. Select the best results using `results[].ref_id`.
-3. Call `web_fetch` with the chosen `ref_id` or `ref_ids`.
+3. Call `web_fetch` with the chosen `ref_ids`.
 4. Synthesize the answer from extracted text.
 
-For visual verification, call `web_page_screenshot` with the same `ref_id`.
+For visual verification, call `web_page_screenshot` with the same `ref_ids`.
 
 ---
 
@@ -223,15 +212,15 @@ For visual verification, call `web_page_screenshot` with the same `ref_id`.
 | `CHROME_PATH` | `/usr/bin/chromium` | Path to Chromium executable |
 | `HEADLESS` | `true` | Run browser in headless mode |
 | `BROWSER_BACKEND` | `cloakbrowser` | Default backend for non-search page creation. Allowed values: `cloakbrowser`, `chromium`, `lightpanda`. This is used by `web_fetch` and `web_page_screenshot`. |
-| `BROWSER_OP_TIMEOUT_MS` | `60000` | Per-operation timeout |
-| `SEARCH_ROUTE_WARMUP_ENGINES` | `brave_cb,duckduckgo_api,duckduckgo_cb` | Engines to warm up on startup; set explicitly to empty for no warmup |
+| `BROWSER_OP_TIMEOUT_MS` | `60000` application / `25000` Compose | Per-operation timeout |
+| `SEARCH_ROUTE_WARMUP_ENGINES` | Application fallback routes / empty in Compose | Engines to warm up on startup; an explicit empty value disables warmup |
 | `SEARCH_ROUTE_CIRCUIT_OPEN_MS` | `300000` | Per-route cooldown after failure |
 | `PRELAUNCH_BROWSER` | `1` | Prelaunch browser on server start |
-| `ENABLE_HTTP_MCP` | `0` | Enable Streamable HTTP transport |
+| `ENABLE_HTTP_MCP` | `0` application / `1` Compose | Enable Streamable HTTP transport |
 | `DEBUG` | `0` | Enable per-step benchmark timing logs in `web_fetch` — logs each step (`goto_page`, `stabilize_page`, `extract_text_from_html`, etc.) with ms timing and a TOTAL summary |
 | `LOG_TOOL_ERRORS` | `1` | Log every erroring tool call to `logs/tool-errors.log` (one JSON line per error, redacted args, 5MB rotation). Default on — set to `0` to disable |
 | `ENABLE_INSTANT_ANSWERS` | `1` | Make the independent DuckDuckGo Instant Answer API call on every `web_search` (rendered as the `**Instant Answer:**` section). Set to `0` to disable |
-| `DISABLE_TOOLS` | `` | Comma-separated MCP tool names to hide from `tools/list` and reject on call. Matched case-insensitively. Example: `web_page_ascii,web_page_links`. Default empty (all tools enabled). The docker-compose default keeps `web_page_ascii` disabled |
+| `DISABLE_TOOLS` | `` | Comma-separated MCP tool names to hide from `tools/list` and reject on call. Matched case-insensitively. Example: `web_page_ascii,web_page_links`. Empty enables all tools, including in Compose. |
 
 ### Key Notes
 
@@ -253,9 +242,8 @@ For visual verification, call `web_page_screenshot` with the same `ref_id`.
 
 ```bash
 npm start                          # Run MCP server over stdio
-npm run test:mcporter              # Test MCP integration
 docker compose build               # Build Docker image
-docker compose down && up -d       # Restart containers
+docker compose up --build -d       # Build and start containers
 ```
 
 ### Running tests
@@ -384,16 +372,14 @@ right selectors for a tricky page; the panel is where you iterate and commit the
      "pathPattern": "/page-type",
      "pageType": "type-name",
      "comment": "What this page type is.",
-     "requireSelector": "optional-css-selector",
-     "waitForSelector": "selector-for-dynamic-content",
-     "navigationWait": 2000,
-     "preferReadability": true,
-     "content": {
-       "sections": [
-         { "selector": "div.content-area", "label": "Content", "priority": "high" },
-         { "selector": "aside.sidebar", "label": "Sidebar", "priority": "medium" }
-       ]
-     }
+      "requireSelector": "optional-css-selector",
+      "default": {
+        "waitForSelector": "selector-for-dynamic-content",
+        "stabilizeStrategy": "content_idle",
+        "skipSelectors": ["aside.sidebar"],
+        "format": "readability_to_markdown",
+        "tables": "content"
+      }
    }
    ```
 
@@ -401,21 +387,21 @@ right selectors for a tricky page; the panel is where you iterate and commit the
    matching this CSS selector exists on the loaded page — domain + path + this element
    must ALL match. Lets you split one domain+path into several page types (e.g. a
    profile vs a list that share a path). Candidate hints are tried in file order; the
-   first one whose selector is present wins, so a hint without `requireSelector` acts
-   as a fallback for the same domain+path. The selector is checked after the page
-   loads (after `waitForSelector` + stabilization). When it doesn't match, extraction
-   falls through to the next hint (or default extraction), and the override test pane
+    first one whose selector is present immediately after navigation wins, so a hint without
+    `requireSelector` acts as a fallback for the same domain+path. If no candidate matches
+    initially, matching is retried after stabilization. When an override selector does not
+    match, extraction falls through to normal extraction and the test pane
    shows a `⚠ requireSelector "…" not found — hint did not apply` note.
 
   **Content type hint in selector comment:** Mention what the selector targets — single text (one line), list (multiple items), mixed (text block, multi-line).
 
   **Labels are optional everywhere** (flow step labels, block labels, section labels, field labels). An empty/blank label prints no markdown heading: no `## step`, `### block`, or `**field:**` prefix — the content itself is emitted bare. Validation only rejects non-string labels (and flow step labels over 80 chars).
 
-  **Rule of thumb for section selectors:**
+   **Rule of thumb for flow extract blocks:**
    - Selectors must NOT overlap — one element should not be a child of another selected element.
-   - `high` priority sections always included. `medium` sections included only if they have 50+ chars of text.
-   - `low` sections are available but currently unused (reserved for future).
-   - Use `preferReadability: false` when the page has sidebar/navigation content that Readability strips.
+    - `high` priority blocks are always included. `medium` blocks are included only if they have 50+ chars of text.
+    - `low` priority blocks are reserved for future use.
+    - Use `default.format: "html_to_markdown"` when normal extraction should skip Readability.
    - Select ONLY the container that has the useful content. Exclude UI elements: buttons, block/report forms, follow buttons, empty tables, achievement badges, "Learn more" links, form labels, sticky bars.
    - For profile sidebars: prefer `div.js-profile-editable-area` (bio + stats + details) over `div.h-card` (includes block/report noise). Add separate sections for name (`h1.vcard-names`) and status (`div.user-status-message-wrapper`) if needed.
    - For lists of items: select the `<ol>` or `<ul>` container directly (e.g., `ol.js-pinned-items-reorder-list`). The extraction code auto-detects `<ol>/<ul>` and renders each `<li>` as a separate block with a blank line between items.
@@ -423,11 +409,7 @@ right selectors for a tricky page; the panel is where you iterate and commit the
 
 8. **Deploy and test:**
    ```bash
-   docker cp /workspace/src/search.js navigator:/app/src/search.js
-   docker cp /workspace/src/mcp-server.js navigator:/app/src/mcp-server.js
-   docker cp /workspace/domain-hints.json navigator:/app/domain-hints.json
-   docker restart navigator
-   sleep 8
+    docker compose restart navigator
    curl "http://localhost:3000/extract?url=https://example.com/page&maxChars=2000"
    ```
 
@@ -484,8 +466,7 @@ field is rejected as unknown.
 
 
 - `cleanAndTruncateText` used to call `cleanWhitespace` which collapsed newlines with `\s+`. Now uses `[^\S\n]+` to preserve newlines. If section output appears as a single run-on line, check that the fix is deployed.
-- Sections path and fallback path are exclusive — if sections produce any output, Readability/candidate blocks are skipped entirely.
-- `waitForSelector` is fast when the selector exists (~1ms–374ms). When the selector doesn't exist (e.g., `div[data-testid="markdown-body"]` on GitHub), it silently times out at 20s — this was the biggest performance killer for GitHub pages. If content loads after the wait (e.g., Turbo frames), increase `navigationWait`.
+- `waitForSelector` is fast when the selector exists (~1ms–374ms). When it does not exist (e.g., `div[data-testid="markdown-body"]` on GitHub), it silently times out at 20s. Use a correct selector and `default.stabilizeStrategy` rather than a fixed post-navigation delay.
 - **GitHub selectors:** GitHub uses `.markdown-body` (class-based), NOT `div[data-testid="markdown-body"]`. The `data-testid` attribute does not exist on GitHub pages. For issue/PR detail pages, use `.comment-body` for content sections (picks up the issue description + comments).
 - The `/extract?url=` endpoint is for quick testing. The actual MCP `web_fetch` tool goes through the same `browserOpenAndExtract()` path.
 - **Selectors must not overlap** — one selected element should not be a child of another. Otherwise content appears in multiple sections.
@@ -494,11 +475,11 @@ field is rejected as unknown.
 - **Short values** like "7" (following count) can be lost because `uniqueLines` filters lines with `length < 3`. To preserve them, the parent element should be selected so the full text (e.g., "116 followers · 7 following") stays together.
 - **Duplicated content across page states** (e.g., desktop + mobile versions of the same section) causes duplicate lines. `uniqueLines` filters exact duplicates, but different text content passes through. Use a selector that targets only one state when possible (e.g., prefer `div.user-status-container:not(.d-md-none)` over the classless version).
 - **Smart hints, not smart code.** Do NOT add auto-detection logic (list detection, content type detection) in search.js. Formatting decisions belong in the hint — choose precise selectors that naturally produce clean output. The section extraction code stays simple: textContent → lines → dedup → render as flat list items.
-- **Link reference IDs** are shown in metadata as `Links: N (use web_page_links(ref_id: N) to list)`. The page ref_id `[N]` in each entry title lets the LLM call `web_page_links(ref_id: N)` to explore links with their own ref_ids, then `web_fetch(ref_id: link_ref_id)` to visit.
+- **Link reference IDs** appear inline as `[text](ref_id)`. Resolve them with `web_page_links(ref_ids: [link_ref_id])`, then visit them with `web_fetch(ref_ids: [link_ref_id])`.
 - **test without the hints first** as step 6 before writing the hint to see what's missing.
 - **Path pattern matching:** `/*` means one segment (`/foo`), `/*/*` means two segments (`/foo/bar`), `/**` means everything. Uses `compileGlob` which converts `*` to `[^/]*`. The special case for `/*` was removed — it now uses `compileGlob` like everything else.
 - **Hint matching is first-match:** The first hint that matches wins. List hints from most specific to least specific (profile before repo, then issues, etc.). GitHub entries are ordered: profile (`/*`), repo (`/*/*`), issues (`/*/*/issues`), prs (`/*/*/pulls`).
-- **`requireSelector` splits one domain+path:** With `requireSelector` set, the first hint in file order whose selector exists on the loaded page wins — a hint without `requireSelector` is the fallback for the same domain+path. Matching is checked after `waitForSelector` + stabilization so SPA-rendered elements count; the test pane reports `⚠ requireSelector "…" not found — hint did not apply` when an override hint's selector is missing.
+- **`requireSelector` splits one domain+path:** With `requireSelector` set, the first hint in file order whose selector exists immediately after navigation wins — a hint without `requireSelector` is the fallback for the same domain+path. If none match initially, matching is retried after stabilization; the test pane reports `⚠ requireSelector "…" not found — hint did not apply` when an override hint's selector is missing.
 - **GitHub selector stability:** GitHub uses React + Turbo and CSS-module classes change per build. Use stable selectors like `h1.vcard-names`, `div.js-profile-editable-area`, `ol.js-pinned-items-reorder-list`, `article.markdown-body`, `li[role="listitem"]` (issues/PRs list). Avoid CSS-module class names. For repo pages, `article.markdown-body` is inside Turbo + React, so wait for it specifically.
 
 ---
@@ -734,21 +715,20 @@ Hermes agent reported browser tools disappearing after ~5 min. Container logs sh
 
 **Created:** 2026-07-25
 
-**What:** Links are always extracted but never shown in `web_fetch` output. They are stored in `pageLinksByPageRef` and accessible only via `web_page_links(ref_id)`. There is no `extractLinks` flag — extraction is automatic but invisible.
+**What:** Links are always extracted and rendered inline as `[text](ref_id)` in `web_fetch` output. Resolve a link ID with `web_page_links(ref_ids: [ref_id])`. There is no `extractLinks` flag.
 
-**Why:** Keeps `web_fetch` output clean and focused on page text content. The LLM calls `web_page_links(page_ref_id)` when it needs to explore links.
+**Why:** Inline Markdown destinations make link IDs unambiguous without adding a separate noisy links section.
 
 **Key changes:**
 - `src/search.js` — `browserOpenAndExtract()` always calls `extractLinksFromHtml()`. Removed `extractLinks` parameter.
-- `src/mcp-server.js` — `openTargetsParallel()` registers links with `rememberLink()` and stores them in `pageLinksByPageRef`. No `## Links` appended to text output.
+- `src/mcp-server.js` — `openTargetsParallel()` registers links with `rememberLink()` and rewrites their Markdown destinations to reference IDs.
 - `src/mcp-server.js` — Removed `extractLinks` from `web_fetch` schema.
-- `linkMemoryByRef` / `linkMemoryByUrl` store the URL mapping, so `web_fetch(ref_id: link_ref_id)` resolves correctly.
-- `pageLinksByPageRef` stores `{ ref_id, url, text }` per page (used by `web_page_links` tool).
+- `ref-memory.js` stores the URL mapping, so `web_fetch(ref_ids: [link_ref_id])` resolves correctly.
 
 **Flow:**
-1. `web_fetch(url: "...")` → clean text + tables (no links in output)
-2. `web_page_links(ref_id: <page_ref_id>)` → lists links with `- Circulars — [4]`, `- RSS Feed — [5]`, ...
-3. `web_fetch(ref_id: 4)` → fetches the Circulars page
+1. `web_fetch(urls: ["..."])` → clean text + tables with inline link IDs
+2. `web_page_links(ref_ids: [4])` → resolves link 4 to its URL
+3. `web_fetch(ref_ids: [4])` → fetches the linked page
 
 **Verified on:** NSE India option chain (255 links, no prices in link output, web_fetch link resolution works end-to-end)
 
@@ -766,7 +746,6 @@ Hermes agent reported browser tools disappearing after ~5 min. Container logs sh
 - Removed `includeTables` parameter from `web_fetch` schema, `handleToolCall`, `openTargetsParallel`, and `browserOpenAndExtract`.
 - `selectedText` always uses `extracted.text` (Readability text) as the base — avoids raw tabular data while keeping article content.
 - `extractTablesFromDocument()` always runs and `insertTablesInline()` always appends structured tables.
-- `maxTableRows` kept as an optional param for limiting row count per table.
 
 **Flow:**
 1. `web_fetch(url)` → Readability text + `### Table N` (pipe-separated)

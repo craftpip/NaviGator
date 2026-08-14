@@ -17,10 +17,10 @@ The complete per-tool input/output contract is in [Tool Reference](tool-referenc
 
 | Tool | Input modes | Core behavior |
 |---|---|---|
-| `web_search` | `query` or `queries`, `limit`, `engine`, `bypassCache` | Runs explicit routes or automatic fallback search |
-| `web_fetch` | `url`/`urls` or `ref_id`/`ref_ids`, `maxChars`, `maxTableRows`, `bypassCache` | Opens pages and returns readable text with tables and numeric markdown references |
+| `web_search` | `queries`, `limit`, `engine`, `bypassCache` | Runs explicit routes or automatic fallback search |
+| `web_fetch` | `urls` or `ref_ids`, `maxChars`, `bypassCache` | Opens pages and returns readable text with tables and numeric markdown references |
 | `web_page_screenshot` | URL/ref input or persistent `targetId`, `quality`, `fullPage` | Captures a JPEG screenshot; storage output depends on config |
-| `web_page_links` | page `ref_id` | Resolves links discovered during a prior fetch |
+| `web_page_links` | link `ref_ids` | Resolves inline link references from a prior fetch |
 | `web_page_ascii` | URL/ref input, `width`, `fullPage`, `mode` | Produces ANSI or plain ASCII from a real screenshot plus DOM legend |
 
 Tools can be hidden and rejected by `DISABLE_TOOLS`. API keys with an allowed-tool list see and call only their permitted tools.
@@ -55,7 +55,7 @@ See [Browser Runtime](../architecture/browser-runtime.md) for target lifetime an
 `web_search` and `web_fetch` responses are cached in process memory for five minutes, up to 200 entries per tool.
 
 - `bypassCache=true` skips lookup and refreshes the cached result.
-- `web_fetch` caches the structured page result without `maxChars`; truncation is applied after retrieval. A caller can request a longer version without forcing another page load.
+- `web_fetch` excludes `maxChars` from its cache key; a cached entry retains the length requested by its first caller, up to 200,000 characters.
 - Caches are not shared between processes and reset on restart.
 
 ## Reference IDs
@@ -65,8 +65,8 @@ References make fetch output navigable without repeating long URLs.
 1. A fetched page gets a numeric reference ID.
 2. Every extracted link is assigned a numeric ID through `rememberLink()`.
 3. Markdown link destinations are rewritten from URLs to IDs: `[documentation](88)`.
-4. `web_page_links(ref_id: pageId)` lists discovered page links.
-5. `web_fetch(ref_id: 88)` resolves that link and fetches it.
+4. `web_page_links(ref_ids: [88])` resolves an inline link reference.
+5. `web_fetch(ref_ids: [88])` resolves that link and fetches it.
 
 The in-memory maps are bounded to 2,000 entries. `ref_links` in SQLite preserves URL-to-ID mappings across restarts.
 

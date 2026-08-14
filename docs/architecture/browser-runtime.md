@@ -24,7 +24,7 @@ The direct-page backend comes from `BROWSER_BACKEND`. A known search route overr
 
 ## Page Slots and Search Windows
 
-All page operations pass through `withPageSlot()`, a global semaphore controlled by `MAX_CONCURRENT_PAGE_OPS`. It protects the host from unrestricted concurrent search, fetch, screenshot, and target work.
+Search, fetch, screenshot, and ASCII operations pass through `withPageSlot()`, a global semaphore controlled by `MAX_CONCURRENT_PAGE_OPS`. Persistent DevTools target operations use their own target limits and do not consume this semaphore.
 
 Search pages use a separate reusable window pool:
 
@@ -40,7 +40,7 @@ Fetches, screenshots, and ASCII renderings open short-lived direct-backend pages
 
 `browserCaptureScreenshot()` opens a page, waits for content, measures the viewport/document, captures a JPEG, and returns the encoded image plus metadata. `web_page_screenshot` can also capture an existing persistent DevTools target through `captureTargetScreenshot()`.
 
-Storage behavior is controlled by `ENABLE_SCREENSHOT_PATH` and `ENABLE_SCREENSHOT_DOWNLOAD_LINK`. When enabled, the server stores the screenshot and returns a local path, download URL, or both instead of placing the full image in the normal response.
+Storage capability is controlled by `ENABLE_SCREENSHOT_PATH` and `ENABLE_SCREENSHOT_DOWNLOAD_LINK`. Callers request `output: "file"` or `output: "url"` to use it; otherwise the default response remains inline base64 JPEG.
 
 ## ASCII Screenshots
 

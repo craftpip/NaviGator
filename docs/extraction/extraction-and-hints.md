@@ -8,24 +8,22 @@
 URL / ref ID
   -> load matching domain hints
   -> open direct-backend page and navigate
-  -> choose matching requireSelector candidate after stabilization
+  -> choose matching requireSelector candidate
   -> detect bot challenge and page-state warnings
   -> serialize HTML + browser text + SEO snapshot
   -> extract text, tables, and links
   -> return structured page result
 ```
 
-Hints can override the browser-free extraction from `cachedHtml`; otherwise extraction occurs from a live page. Page loading uses `NAV_WAIT_UNTIL`, configured browser timeouts, optional hint selector gates, and a stabilization strategy: `network_idle`, `content_idle`, `mutation`, or `none`.
+Hints can override the browser-free extraction from `cachedHtml`; otherwise extraction occurs from a live page. Fetch navigation waits for `domcontentloaded`, then uses configured browser timeouts, optional hint selector gates, and a stabilization strategy: `network_idle`, `content_idle`, `mutation`, or `none`.
 
 ## Text Selection Order
 
-`extractTextFromHtml()` creates a JSDOM document, removes configured noise and hint skip selectors, then uses the first applicable strategy.
+Interactive flows run against the live page before `extractTextFromHtml()`. That function creates a JSDOM document, removes configured noise and hint skip selectors, then uses the first applicable strategy.
 
-1. **Hint flow**: execute a bounded interactive flow against the real page. Each extract step produces a named stage. Normal extraction does not run afterward.
-2. **Hint blocks**: render precise selected containers or record fields. If any output is produced, normal extraction does not run afterward.
-3. **Readability**: parse cleaned DOM with Mozilla Readability and convert resulting HTML to Markdown. When browser `innerText` is substantially larger, it is used instead to avoid a partial Readability result.
-4. **Candidate blocks**: score semantic containers such as `main`, `article`, `[role=main]`, application roots, and common content classes using text value, links, headings, depth, dimensions, and position.
-5. **Body text**: final fallback when no usable candidate remains.
+1. **Readability**: parse cleaned DOM with Mozilla Readability and convert resulting HTML to Markdown. When visible browser text is substantially larger, cleaned body HTML is converted to Markdown instead to avoid dropping rendered content.
+2. **Candidate blocks**: score semantic containers such as `main`, `article`, `[role=main]`, application roots, and common content classes using word count, sentence punctuation, and literal HTTP URL count.
+3. **Body text**: final fallback when no usable candidate remains.
 
 `captureSeoSnapshot()` runs in the browser before JSDOM processing. `buildSeoAnalysis()` combines that snapshot and final extraction into title, canonical URL, metadata, heading structure, candidates, and main content information.
 
@@ -48,7 +46,7 @@ Tables are extracted from the cleaned DOM by `extractTablesFromDocument()`.
 - The nearest heading becomes table context.
 - `insertTablesInline()` places rendered pipe tables under their related heading where possible, or appends them.
 
-`maxTableRows` limits rows per table in the `web_fetch` result. A hint may choose table extraction mode `all`, `content`, or `disabled`.
+A default extraction hint may choose table extraction mode `all`, `content`, or `disabled`.
 
 ## Links and References
 
@@ -70,7 +68,7 @@ Hints live in `domain-hints.json` by default, or at `DOMAIN_HINTS_PATH`. `getDom
 - Paths are case-normalized with the trailing slash removed except at root.
 - `*` matches within one segment; `**` may cross segments.
 - Hints are tested in file order.
-- A rule with `requireSelector` applies only after that selector exists on the loaded/stabilized page. This lets the same domain and path hold multiple page types, with a selectorless rule acting as fallback.
+- A rule with `requireSelector` applies when that selector exists after navigation. If no candidate matched, matching is retried after stabilization. This lets the same domain and path hold multiple page types, with a selectorless rule acting as fallback.
 
 ### Default Extraction Hint
 
@@ -78,26 +76,18 @@ Hints live in `domain-hints.json` by default, or at `DOMAIN_HINTS_PATH`. `getDom
 {
   "domain": "example.com",
   "pathPattern": "/articles/**",
-  "waitForSelector": "article",
-  "stabilizeStrategy": "content_idle",
-  "navigationWait": 500,
-  "skipSelectors": [".newsletter", ".advertisement"],
-  "preferReadability": true,
-  "tableExtraction": "content",
-  "content": {
-    "blocks": [
-      {
-        "selector": "article",
-        "label": "Article",
-        "priority": "high",
-        "format": "html_to_markdown"
-      }
-    ]
+  "default": {
+    "waitForSelector": "article",
+    "stabilizeStrategy": "content_idle",
+    "waitForContent": ["article"],
+    "skipSelectors": [".newsletter", ".advertisement"],
+    "format": "readability_to_markdown",
+    "tables": "content"
   }
 }
 ```
 
-Leaf blocks can render text, lists, HTML, HTML-to-Markdown, Readability-to-Markdown, and table text/JSON/CSV. Record blocks select repeated parent elements and render named child fields. Medium-priority blocks need at least 50 characters unless they produce a table.
+Use a `flow` when precise selected containers or page interaction are required. Its `extract` steps carry `content.blocks`.
 
 ### Flow Hint
 
@@ -108,8 +98,7 @@ Flows exist for pages which must be interacted with before content appears.
   "domain": "example.com",
   "pathPattern": "/search",
   "flow": [
-    { "action": "type", "selector": "input[name=q]", "text": "navigator", "submit": true },
-    { "action": "wait", "selector": "#results", "state": "visible" },
+    { "action": "type", "selector": "input[name=q]", "text": "navigator", "submit": true, "waitForSelector": "#results" },
     { "action": "extract", "label": "Results", "content": { "blocks": [{ "selector": "#results", "priority": "high" }] } }
   ]
 }

@@ -8,7 +8,7 @@ These modules hold configuration, durable state, extraction-rule management, and
 
 `loadConfig()` is the process-start boundary between environment text and the normalized configuration consumed by the server. Invalid, missing, or out-of-range values fall back to safe defaults rather than leaking unchecked strings into browser and scheduler code. Lists are normalized, de-duplicated, and, for engine lists, limited to IDs registered in `src/engines/index.js`.
 
-Browser discovery is intentionally conditional. Chromium is required and startup fails with an actionable `CHROME_PATH` error if it cannot be found. Cloakbrowser and Lightpanda are optional: the module checks their explicit environment paths, known installation locations, then `PATH`; Cloakbrowser may use its downloader as a final fallback. Do not make an optional backend fatal unless every configured runtime path requires it.
+Browser discovery is intentionally conditional. Chromium is required and startup fails with an actionable `CHROME_PATH` error if it cannot be found. Cloakbrowser and Lightpanda are optional: Cloakbrowser checks its explicit environment path and known installation locations, then its downloader; Lightpanda also checks `PATH`. Do not make an optional backend fatal unless every configured runtime path requires it.
 
 Important routing rules:
 
@@ -63,7 +63,7 @@ Only trimmed URLs are stored. This module does not perform canonical URL normali
 
 Domain hints select extraction behavior after a page has loaded. A rule matches its domain or subdomain and a lowercase normalized pathname. `*` stays inside one path segment, `**` can cross segments, and `/` is normalized consistently. Candidate rules retain file order; `search.js` tries candidates in that order and checks `requireSelector` against the live DOM before accepting one. This allows a selector-gated rule to precede a same-path fallback rule.
 
-Hints have exactly one extraction method:
+Hints may use at most one extraction method:
 
 - `default` configures normal page extraction: optional selector gates, stabilization, content waits, skips, output format, and table behavior.
 - `flow` scripts a small, bounded sequence of `wait`, `click`, `type`, `navigate`, and `extract` steps for interactive pages. It must finish with extraction, limits steps/clicks/timeouts, and requires a wait or extract between interactions.
