@@ -36,6 +36,8 @@ Developer browser tools are disabled unless `ENABLE_DEVTOOLS_MCP=1`. A target is
 
 Each target records its creation and last activity times, title, console messages, and network requests. Observers capture console output, page errors, failed requests, responses, main-frame navigation, and page close events. Console and network histories are each capped at 200 entries. Accessing a target refreshes its activity and tab timer.
 
+`Page.reload` reloads a target and can temporarily disable the HTTP cache for a hard refresh. `Page.goBack` and `Page.goForward` use session history and report when no entry exists in that direction. `Input.dispatchKeyEvent` supports normal renderer keyboard input with ordered modifiers; browser-level shortcuts such as Ctrl+R and F12 cannot be synthesized, so callers must use `Page.reload` instead. `Network.getRequests` reads the per-target rolling request buffer and can filter by URL substring, exact status, or failed requests.
+
 An inactivity sweep runs every 30 seconds. It closes targets idle for five minutes, remembers that closure for ten minutes, and returns a precise "closed due to inactivity" error during that retention period. Explicit close removes the target and tab timer immediately. Navigation is a convenience operation: if its target ID does not exist, it creates that target at the requested URL; other unknown IDs remain errors.
 
 ## Inspection And Interaction Model
