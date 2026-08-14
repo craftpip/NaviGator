@@ -294,6 +294,19 @@ export function getEngineProfiles() {
   return engineScheduler.getProfiles();
 }
 
+export function resetSearchEngine(engine) {
+  if (engine === "all") {
+    engineScheduler.resetAll();
+    routeCircuitState.clear();
+    persistRouteCircuitState();
+    return true;
+  }
+  if (!engineScheduler.reset(engine)) return false;
+  routeCircuitState.delete(routeKey(engine));
+  persistRouteCircuitState();
+  return true;
+}
+
 function normalizeEngines(engines, fallback) {
   const input = Array.isArray(engines) ? engines : [engines].filter(Boolean);
   const requested = input.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
@@ -1579,9 +1592,10 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
     ? config.searchEnabledEngines
     : DEFAULT_SEARCH_ENABLED_ENGINES;
   engineScheduler.configure(config);
-  const scheduled = engineScheduler.select(engines);
+  const scheduled = engineScheduler.select(engines, Date.now(), (engine) => !getRouteCircuit(engine).open);
   for (const skippedEngine of scheduled.skipped) {
     recordEngineAttempt(skippedEngine.engine, "skip", skippedEngine.reason);
+    engineScheduler.recordSkip(skippedEngine.engine);
     skipped.push({ engine: skippedEngine.engine, route: routeKey(skippedEngine.engine), remainingMs: skippedEngine.remainingMs, error: skippedEngine.reason });
   }
 
@@ -1589,6 +1603,7 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
     const circuit = getRouteCircuit(engine);
     if (circuit.open) {
       recordEngineAttempt(engine, "skip", circuit.lastError || "route open");
+      engineScheduler.recordSkip(engine);
       skipped.push({ engine, route: circuit.key, remainingMs: circuit.remainingMs, error: circuit.lastError || "route open" });
       continue;
     }
@@ -1600,7 +1615,7 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
         errors.push({ engine, route: routeKey(engine), error: "Search engine returned no results" });
         continue;
       }
-      engineScheduler.recordSuccess(engine, value.durationMs);
+      engineScheduler.recordSuccess(engine, value.results.length, Date.now(), value.durationMs);
       const settled = [{ status: "fulfilled", value, engine }];
       const result = buildQueryResult({ query, settled, limit, fallbackAttempted: true });
 
@@ -2755,7 +2770,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
 
 export async function browserCaptureScreenshot({
   url,
-  format = "jpeg",
+  format: _format = "jpeg",
   fullPage = true,
   quality
 }) {

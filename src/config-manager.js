@@ -68,9 +68,7 @@ const HOT_APPLYERS = {
     config.searchQueueMaxIntervalMs = Math.max(config.searchQueueMinIntervalMs, Math.max(1000, value));
   },
   SEARCH_QUEUE_ESCALATION_FACTOR: (config, value) => { config.searchQueueEscalationFactor = Math.max(1, value); },
-  SEARCH_QUEUE_READY_INTERVAL_MS: (config, value) => { config.searchQueueReadyIntervalMs = Math.max(0, value); },
-  SEARCH_QUEUE_EXPLORATION_EVERY: (config, value) => { config.searchQueueExplorationEvery = Math.max(2, Math.floor(value)); },
-  SEARCH_QUEUE_LATENCY_SAMPLES: (config, value) => { config.searchQueueLatencySamples = Math.max(3, Math.floor(value)); },
+  SEARCH_QUEUE_W_LATENCY: (config, value) => { config.searchQueueWLatency = Math.max(0, value); },
   OPEN_PAGE_MAX_PARALLEL: (config, value) => { config.openPageMaxParallel = clamp(value, 1, 20); },
   MAX_CONCURRENT_PAGE_OPS: (config, value) => { config.maxConcurrentPageOps = clamp(value, 1, 30); },
   HUMAN_TYPING_DELAY: (config, value) => { config.humanTypingDelay = clamp(value, 0, 500); },

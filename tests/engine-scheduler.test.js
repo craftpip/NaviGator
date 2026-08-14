@@ -6,13 +6,14 @@ import { EngineScheduler } from "../src/engine-scheduler.js";
 
 const stateDirs = [];
 
-async function createScheduler(config = {}) {
+async function createScheduler(config = {}, random = () => 0) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "navigator-engine-scheduler-"));
   stateDirs.push(dir);
   return new EngineScheduler({
     engines: ["first", "second", "third"],
     statePath: path.join(dir, "profiles.json"),
-    config
+    config: { searchQueueMinIntervalMs: 100, searchQueueMaxIntervalMs: 10_000, ...config },
+    random
   });
 }
 
@@ -21,73 +22,100 @@ afterEach(async () => {
 });
 
 describe("EngineScheduler", () => {
-  it("keeps unmeasured providers ahead of routes with known latency", async () => {
+  it("scores successful, productive engines above failing engines", async () => {
     const scheduler = await createScheduler();
-    expect(scheduler.select(["first", "second", "third"], 100).ordered).toEqual(["first", "second", "third"]);
-    expect(scheduler.select(["first", "second", "third"], 101).ordered).toEqual(["first", "second", "third"]);
-    expect(scheduler.select(["first", "second", "third"], 102).ordered).toEqual(["first", "second", "third"]);
+    scheduler.recordSuccess("first", 20, 1_000);
+    scheduler.recordSuccess("first", 10, 1_200);
+    scheduler.recordFailure("second", "captcha", 1_000);
+    const profiles = scheduler.getProfiles(2_000);
+    expect(profiles.find((profile) => profile.engine === "first").score)
+      .toBeGreaterThan(profiles.find((profile) => profile.engine === "second").score);
   });
 
-  it("doubles the failure cooldown from five minutes and removes the route from rotation", async () => {
-    const scheduler = await createScheduler({ searchQueueMinIntervalMs: 300000, searchQueueMaxIntervalMs: 3600000 });
-    scheduler.recordFailure("first", 1000);
-    let profile = scheduler.getProfiles(1000).find((entry) => entry.engine === "first");
-    expect(profile).toMatchObject({ errors: 1, consecutiveFailures: 1, cooldownMs: 300000, state: "cooling_down" });
-
-    scheduler.recordFailure("first", 301000);
-    profile = scheduler.getProfiles(301000).find((entry) => entry.engine === "first");
-    expect(profile).toMatchObject({ errors: 2, consecutiveFailures: 2, cooldownMs: 600000, remainingMs: 600000 });
-    expect(scheduler.select(["first", "second"], 301000).ordered).toEqual(["second"]);
+  it("learns a percentile failure gap and weights captcha backoff more heavily", async () => {
+    const scheduler = await createScheduler({ searchQueueErrorGapSafety: 1.25 });
+    scheduler.recordFailure("first", "timeout", 1_000);
+    scheduler.recordFailure("first", "timeout", 5_000);
+    scheduler.recordFailure("first", "captcha", 10_000);
+    const profile = scheduler.getProfiles(10_000).find((entry) => entry.engine === "first");
+    expect(profile.failureGapsMs).toEqual([4_000, 5_000]);
+    expect(profile.errorTypes).toMatchObject({ timeout: 2, captcha: 1 });
+    expect(profile.minIntervalMs).toBeGreaterThanOrEqual(9_375);
+    expect(scheduler.isEligible("first", 10_000)).toBe(false);
   });
 
-  it("returns a recovered engine to the equal round-robin pool", async () => {
+  it("decays learned backoff only after successful recovery and keeps its floor", async () => {
+    const scheduler = await createScheduler({ searchQueueDecayPerSuccess: 0.5 });
+    scheduler.recordFailure("first", "blocked", 1_000);
+    const raised = scheduler.getProfiles(1_000).find((entry) => entry.engine === "first").minIntervalMs;
+    scheduler.recordSuccess("first", 3, 2_000);
+    scheduler.recordSuccess("first", 3, 3_000);
+    const profile = scheduler.getProfiles(3_000).find((entry) => entry.engine === "first");
+    expect(profile.minIntervalMs).toBeLessThan(raised);
+    expect(profile.minIntervalMs).toBeGreaterThanOrEqual(100);
+    expect(profile.successesInRow).toBe(2);
+  });
+
+  it("persists the learned interval and resets one engine to a neutral profile", async () => {
     const scheduler = await createScheduler();
-    scheduler.recordFailure("first", 0);
-    scheduler.recordSuccess("first", 0, 300000);
-    const profile = scheduler.getProfiles(300000).find((entry) => entry.engine === "first");
-    expect(profile).toMatchObject({ successes: 1, errors: 1, consecutiveFailures: 0, cooldownMs: 300000, state: "healthy" });
-    expect(scheduler.select(["first", "second"], 300000).ordered).toEqual(["first", "second"]);
+    scheduler.recordFailure("second", "captcha", 1_000);
+    const reloaded = new EngineScheduler({ engines: ["first", "second", "third"], statePath: scheduler.statePath, config: { searchQueueMinIntervalMs: 100 } });
+    expect(reloaded.getProfiles(1_000).find((entry) => entry.engine === "second").minIntervalMs).toBeGreaterThan(100);
+    expect(reloaded.reset("second")).toBe(true);
+    expect(reloaded.getProfiles(1_000).find((entry) => entry.engine === "second")).toMatchObject({ attempts: 0, minIntervalMs: 100, state: "unknown" });
   });
 
-  it("persists failure scores and cooldowns across restarts", async () => {
+  it("rotates primary attempts across healthy engines and keeps score-ranked fallback", async () => {
     const scheduler = await createScheduler();
-    scheduler.recordFailure("second", 1000);
-    const reloaded = new EngineScheduler({
-      engines: ["first", "second", "third"],
-      statePath: scheduler.statePath
-    });
-    const profile = reloaded.getProfiles(1000).find((entry) => entry.engine === "second");
-    expect(profile).toMatchObject({ errors: 1, consecutiveFailures: 1, cooldownMs: 300000, remainingMs: 300000 });
+    scheduler.recordSuccess("first", 20, 1_000);
+    scheduler.recordSuccess("second", 1, 1_000);
+    scheduler.markSelected("first", 1_000);
+    scheduler.markSelected("second", 2_000);
+    scheduler.markSelected("third", 3_000);
+    const selected = scheduler.select(["first", "second", "third"], 20_000);
+    expect(selected.ordered).toHaveLength(3);
+    expect(new Set(selected.ordered).size).toBe(3);
+    expect(selected.ordered[0]).toBe("first");
   });
 
-  it("resets a profile after an infrastructure failure is corrected", async () => {
+  it("prefers the faster route when reliability and yield are equal", async () => {
     const scheduler = await createScheduler();
-    scheduler.recordFailure("first", 1000);
-    expect(scheduler.reset("first")).toBe(true);
-    expect(scheduler.getProfiles(1000).find((entry) => entry.engine === "first")).toMatchObject({
-      errors: 0,
-      consecutiveFailures: 0,
-      nextEligibleAt: 0,
-      state: "unknown"
-    });
+    scheduler.recordSuccess("first", 10, 1_000, 4_000);
+    scheduler.recordSuccess("second", 10, 1_000, 400);
+    const selected = scheduler.select(["first", "second"], 2_000);
+    expect(selected.ordered[0]).toBe("second");
   });
 
-  it("prefers the fastest healthy provider while pacing immediate repeats", async () => {
-    const scheduler = await createScheduler({ searchQueueReadyIntervalMs: 10000 });
-    scheduler.recordSuccess("first", 400, 1);
-    scheduler.recordSuccess("second", 100, 1);
-    scheduler.recordSuccess("third", 250, 1);
-    expect(scheduler.select(["first", "second", "third"], 20000).ordered).toEqual(["second", "third", "first"]);
-
-    scheduler.markSelected("second", 20000);
-    expect(scheduler.select(["first", "second", "third"], 20001).ordered).toEqual(["third", "first", "second"]);
+  it("counts scheduler skips without treating them as failures", async () => {
+    const scheduler = await createScheduler();
+    scheduler.recordSkip("first");
+    const profile = scheduler.getProfiles(1_000).find((entry) => entry.engine === "first");
+    expect(profile).toMatchObject({ attempts: 0, fail: 0, skip: 1 });
   });
 
-  it("periodically explores a non-leading healthy provider", async () => {
-    const scheduler = await createScheduler({ searchQueueExplorationEvery: 2 });
-    scheduler.recordSuccess("first", 100, 1);
-    scheduler.recordSuccess("second", 300, 1);
-    expect(scheduler.select(["first", "second"], 20000).ordered[0]).toBe("first");
-    expect(scheduler.select(["first", "second"], 40000).ordered[0]).toBe("second");
+  it("keeps successful routes eligible while backing off failures", async () => {
+    const scheduler = await createScheduler();
+    scheduler.recordSuccess("first", 3, 1_000);
+    scheduler.recordFailure("second", "captcha", 1_000);
+    const profiles = scheduler.getProfiles(1_050);
+    expect(profiles.find((entry) => entry.engine === "first")).toMatchObject({ state: "healthy" });
+    expect(profiles.find((entry) => entry.engine === "second")).toMatchObject({ state: "cooling_down" });
+    expect(scheduler.isEligible("first", 1_050)).toBe(true);
+    expect(scheduler.select(["first", "second", "third"], 1_050).skipped).toEqual([
+      expect.objectContaining({ engine: "second", reason: "failure backoff" })
+    ]);
+  });
+
+  it("penalizes a recent failure more than an older failure", async () => {
+    const scheduler = await createScheduler();
+    scheduler.recordFailure("first", "timeout", 1_000);
+    scheduler.recordFailure("second", "timeout", 1_000);
+    scheduler.recordSuccess("first", 1, 2_000);
+    scheduler.recordSuccess("second", 1, 2_000);
+    scheduler.recordFailure("first", "timeout", 2_100);
+    scheduler.recordFailure("second", "timeout", 10_000);
+    const profiles = scheduler.getProfiles(10_000);
+    expect(profiles.find((profile) => profile.engine === "first").score)
+      .toBeGreaterThan(profiles.find((profile) => profile.engine === "second").score);
   });
 });

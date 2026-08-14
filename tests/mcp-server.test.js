@@ -25,6 +25,7 @@ vi.mock("../src/search.js", () => ({
   getActivityCounters: vi.fn().mockReturnValue({ searches: 0, searchResults: 0, fetches: 0, screenshots: 0, botBlocks: 0 }),
   getEngineAttemptStats: vi.fn().mockReturnValue({ total: 0, ok: 0, fail: 0, skip: 0, byEngine: {}, recentFailures: [] }),
   getEngineProfiles: vi.fn().mockReturnValue([]),
+  resetSearchEngine: vi.fn().mockReturnValue(true),
 }));
 vi.mock("../src/devtools.js", () => ({
   devtoolsToolDefinitions: [{ name: "Target.createTarget" }, { name: "Runtime.evaluate" }],
@@ -243,6 +244,22 @@ describe("mcp-server HTTP endpoints", () => {
         recentFailures: [{ minutesAgo: 0, engine: "bing_lp", error: "captcha detected" }],
       });
       expect(body.engineProfiles).toEqual([]);
+    });
+  });
+
+  describe("POST /engines/reset", () => {
+    it("resets one scheduler profile", async () => {
+      const searchMod = await import("../src/search.js");
+      const res = await fetch(`${MCP_BASE}/engines/reset`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ engine: "bing_lp" }) });
+      expect(res.status).toBe(200);
+      expect(searchMod.resetSearchEngine).toHaveBeenCalledWith("bing_lp");
+    });
+
+    it("resets every scheduler profile through the all endpoint", async () => {
+      const searchMod = await import("../src/search.js");
+      const res = await fetch(`${MCP_BASE}/engines/reset/all`, { method: "POST" });
+      expect(res.status).toBe(200);
+      expect(searchMod.resetSearchEngine).toHaveBeenCalledWith("all");
     });
   });
 

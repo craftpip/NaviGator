@@ -1,7 +1,7 @@
 import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
-import logo from "./navigator.png";
+import logo from "./navigator-logo.svg";
 import { renderMarkdown } from "./markdown.js";
 
 const POLL_MS = 2000;
@@ -10,7 +10,7 @@ const MANAGE_GROUPS = [
   { label: "Backend Installations", detail: "Executable and profile settings for Chromium, Cloakbrowser, and Lightpanda.", keys: ["CHROME_PATH", "CHROME_USER_DATA_DIR", "CHROME_PROFILE_DIR", "CLOAKBROWSER_BINARY_PATH", "LIGHTPANDA_PATH", "LIGHTPANDA_PORT"] },
   { label: "Browser Startup And Desktop Access", detail: "VNC toggles HEADLESS automatically; use the header VNC action to change them together.", keys: ["PRELAUNCH_BROWSER", "STARTUP_URL", "HEADLESS", "ENABLE_VNC", "VNC_PORT", "NOVNC_PORT"] },
   { label: "Search Route Availability", detail: "Eligible engines, startup warming, route cooldowns, and browser-window capacity.", keys: ["SEARCH_ENABLED_ENGINES", "SEARCH_ROUTE_WARMUP_ENGINES", "SEARCH_ROUTE_CIRCUIT_OPEN_MS", "SEARCH_KEEP_MIN_WORKING_WINDOWS", "SEARCH_MAX_WORKING_WINDOWS"] },
-  { label: "Search Scheduler", detail: "How select_best paces, recovers, explores, and ranks eligible engines.", keys: ["SEARCH_QUEUE_MIN_INTERVAL_MS", "SEARCH_QUEUE_MAX_INTERVAL_MS", "SEARCH_QUEUE_ESCALATION_FACTOR", "SEARCH_QUEUE_READY_INTERVAL_MS", "SEARCH_QUEUE_EXPLORATION_EVERY", "SEARCH_QUEUE_LATENCY_SAMPLES"] },
+  { label: "Search Scheduler", detail: "How select_best scores, backs off, and recovers eligible engines.", keys: ["SEARCH_QUEUE_MIN_INTERVAL_MS", "SEARCH_QUEUE_MAX_INTERVAL_MS", "SEARCH_QUEUE_ESCALATION_FACTOR", "SEARCH_QUEUE_ERROR_GAP_PERCENTILE", "SEARCH_QUEUE_ERROR_GAP_SAFETY", "SEARCH_QUEUE_DECAY_PER_SUCCESS", "SEARCH_QUEUE_W_SUCCESS", "SEARCH_QUEUE_W_RESULTS", "SEARCH_QUEUE_W_STABILITY", "SEARCH_QUEUE_W_RECENCY", "SEARCH_QUEUE_W_RECOVERY"] },
   { label: "Page Operations And Extraction", detail: "Parallelism, navigation, stabilization, extraction hints, and response size.", keys: ["OPEN_PAGE_MAX_PARALLEL", "MAX_CONCURRENT_PAGE_OPS", "NAV_WAIT_UNTIL", "STABILIZE_STRATEGY", "DOMAIN_HINTS_PATH", "WEB_FETCH_MAX_CHARS"] },
   { label: "MCP Transports And Tool Access", detail: "MCP transports, DevTools exposure, tool filtering, and HTTP authentication.", keys: ["ENABLE_HTTP_MCP", "ENABLE_STDIO_MCP", "ENABLE_DEVTOOLS_MCP", "HUMAN_TYPING_DELAY", "DISABLE_TOOLS", "MCP_ALLOW_UNAUTHENTICATED"] },
   { label: "HTTP Server And Console", detail: "HTTP listener, health/status endpoints, and the Navigator console.", keys: ["ENABLE_HTTP_HEALTH", "ENABLE_WEB_CONSOLE", "MCP_API_PORT", "MCP_API_HOST"] },
@@ -490,7 +490,7 @@ function computeStatus(health, stats, ok) {
   return { level, issues };
 }
 
-function StatusView({ snapshot, history, toggleVnc, vncBusy, feed, trend, trendRange, trendError, setTrendRange }) {
+function StatusView({ snapshot, history, toggleVnc, vncBusy, feed, trend, trendRange, trendError, setTrendRange, reload }) {
   const { health = {}, stats = {}, config = {}, logs = [], ok } = snapshot;
   const instances = stats.instances || [];
   const engines = config.engines || [];
@@ -633,7 +633,7 @@ function StatusView({ snapshot, history, toggleVnc, vncBusy, feed, trend, trendR
       )}
       <section className="content-grid">
         <div className="engine-activity" ref={engineActivityRef}>
-          <Engines config={config} health={health} stats={stats} />
+          <Engines config={config} health={health} stats={stats} reload={reload} />
           <LiveFeed feed={feed} enabledEngines={engines.map((engine) => engine.id)} feedMaxHeight={feedMaxHeight} />
         </div>
         <Drivers health={health} instances={instances} />
@@ -744,7 +744,23 @@ function Drivers({ health, instances }) {
     </Panel>
   );
 }
-function Engines({ config, health, stats }) {
+function Engines({ config, health, stats, reload }) {
+  const [resetStatus, setResetStatus] = useState(null);
+  const resetEngine = async (engine) => {
+    setResetStatus({ engine, text: "resetting..." });
+    try {
+      await request(engine === "all" ? "/engines/reset/all" : "/engines/reset", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        ...(engine === "all" ? {} : { body: JSON.stringify({ engine }) })
+      });
+      await reload();
+      setResetStatus({ engine, text: "reset." });
+    } catch (error) {
+      setResetStatus({ engine, text: "failed" });
+    }
+    setTimeout(() => setResetStatus((current) => current?.engine === engine ? null : current), 1800);
+  };
   const circuits = new Map(
     (health.searchRouteCircuitBreakers || []).map((item) => [
       `${item.route}`,
@@ -764,28 +780,16 @@ function Engines({ config, health, stats }) {
   const schedulingState = (profile) => {
     if (profile.state === "cooling_down") return "cooling_down";
     if (profile.state === "probe") return "probe";
-    if (profile.lastSelectedAt && now < profile.lastSelectedAt + (profile.dispatchGapMs || 0)) return "paced";
     return "ready";
   };
-  const stateRank = { ready: 0, probe: 1, paced: 2, cooling_down: 3 };
+  const stateRank = { ready: 0, probe: 1, cooling_down: 2 };
   const engines = [...(config.engines || [])].sort((a, b) => {
     const profileA = profiles.get(a.id) || {};
     const profileB = profiles.get(b.id) || {};
     const rankA = stateRank[schedulingState(profileA)] ?? 4;
     const rankB = stateRank[schedulingState(profileB)] ?? 4;
     if (rankA !== rankB) return rankA - rankB;
-    if (rankA === 0) {
-      const latencyA = profileA.medianLatencyMs || 0;
-      const latencyB = profileB.medianLatencyMs || 0;
-      if (!latencyA && !latencyB) return a.id.localeCompare(b.id);
-      if (!latencyA) return -1;
-      if (!latencyB) return 1;
-      if (latencyA !== latencyB) return latencyA - latencyB;
-    }
-    if ((profileA.errorScore || 0) !== (profileB.errorScore || 0)) {
-      return (profileA.errorScore || 0) - (profileB.errorScore || 0);
-    }
-    return (profileB.successScore || 0) - (profileA.successScore || 0);
+    return (profileA.rank || Number.MAX_SAFE_INTEGER) - (profileB.rank || Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id);
   });
   if (!engines.length)
     return (
@@ -799,10 +803,11 @@ function Engines({ config, health, stats }) {
   return (
     <Panel
       title="Search engines"
-      sub="select_best queue — fastest healthy route first"
+      sub="select_best queue — weighted healthy-route distribution"
     >
       <div className="engine-summary">
         <b>{ready.length}</b> ready · <b>{probes.length}</b> recovery probes · <b>{cooling.length}</b> cooling down
+        <button className="button small engine-reset-all" onClick={() => resetEngine("all")} disabled={resetStatus?.engine === "all" && resetStatus.text === "resetting..."}>{resetStatus?.engine === "all" ? resetStatus.text : "reset all"}</button>
       </div>
       <div className="engine-grid">
         {engines.map((engine, index) => {
@@ -810,7 +815,6 @@ function Engines({ config, health, stats }) {
           const stat = attempts[engine.id] || {};
           const profile = profiles.get(engine.id) || {};
           const schedulerState = schedulingState(profile);
-          const dispatchWaitMs = Math.max(0, (profile.lastSelectedAt || 0) + (profile.dispatchGapMs || 0) - now);
           const attempted = (stat.ok || 0) + (stat.fail || 0);
           const { rate } = rateFor(engine.id);
           let tone = "ok";
@@ -824,9 +828,6 @@ function Engines({ config, health, stats }) {
           } else if (schedulerState === "probe" || circuit?.state === "half_open") {
             tone = "warn";
             route = "recovery probe";
-          } else if (schedulerState === "paced") {
-            tone = "info";
-            route = `paced · ${formatCountdown(dispatchWaitMs)}`;
           }
           const pool =
             health.searchWindows?.byEngine?.[
@@ -848,16 +849,19 @@ function Engines({ config, health, stats }) {
               <Dot tone={tone === "ok" ? "" : tone} />
               <div className="engine-main">
                 <div className="engine-name">
-                  <span className="queue-position">{index + 1}</span>
-                  {engine.id}
-                  <Pill tone={tone}>{route}</Pill>
+                   <span className="queue-position">{profile.rank || index + 1}</span>
+                   {engine.id}
+                   <Pill tone={tone}>{route}</Pill>
+                  <button className="button small engine-reset" onClick={() => resetEngine(engine.id)} disabled={resetStatus?.engine === engine.id && resetStatus.text === "resetting..."}>{resetStatus?.engine === engine.id ? resetStatus.text : "reset"}</button>
                 </div>
                 <div className="engine-inline-meta"><span className="feed-backend">{formatBackend(engine.backend)}</span> · {role}</div>
                 <div className="ordering-factors">
                   <span title="Scheduler eligibility state — ready means the route can be dispatched right now"><b>{schedulerState.replace("_", " ")}</b> eligibility</span>
+                  <span title="Composite score: success rate, result yield, recent stability, failure recency, recovery, and response latency"><b>{Number(profile.score || 0).toFixed(3)}</b> score</span>
+                  <span title="Median response time from recent successful searches"><b>{profile.medianLatencyMs ? formatMs(profile.medianLatencyMs) : "unmeasured"}</b> latency</span>
                   <span className={profile.consecutiveFailures ? "score-error" : ""} title="Consecutive failed attempts since the last success"><b>{profile.consecutiveFailures || 0}</b> failure streak</span>
-                  <span title={`Median latency of the last ${profile.latencySamples?.length || 0} sample(s)`}><b>{profile.medianLatencyMs ? formatMs(profile.medianLatencyMs) : "unmeasured"}</b> latency/{profile.latencySamples?.length || 0}</span>
-                  <span title="Time until this route can be dispatched again (pacing gap)"><b>{dispatchWaitMs ? formatCountdown(dispatchWaitMs) : "now"}</b> dispatch wait</span>
+                  <span title="The persisted minimum interval between automatic calls"><b>{formatCountdown(profile.minIntervalMs || 0)}</b> min interval</span>
+                  <span title="Time until this route becomes eligible for automatic selection"><b>{profile.remainingMs ? formatCountdown(profile.remainingMs) : "now"}</b> next eligible</span>
                   {schedulerState === "cooling_down" && <span className="score-error" title="Time remaining before this cooling-down route can retry"><b>{formatCountdown(profile.remainingMs)}</b> retry wait</span>}
                   <span title="Attempt tallies: ok = returned results, fail = errored or zero results, skip = never tried (e.g. circuit open)"><b>{stat.ok || 0}/{stat.fail || 0}/{stat.skip || 0}</b> ok/fail/skip</span>
                   <span title={attempted ? `${pct}% success rate over the last 24 hours` : "No search attempts recorded in the last 24 hours"}><b>{attempted ? `${pct}%` : "-"}</b> · 24h</span>
@@ -930,6 +934,69 @@ function formatBackend(backend) {
     api: "API",
   }[String(backend || "").toLowerCase()] || "-";
 }
+function ImmediateTooltip() {
+  const [tooltip, setTooltip] = useState(null);
+  useEffect(() => {
+    const moveTitle = (element) => {
+      const text = element.getAttribute("title");
+      if (text) element.setAttribute("data-tooltip", text);
+      element.removeAttribute("title");
+    };
+    const moveTitles = (root) => {
+      if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_NODE) return;
+      if (root.nodeType === Node.ELEMENT_NODE && root.hasAttribute("title")) moveTitle(root);
+      root.querySelectorAll?.("[title]").forEach(moveTitle);
+    };
+    const getTarget = (node) => node instanceof Element ? node.closest("[data-tooltip], [title]") : null;
+    const show = (event) => {
+      const element = getTarget(event.target);
+      if (!element) return setTooltip(null);
+      if (element.hasAttribute("title")) moveTitle(element);
+      const text = element.getAttribute("data-tooltip");
+      if (!text) return setTooltip(null);
+      setTooltip({ text, x: event.clientX, y: event.clientY });
+    };
+    const hide = (event) => {
+      const element = getTarget(event.target);
+      if (element?.contains(event.relatedTarget)) return;
+      setTooltip(null);
+    };
+    const move = (event) => {
+      const element = getTarget(event.target);
+      if (!element) return;
+      setTooltip((current) => current ? { ...current, x: event.clientX, y: event.clientY } : current);
+    };
+    const focus = (event) => {
+      const element = getTarget(event.target);
+      if (!element) return;
+      if (element.hasAttribute("title")) moveTitle(element);
+      const text = element.getAttribute("data-tooltip");
+      if (!text) return;
+      const rect = element.getBoundingClientRect();
+      setTooltip({ text, x: rect.left + rect.width / 2, y: rect.bottom });
+    };
+    moveTitles(document);
+    const observer = new MutationObserver((mutations) => mutations.forEach((mutation) => {
+      if (mutation.type === "attributes") moveTitle(mutation.target);
+      else mutation.addedNodes.forEach(moveTitles);
+    }));
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["title"] });
+    document.addEventListener("pointerover", show, true);
+    document.addEventListener("pointerout", hide, true);
+    document.addEventListener("pointermove", move, true);
+    document.addEventListener("focusin", focus, true);
+    document.addEventListener("focusout", hide, true);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("pointerover", show, true);
+      document.removeEventListener("pointerout", hide, true);
+      document.removeEventListener("pointermove", move, true);
+      document.removeEventListener("focusin", focus, true);
+      document.removeEventListener("focusout", hide, true);
+    };
+  }, []);
+  return tooltip ? <div className="immediate-tooltip" role="tooltip" style={{ left: tooltip.x, top: tooltip.y }}>{tooltip.text}</div> : null;
+}
 function buildFeed(entries, pageOps) {
   const preview = (value) => String(value || "").slice(0, 80);
   const requestTarget = (value) => {
@@ -942,17 +1009,22 @@ function buildFeed(entries, pageOps) {
   };
   const rows = [];
   for (const search of entries || []) {
-    const attempts = (search.attempts || []).map((attempt) => ({
+    const attempts = (search.attempts || []).filter((attempt) => attempt.status !== "skip").map((attempt) => ({
       key: attempt.id,
       engine: attempt.engine,
       backend: formatBackend(attempt.backend),
       status: attempt.status || "running",
       response:
-        attempt.error ? "error" : attempt.status === "ok" ? `${attempt.result_count || 0} results` : attempt.status || "running",
+        attempt.status === "skip" ? `skipped · ${attempt.error || "scheduler"}`
+          : attempt.status === "fail" || attempt.status === "error" ? `failed · ${attempt.error || "request failed"}`
+            : attempt.status === "ok" ? `${attempt.result_count || 0} results` : attempt.status || "running",
       duration: attempt.duration_ms != null ? formatMs(attempt.duration_ms) : "",
       error: attempt.error || "",
     }));
-    const backends = [...new Set(attempts.map((attempt) => attempt.backend).filter((backend) => backend !== "-"))];
+    const backends = [...new Set(attempts
+      .filter((attempt) => attempt.status === "ok")
+      .map((attempt) => attempt.backend)
+      .filter((backend) => backend !== "-"))];
     rows.push({
       key: `s-${search.id}`,
       ts: search.ts,
@@ -1073,7 +1145,7 @@ function LiveFeed({ feed, enabledEngines, feedMaxHeight }) {
                         <span className="feed-attempts">
                           {entry.attempts.map((attempt) => (
                             <span
-                              className={`feed-attempt ${attempt.status === "ok" ? "ok" : attempt.status === "fail" || attempt.status === "error" ? "fail" : ""}`}
+                              className={`feed-attempt ${attempt.status === "ok" ? "ok" : attempt.status === "skip" ? "skip" : attempt.status === "fail" || attempt.status === "error" ? "fail" : ""}`}
                               key={attempt.key}
                               title={attempt.error || undefined}
                             >
@@ -4020,7 +4092,7 @@ function App() {
       setVncBusy(false);
     }
   };
-  return (
+  return <>
     <Layout
       mode={mode}
       setMode={navigate}
@@ -4042,6 +4114,7 @@ function App() {
           trendRange={trendRange}
           trendError={trendError}
           setTrendRange={changeTrendRange}
+          reload={load}
         />
       ) : mode === "manage" ? (
         <Manage config={snapshot.config || {}} reload={load} />
@@ -4062,10 +4135,12 @@ function App() {
           trendRange={trendRange}
           trendError={trendError}
           setTrendRange={changeTrendRange}
+          reload={load}
         />
       )}
     </Layout>
-  );
+    <ImmediateTooltip />
+  </>;
 }
 
 createRoot(document.getElementById("root")).render(

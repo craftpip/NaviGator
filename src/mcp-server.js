@@ -19,7 +19,7 @@ import { CONFIG_SCHEMA } from "./config-schema.js";
 import { validateConfigValue, hotApplyConfig } from "./config-manager.js";
 import { getEnvFilePath, readEnvFile, writeEnvFile, upsertEnvText, removeEnvKeysText, backupEnvFile, revertEnvFile, recordEnvChange, getEnvChangeHistory, latestBackupPath } from "./env-file.js";
 import { vncManager } from "./vnc-manager.js";
-import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats, getEngineProfiles } from "./search.js";
+import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats, getEngineProfiles, resetSearchEngine } from "./search.js";
 import { getActivityTrend, getRecentActivity, recordActivityEvent, recordPageOp } from "./activity.js";
 import { createMcpApiKey, getUsageTotals, incrementUsageTotal, initDb, initializeMcpApiKeys, listMcpApiKeys, revokeMcpApiKey, setMcpApiKeyTools } from "./db.js";
 import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters } from "./devtools.js";
@@ -2658,6 +2658,18 @@ async function maybeStartHttpServer(managerOverride) {
         }
 
         sendJson(res, 405, { ok: false, error: "Method not allowed" });
+        return;
+      }
+
+      if ((url.pathname === "/engines/reset" || url.pathname === "/engines/reset/all") && method === "POST") {
+        const body = await readJsonBody(req);
+        const engine = url.pathname.endsWith("/all") ? "all" : String(body?.engine || "").trim().toLowerCase();
+        if (engine !== "all" && !SUPPORTED_ENGINES.includes(engine)) {
+          sendJson(res, 400, { ok: false, error: `Unknown search engine: ${engine}` });
+          return;
+        }
+        resetSearchEngine(engine);
+        sendJson(res, 200, { ok: true, engine, engineProfiles: getEngineProfiles() });
         return;
       }
 

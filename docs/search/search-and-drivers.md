@@ -4,7 +4,7 @@
 
 `browserSearch()` in `src/search.js` is the search orchestrator. It normalizes quoted/duplicate query variants, records one SQLite search, requests configured routes, merges duplicate URLs, and returns concise result records.
 
-An explicit engine request runs the requested route group. Automatic selection asks `EngineScheduler` for routes in priority order and stops at the first route that returns results. Browser routes acquire a reusable search window; the DuckDuckGo API route runs without a browser.
+An explicit engine request runs the requested route group in the caller's order. Automatic selection rotates the primary attempt across healthy routes, using score as the tie-breaker, then falls back sequentially through the remaining score-ranked routes only if it fails. Browser routes acquire a reusable search window; the DuckDuckGo API route runs without a browser.
 
 ## Scheduler and Circuit Breaker
 
@@ -15,7 +15,7 @@ The scheduler and route circuit breaker solve different problems.
 | `EngineScheduler` | `.cache/search-engine-profiles.json` | Prefers healthy, fast routes and backs off repeated route failures |
 | Route circuit breaker | `.cache/search-circuit-breakers.json` | Refuses a route for `SEARCH_ROUTE_CIRCUIT_OPEN_MS` after an execution failure |
 
-Scheduler selection ranks ready routes by measured median latency, puts never-measured routes first, periodically explores a non-leading healthy route, and probes routes recovering from failures. Failure cooldown grows exponentially. Each success reduces the failure count by one, so recovery is gradual.
+Scheduler profiles persist attempts, returned results, recent outcomes, response-time samples, failure gaps, and error categories. Scores combine success rate, result yield, median latency, recent stability, recent-failure penalty, and recovery; they break ties for fair primary rotation and rank sequential fallback. A failure raises the engine's minimum interval using exponential escalation plus a percentile of observed failure gaps; CAPTCHA/block failures are more conservative. Successes gradually decay the interval back to its configured floor. The hard route circuit breaker remains separate. `POST /engines/reset` with `{ "engine": "<id>|all" }` (or `POST /engines/reset/all`) clears profile history and that route's circuit state; `./navigator.js engines [reset <id|all>]` exposes the same control.
 
 `runSearchRoute()` applies a global page-operation slot, route-circuit checks, activity metrics, and backend-specific recovery. Lightpanda retries detached-frame/target-loaded failures once. Empty results count as an automatic-scheduler failure but do not open the hard circuit for an explicitly requested route. Local display/browser-launch faults never open a circuit.
 
@@ -100,5 +100,5 @@ Routes use `https://www.bing.com/search?q=...`, parse `#b_results li.b_algo`, an
 | `SEARCH_ROUTE_CIRCUIT_OPEN_MS` | Route-circuit open duration |
 | `SEARCH_KEEP_MIN_WORKING_WINDOWS` | Warm windows retained per pool |
 | `SEARCH_MAX_WORKING_WINDOWS` | Maximum windows in an engine pool |
-| `SEARCH_QUEUE_*` | Scheduler cooldown, pacing, exploration, and latency sampling |
+| `SEARCH_QUEUE_*` | Scheduler profile path, score weights, learned backoff, and recovery decay |
 | `ENABLE_INSTANT_ANSWERS` | Enables independent DDG Instant Answer fetch per query |

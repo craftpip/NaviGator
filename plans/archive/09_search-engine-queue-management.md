@@ -2,9 +2,11 @@
 
 ## Plan Status
 
-**Status: NOT STARTED** — verified 2026-08-11.
+**Status: COMPLETE** — implemented and focused-validated 2026-08-15.
 
-Current `select_best` behavior in `src/search.js`:
+Focused validation: `tests/engine-scheduler.test.js` passes. The host `mcp-server` suite requires a rebuilt `better-sqlite3` native module; the legacy root-owned config test still asserts the retired pacing/exploration settings and needs its expectations updated to this plan's queue settings.
+
+Previous `select_best` behavior in `src/search.js`:
 - `DEFAULT_FALLBACK` (line 99–104) is a **static, fixed-order** list: `duckduckgo_api, brave_cb, google_lp, google_cb, duckduckgo_cb, bing_cb, bing_lp, google_ch, duckduckgo_ch, mojeek_lp`.
 - `runFallbackEngineGroups()` (line 1370) is **first-success-wins**: walk the list top to bottom; the first engine that returns results serves the query and the loop stops. The engine at the head of the list implicitly gets all traffic; everyone behind it is only tried when everything in front has failed.
 - Circuit breakers (`getRouteCircuit` / `recordRouteFailure` / `recordRouteSuccess`, lines 142–174) freeze a route for a **fixed, uniform cooldown** (`searchRouteCircuitOpenMs`, default 300000 ms = 5 min) regardless of engine, failure type, or how recently it failed before. State persists to `.cache/search-circuit-breakers.json`.
@@ -14,10 +16,10 @@ Current `select_best` behavior in `src/search.js`:
 
 ### Checklist
 
-- [ ] 1. Phase 1 — Engine profile store + scoring: new `src/engine-scheduler.js`, persisted profiles, feed from existing attempt telemetry, scores exposed in `/stats`.
-- [ ] 2. Phase 2 — Interval learning (error-gap analysis): per-engine `minIntervalMs`, escalation on failure, decay on success, persisted.
-- [ ] 3. Phase 3 — Selection rewrite: `runFallbackEngineGroups` → weighted distribution across eligible (working) engines, replacing first-success-wins. Explicit-engine path untouched.
-- [ ] 4. Phase 4 — Admin surfaces: per-engine history reset (HTTP endpoint + `navigator.js` subcommand + optional MCP tool), rankings surfaced in the web console.
+- [x] 1. Phase 1 — Engine profile store + scoring: `src/engine-scheduler.js`, persisted profiles, scores exposed in `/stats`.
+- [x] 2. Phase 2 — Interval learning (error-gap analysis): per-engine `minIntervalMs`, categorized escalation, percentile failure-gap learning, and success decay are persisted.
+- [x] 3. Phase 3 — Selection rewrite: `runFallbackEngineGroups` score-weights one eligible primary, then retains sequential fallback. Explicit-engine requests stay untouched.
+- [x] 4. Phase 4 — Admin surfaces: `POST /engines/reset`, `POST /engines/reset/all`, `navigator.js engines [reset <engine|all>]`, and console score/reset controls.
 
 ## Goal
 

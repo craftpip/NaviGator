@@ -60,6 +60,8 @@ Search IDs and page-operation IDs have independent sequences. Consumers of `/sta
 ```bash
 ./navigator.js statistics
 ./navigator.js monitoring --interval 2
+./navigator.js engines
+./navigator.js engines reset google_cb
 ```
 
 The base URL is resolved from `--url`, then `NAVIGATOR_URL`, then `.env` `MCP_API_HOST` and `MCP_API_PORT`, then `http://localhost:3000`.

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_SEARCH_ENABLED_ENGINES, parseEngines } from "./src/config.js";
-import { getEngineMetadata } from "./src/engines/index.js";
+import { getEngineMetadata, SUPPORTED_ENGINES } from "./src/engines/index.js";
 
 const DEFAULT_URL = "http://localhost:3000";
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -28,10 +28,6 @@ const GATOR_LETTER_ART = [
   "░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░  ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░",
   " ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░"
 ];
-
-const PLANE_TOP_ART = [];
-
-const PLANE_BOTTOM_ART = [];
 
 // --- ANSI color helpers ---
 
@@ -148,7 +144,8 @@ const COMMANDS = {
   stats: runStatistics,
   stat: runStatistics,
   monitoring: runMonitoring,
-  mon: runMonitoring
+  mon: runMonitoring,
+  engines: runEngines
 };
 
 const handler = COMMANDS[command];
@@ -228,7 +225,8 @@ function printUsage() {
 Commands:
   statistics   One-shot snapshot of the running MCP server
   monitoring   Live view (browser instances, search windows, engines, MCP
-               sessions) — refreshes in place until Ctrl+C (like docker stats)
+                sessions) — refreshes in place until Ctrl+C (like docker stats)
+  engines      Show scheduler rankings; run "engines reset <engine|all>" to clear history
 
 Shortcuts:
   stats, stat  = statistics
@@ -248,6 +246,49 @@ async function fetchJson(urlPath) {
     throw new Error(`${urlPath} returned HTTP ${res.status}`);
   }
   return res.json();
+}
+
+async function postJson(urlPath, body) {
+  const res = await fetch(`${baseUrl}${urlPath}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10000)
+  });
+  const data = await res.json();
+  if (!res.ok || data.ok === false) throw new Error(data.error || `${urlPath} returned HTTP ${res.status}`);
+  return data;
+}
+
+async function runEngines() {
+  if (!(await checkServer())) {
+    printHttpDisabled();
+    process.exit(1);
+  }
+  const action = args._[1];
+  if (action === "reset") {
+    const engine = String(args._[2] || "").toLowerCase();
+    if (engine !== "all" && !SUPPORTED_ENGINES.includes(engine)) {
+      throw new Error(`Specify a supported engine or all: ${SUPPORTED_ENGINES.join(", ")}`);
+    }
+    const result = await postJson(engine === "all" ? "/engines/reset/all" : "/engines/reset", { engine });
+    if (args.json) process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    else console.log(`Reset scheduler history for ${engine}.`);
+    return;
+  }
+  if (action) throw new Error(`Unknown engines action: ${action}`);
+  const stats = await fetchJson("/stats");
+  if (args.json) {
+    process.stdout.write(JSON.stringify(stats.engineProfiles || [], null, 2) + "\n");
+    return;
+  }
+  const rows = (stats.engineProfiles || []).map((profile) => [
+    String(profile.rank || "-"), profile.engine, String(Math.round((profile.score || 0) * 1000) / 1000),
+    `${profile.ok || 0}/${profile.fail || 0}/${profile.results || 0}`,
+    formatRemaining(profile.minIntervalMs || 0), profile.state
+  ]);
+  console.log(sectionHeader("ENGINE SCHEDULER"));
+  printTable(["rank", "engine", "score", "ok/fail/results", "min interval", "state"], rows.length ? rows : [["-", "no profiles", "", "", "", ""]], ["right", "left", "right", "right", "right", "left"]);
 }
 
 async function loadData() {

@@ -495,7 +495,7 @@ field is rejected as unknown.
 - The MCP SDK's `server.ping()` sends a request _to_ the client and waits for a response — that is not a keepalive. SSE comments (lines starting with `:`) are the correct idle-traffic mechanism.
 - **POST handler must use exact session ID match** (`mcpTransports.get(sessionId)`) — never `resolveTransport()` which falls back to any available transport. The SDK's `validateSession()` rejects requests where the session ID in the header doesn't match the transport's own session ID (returns 404), causing "Session terminated" errors and unnecessary reconnect loops.
 - **Keepalive outer catch must NOT delete transports** — if `transport._webStandardTransport` throws during a close sequence, skip it instead of calling `mcpTransports.delete(sid)`. The SDK's own `onclose` handler will clean up when the session is truly dead.
-- Container deploy flow: `docker compose build && docker compose down && docker compose up -d`. Never `npm install` on the host.
+- Container deploy flow: `docker compose build && docker compose down && docker compose up -d`. Never `npm install` on the host. For console-only changes, always run `docker exec navigator npm install --include=dev && docker exec navigator npm run console:build`; the container runs as root and owns `src/web-console/dist`.
 - Project documentation explains intent, end-to-end behavior, conditions, fallbacks, decisions, operational impact, and safe change boundaries. Do not turn it into a line-by-line code paraphrase or a mechanical symbol inventory; use source references only to help maintainers trace the behavior.
 
 ## Project Learnings
@@ -531,7 +531,7 @@ Do not remove `console.log` / `console.error` calls from `src/search.js` or othe
 - `searches` and `page_ops` have **independent id sequences** — a single `since` cursor across both drops rows. `GET /stats/activity` takes `since` (searches) and `sinceOps` (page_ops) separately; the console tracks two refs.
 - Activity rows store `ts` as epoch ms (`Date.now()`), not ISO. `formatTime` in main.jsx must handle epoch-ms (and epoch-s < 1e12).
 - Feed merge lives in `App.load()` and `feed` is passed as a direct prop to `StatusView` — stuffing it into `snapshot` state creates a stale-closure bug because `load` is captured by the mount-once effect.
-- Console deploy: build on the host with `npm run console:build` (needs dev deps), output goes to `src/web-console/dist`, which the server serves from the bind mount (`cwd/src/web-console/dist`). No image bake, no image rebuild — `docker compose up -d` recreates the container from the existing image. Verify the new hashed `assets/index-*.js` is what `index.html` references.
+- Console deploy: always build inside the running container: `docker exec navigator npm install --include=dev && docker exec navigator npm run console:build`. The bundle is written to the bind-mounted `src/web-console/dist`, which the server serves immediately; no image rebuild or container restart is needed. Verify the new hashed `assets/index-*.js` is what `index.html` references.
 - New CSS vars needed by the console: `--gold` (countdowns, most-working badge) — defined in both `:root` themes.
 
 **Unfinished:** commit is pending; plan checklist in `plans/console-redesign.md` §6 has the full log.
