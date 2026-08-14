@@ -468,8 +468,11 @@ container the same way.
 a `stabilizeStrategy` (`network_idle` | `content_idle` | `mutation`, default `network_idle`
 falls back to `default.stabilizeStrategy` / config `STABILIZE_STRATEGY`). The engine
 stabilizes immediately after that step's selector gate succeeds. `none` opts out — the
-step gates on its selector and moves on without stabilizing. A `wait` step always acts as
-"wait for selector, then stabilize" unless `stabilizeStrategy: "none"`. A `click` step's
+step gates on its selector and moves on without stabilizing. A `wait` step acts as
+"wait for selector, then stabilize" — its `selector` is optional: blank = skip the
+selector gate entirely and just re-stabilize the page (handy for late-rendering SPAs like
+NSE; add a selectorless `wait` with `stabilizeStrategy: "network_idle"`). Unless
+`stabilizeStrategy: "none"`. A `click` step's
 `waitForSelector` is optional — without it the step clicks and moves on, stabilizing only
 when `stabilizeStrategy` is explicitly set (a gated click keeps the default stabilization
 when unset). With step-level

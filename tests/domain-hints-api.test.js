@@ -306,6 +306,54 @@ describe("domain hints API", () => {
     });
   });
 
+  describe("GET /extract cacheHtml", () => {
+    const PAGE = { title: "Example", url: "https://example.com", text: "Hello world", html: "<html><body>Hello world</body></html>", links: [], tables: [] };
+
+    it("first cacheHtml=1 call captures html into the cache", async () => {
+      searchMod.browserOpenAndExtract.mockReset();
+      searchMod.browserOpenAndExtract.mockResolvedValue({ ...PAGE });
+      const { status } = await jsonRequest("/extract?url=https://example.com&cacheHtml=1");
+      expect(status).toBe(200);
+      expect(searchMod.browserOpenAndExtract).toHaveBeenCalledTimes(1);
+      expect(searchMod.browserOpenAndExtract.mock.calls[0][0].captureHtml).toBe(true);
+      expect(searchMod.browserOpenAndExtract.mock.calls[0][0].cachedHtml).toBeNull();
+    });
+
+    it("second cacheHtml=1 call reuses the cached html (no browser fetch)", async () => {
+      searchMod.browserOpenAndExtract.mockReset();
+      searchMod.browserOpenAndExtract.mockResolvedValue({ ...PAGE });
+      const { status } = await jsonRequest("/extract?url=https://example.com&cacheHtml=1");
+      expect(status).toBe(200);
+      expect(searchMod.browserOpenAndExtract).toHaveBeenCalledTimes(1);
+      expect(searchMod.browserOpenAndExtract.mock.calls[0][0].cachedHtml).toContain("Hello world");
+      expect(searchMod.browserOpenAndExtract.mock.calls[0][0].captureHtml).toBe(true);
+    });
+
+    it("cacheHtml=0 clears the cached entry and fetches live", async () => {
+      searchMod.browserOpenAndExtract.mockReset();
+      searchMod.browserOpenAndExtract.mockResolvedValue({ ...PAGE });
+      const { status } = await jsonRequest("/extract?url=https://example.com&cacheHtml=0");
+      expect(status).toBe(200);
+      expect(searchMod.browserOpenAndExtract).toHaveBeenCalledTimes(1);
+      expect(searchMod.browserOpenAndExtract.mock.calls[0][0].cachedHtml).toBeNull();
+      expect(searchMod.browserOpenAndExtract.mock.calls[0][0].captureHtml).toBe(false);
+    });
+
+    it("cacheHtml=refresh forces a live fetch and refreshes the cache", async () => {
+      searchMod.browserOpenAndExtract.mockReset();
+      searchMod.browserOpenAndExtract.mockResolvedValue({ ...PAGE, html: "<html><body>Fresh</body></html>" });
+      const { status } = await jsonRequest("/extract?url=https://example.com&cacheHtml=refresh");
+      expect(status).toBe(200);
+      expect(searchMod.browserOpenAndExtract).toHaveBeenCalledTimes(1);
+      expect(searchMod.browserOpenAndExtract.mock.calls[0][0].cachedHtml).toBeNull();
+      expect(searchMod.browserOpenAndExtract.mock.calls[0][0].captureHtml).toBe(true);
+      const again = await jsonRequest("/extract?url=https://example.com&cacheHtml=1");
+      expect(again.status).toBe(200);
+      expect(searchMod.browserOpenAndExtract).toHaveBeenCalledTimes(2);
+      expect(searchMod.browserOpenAndExtract.mock.calls[1][0].cachedHtml).toContain("Fresh");
+    });
+  });
+
   describe("requireSelector identity", () => {
     it("allows two hints with the same domain+path when requireSelector differs", async () => {
       const { status, body } = await jsonRequest("/console/api/hints", {

@@ -1635,12 +1635,15 @@ select.config-input option {
   border-collapse: collapse;
   margin: 8px 0 12px;
   font-size: 12px;
+  width: max-content;
+  min-width: 100%;
 }
 .response .response-html th,
 .response .response-html td {
   border: 1px solid var(--line);
   padding: 4px 8px;
   text-align: left;
+  min-width: 80px;
 }
 .response .response-html th {
   background: var(--panel);
@@ -2402,6 +2405,11 @@ select.config-input option {
   color: var(--muted);
   font: 11px var(--sans);
 }
+.hint-check-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
 .hint-check {
   display: inline-flex;
   align-items: center;
@@ -2522,6 +2530,9 @@ select.config-input option {
 .hint-warn {
   color: var(--amber);
 }
+.hint-mismatch {
+  border: 1px solid var(--amber);
+}
 .hint-default {
   margin: 0;
   padding: 8px 10px;
@@ -2554,8 +2565,14 @@ select.config-input option {
 }
 .hint-step-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+.hint-step-grid .hint-field select {
+  width: 100%;
+}
+.hint-step-grid-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .hint-step-options {
   display: flex;
@@ -2716,11 +2733,14 @@ select.config-input option {
   border-collapse: collapse;
   margin: 8px 0;
   font-size: 11px;
+  width: max-content;
+  min-width: 100%;
 }
 .hint-output-html th,
 .hint-output-html td {
   border: 1px solid var(--line);
   padding: 4px 8px;
+  min-width: 80px;
 }
 .hint-output-html code {
   font-family: var(--mono);

@@ -175,7 +175,7 @@
   },
   {
     "domain": "10.69.1.164",
-    "pathPattern": "/chaos/**",
+    "pathPattern": "/readability-bad/**",
     "pageType": "chaos-article",
     "comment": "ChaosHub fake article — sections + comments list. Content randomized per visit; ignore fake bot-check/popup.",
     "testUrls": [
@@ -188,6 +188,33 @@
       "skipSelectors": [],
       "format": "readability_to_markdown",
       "tables": "all"
+    }
+  },
+  {
+    "domain": "nseindia.com",
+    "pathPattern": "/option-chain",
+    "comment": "",
+    "testUrls": [
+      "https://www.nseindia.com/option-chain"
+    ],
+    "flow": [
+      {
+        "action": "extract",
+        "label": "",
+        "content": {
+          "blocks": [
+            {
+              "selector": "#optionChainTable-indices",
+              "label": "",
+              "priority": "high",
+              "format": "table"
+            }
+          ]
+        }
+      }
+    ],
+    "flowOptions": {
+      "continueOnEmptyExtract": false
     }
   }
 ]

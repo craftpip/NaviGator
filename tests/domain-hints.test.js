@@ -312,6 +312,21 @@ describe("validateHintRule flow and blocks", () => {
     expect(errors).toEqual([]);
   });
 
+  it("accepts a selectorless wait step (stabilize-only wait)", () => {
+    const { errors, warnings } = validateHintRule(
+      {
+        flow: [
+          flowExtract,
+          { action: "wait", timeoutMs: 10000, stabilizeStrategy: "network_idle" },
+          flowExtract
+        ]
+      },
+      { scope: "test" }
+    );
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
   it("rejects flow that is not a non-empty array", () => {
     for (const bad of [null, [], "flow", {}]) {
       const { errors } = validateHintRule({ flow: bad }, { scope: "test" });

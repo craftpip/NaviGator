@@ -419,7 +419,9 @@ function validateFlow(flow, errors, warnings, fieldPrefix = "flow") {
         validateSelectorField(step, "waitForSelector", errors, stepField);
       }
     } else if (action === "wait") {
-      validateSelectorField(step, "selector", errors, stepField);
+      if (step.selector !== undefined && step.selector !== "") {
+        validateSelectorField(step, "selector", errors, stepField);
+      }
       if (step.state !== undefined && !FLOW_STATES.includes(step.state)) {
         errors.push({ field: `${stepField}.state`, message: `must be one of ${FLOW_STATES.map((s) => `"${s}"`).join(", ")}` });
       }

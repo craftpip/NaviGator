@@ -974,6 +974,100 @@ describe("browserOpenAndExtract with flow hints", () => {
     }
   });
 
+  it("selectorless wait step skips the selector gate and just re-stabilizes", async () => {
+    const html = `<!doctype html><html><head><title>Page A</title></head><body>
+      <div class="summary"><p>Initial content.</p></div>
+      <div class="delayed"><p>Delayed content arrived.</p></div>
+    </body></html>`;
+    const states = [{ url: "https://example.com/page", title: "Page A", html }];
+    const hint = interactiveFlowHint([
+      { action: "extract", label: "Summary", content: { blocks: [{ selector: ".summary", label: "Summary", priority: "high", format: "text" }] } },
+      { action: "wait", timeoutMs: 5000, stabilizeStrategy: "network_idle" },
+      { action: "extract", label: "Delayed", content: { blocks: [{ selector: ".delayed", label: "Delayed", priority: "high", format: "text" }] } }
+    ]);
+    const { manager, page, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(page.waitForSelector).not.toHaveBeenCalled();
+      expect(result.text).toContain("### Summary");
+      expect(result.text).toContain("### Delayed");
+      expect(result.text).toContain("Delayed content arrived.");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("replays an extract-only flow from a cached html snapshot without touching the browser", async () => {
+    const html = `<!doctype html><html><head><title>NSE</title></head><body>
+      <main><h1>Option Chain</h1><table id="optionChainTable-indices"><thead><tr><th>Strike</th><th>LTP</th></tr></thead><tbody><tr><td>22000</td><td>2,400.00</td></tr><tr><td>22100</td><td>2,450.00</td></tr></tbody></table></main>
+    </body></html>`;
+    const states = [{ url: "https://www.nseindia.com/option-chain", title: "NSE", html }];
+    const hint = {
+      domain: "nseindia.com",
+      pathPattern: "/**",
+      flow: [
+        { action: "extract", label: "", content: { blocks: [{ selector: "#optionChainTable-indices", label: "", priority: "high", format: "text" }] } }
+      ]
+    };
+    const { manager, page, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({
+        url: "https://www.nseindia.com/option-chain",
+        includeSeoAnalysis: false,
+        cachedHtml: html,
+        hintOverride: hint
+      });
+
+      expect(page.waitForSelector).not.toHaveBeenCalled();
+      expect(manager.newPage).not.toHaveBeenCalled();
+      expect(result.text).toContain("Strike");
+      expect(result.text).toContain("22000");
+      expect(result.text).not.toContain("### Table");
+      expect(result.text).not.toMatch(/\|/);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("table format renders a pipe table with no auto '### Table N' title", async () => {
+    const html = `<!doctype html><html><head><title>NSE</title></head><body>
+      <main><h1>Option Chain</h1><table id="optionChainTable-indices"><thead><tr><th>Strike</th><th>LTP</th></tr></thead><tbody><tr><td>22000</td><td>2,400.00</td></tr><tr><td>22100</td><td>2,450.00</td></tr></tbody></table></main>
+    </body></html>`;
+    const states = [{ url: "https://www.nseindia.com/option-chain", title: "NSE", html }];
+    const hint = {
+      domain: "nseindia.com",
+      pathPattern: "/**",
+      flow: [
+        { action: "extract", label: "", content: { blocks: [{ selector: "#optionChainTable-indices", label: "", priority: "high", format: "table" }] } }
+      ]
+    };
+    const { manager, tempDir } = await makeFlowManager(states, hint);
+    mockGetBrowserManager.mockResolvedValue(manager);
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({
+        url: "https://www.nseindia.com/option-chain",
+        includeSeoAnalysis: false,
+        cachedHtml: html,
+        hintOverride: hint
+      });
+
+      expect(result.text).toContain("Strike | LTP");
+      expect(result.text).toContain("22000 | 2,400.00");
+      expect(result.text).not.toContain("### Table");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("step-level content_idle waits on the step's own element, not default.waitForContent", async () => {
     const html = `<!doctype html><html><head><title>Page A</title></head><body>
       <div class="summary"><p>Initial content.</p></div>

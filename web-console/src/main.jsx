@@ -2249,7 +2249,8 @@ function hintMeta(hint) {
 async function fetchHintText(url) {
   const response = await fetch(url, { cache: "no-store" });
   const body = await response.text();
-  if (response.ok) return { ok: true, text: body };
+  const cacheState = response.headers.get("x-cache") || "off";
+  if (response.ok) return { ok: true, text: body, cacheState };
   let error = body || `HTTP ${response.status}`;
   let validation = null;
   try {
@@ -2259,7 +2260,7 @@ async function fetchHintText(url) {
   } catch {
     /* non-JSON error body */
   }
-  return { ok: false, error, validation };
+  return { ok: false, error, validation, cacheState };
 }
 
 function HintFieldGroup({ title, accent, children, defaultOpen = true }) {
@@ -2650,7 +2651,7 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
             <span>Wait for selector after click (optional — blank = click and move on)</span>
             {waitForSelectorField}
           </div>
-          <div className="hint-field hint-narrow">
+          <div className="hint-field">
             <span>Timeout (ms)</span>
             {timeoutField}
           </div>
@@ -2663,11 +2664,11 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
       {step.action === "wait" && (
         <div className="hint-step-grid">
           <div className="hint-field">
-            <span>Selector to wait for</span>
-            <input className="mono" placeholder="div.loaded" value={step.selector || ""} onChange={(event) => set("selector", event.target.value)} />
+            <span>Selector to wait for (optional — blank = wait for the page to stabilize)</span>
+            <input className="mono" placeholder="optional — div.loaded" value={step.selector || ""} onChange={(event) => set("selector", event.target.value)} />
           </div>
           <div className="hint-field">
-            <span>State</span>
+            <span>State (with selector)</span>
             <select value={step.state || "visible"} onChange={(event) => set("state", event.target.value)}>
               {FLOW_STATES.map((state) => (
                 <option key={state} value={state}>
@@ -2676,7 +2677,7 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
               ))}
             </select>
           </div>
-          <div className="hint-field hint-narrow">
+          <div className="hint-field">
             <span>Timeout (ms)</span>
             {timeoutField}
           </div>
@@ -2688,7 +2689,7 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
       )}
       {step.action === "type" && (
         <>
-          <div className="hint-step-grid">
+          <div className="hint-step-grid hint-step-grid-two">
             <div className="hint-field">
               <span>Selector to type into</span>
               <input className="mono" placeholder="input#search" value={step.selector || ""} onChange={(event) => set("selector", event.target.value)} />
@@ -2715,7 +2716,7 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
             </div>
           )}
           {step.submit && (
-            <div className="hint-field hint-narrow">
+            <div className="hint-field">
               <span>Stabilize strategy</span>
               {stabilizeStrategyField}
             </div>
@@ -2732,7 +2733,7 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
             <span>Wait for selector after load</span>
             {waitForSelectorField}
           </div>
-          <div className="hint-field hint-narrow">
+          <div className="hint-field">
             <span>Timeout (ms)</span>
             {timeoutField}
           </div>
@@ -3608,9 +3609,48 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
   );
 }
 
+function compileGlobLike(pattern) {
+  if (!pattern || pattern === "/**") return () => true;
+  if (pattern === "/*/**") return (p) => p.startsWith("/") && p !== "/";
+  if (pattern.endsWith("/**")) {
+    const prefix = pattern.slice(0, -3).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`^${prefix}(?:/.*)?$`);
+    return (pathname) => regex.test(pathname);
+  }
+  const parts = pattern.split(/(\*\*|\*)/);
+  let regexStr = "^";
+  for (const part of parts) {
+    if (part === "**") regexStr += ".*";
+    else if (part === "*") regexStr += "[^/]*";
+    else if (part) regexStr += part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  regexStr += "$";
+  const regex = new RegExp(regexStr);
+  return (pathname) => regex.test(pathname);
+}
+
+function hintUrlMismatch(hint, url) {
+  if (!hint || !url) return null;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  const domain = (hint.domain || "").toLowerCase();
+  const domainOk = !domain || hostname === domain || hostname.endsWith(`.${domain}`);
+  let path = parsed.pathname.toLowerCase();
+  if (path !== "/" && path.endsWith("/")) path = path.slice(0, -1);
+  const pathOk = compileGlobLike(hint.pathPattern || "/**")(path);
+  if (domainOk && pathOk) return null;
+  return { domainOk, pathOk };
+}
+
 function HintTestPanel({ hint }) {
   const [testUrl, setTestUrl] = useState(hint?.testUrls?.[0] || "");
   const [rerun, setRerun] = useState(false);
+  const [useCachedHtml, setUseCachedHtml] = useState(false);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [showScreenshot, setShowScreenshot] = useState(false);
@@ -3619,6 +3659,7 @@ function HintTestPanel({ hint }) {
   const [shotVersion, setShotVersion] = useState(0);
   const runningRef = useRef(false);
   const lastHintSigRef = useRef("");
+  const prevHintSigRef = useRef("");
   const hintSig = JSON.stringify(hint);
   useEffect(() => {
     if (!testUrl && hint?.testUrls?.[0]) setTestUrl(hint.testUrls[0]);
@@ -3628,7 +3669,10 @@ function HintTestPanel({ hint }) {
     runningRef.current = true;
     setRunning(true);
     try {
-      const url = `/extract?url=${encodeURIComponent(testUrl)}&maxChars=8000&hint=${encodeURIComponent(JSON.stringify(hint))}`;
+      const cacheParam = useCachedHtml
+        ? "&cacheHtml=1"
+        : "&cacheHtml=0";
+      const url = `/extract?url=${encodeURIComponent(testUrl)}&maxChars=999999${cacheParam}&hint=${encodeURIComponent(JSON.stringify(hint))}`;
       const response = await fetchHintText(url);
       if (response.ok) {
         const tables = (response.text.match(/^- Tables extracted: (\d+)$/gm) || []).reduce(
@@ -3644,6 +3688,7 @@ function HintTestPanel({ hint }) {
           chars: response.text.length,
           tables,
           warnings,
+          cacheState: response.cacheState,
         });
       } else {
         setResult({ ok: false, error: response.error, validation: response.validation, text: "" });
@@ -3655,8 +3700,10 @@ function HintTestPanel({ hint }) {
       runningRef.current = false;
       setRunning(false);
     }
-  }, [hint, testUrl]);
+  }, [hint, testUrl, useCachedHtml]);
   useEffect(() => {
+    if (prevHintSigRef.current === hintSig) return undefined;
+    prevHintSigRef.current = hintSig;
     if (!rerun || !testUrl || runningRef.current) return undefined;
     if (lastHintSigRef.current === hintSig) return undefined;
     const timer = setTimeout(() => runTest(), 800);
@@ -3686,6 +3733,7 @@ function HintTestPanel({ hint }) {
     };
   }, [showScreenshot, testUrl, result?.ok, shotVersion]);
   const warnings = result?.warnings || [];
+  const mismatch = hintUrlMismatch(hint, testUrl);
   return (
     <div className="hint-test">
       <h3 className="hint-test-head">Test on page</h3>
@@ -3713,16 +3761,43 @@ function HintTestPanel({ hint }) {
           </button>
         </form>
       </div>
-      <label className="hint-check">
-        <input type="checkbox" checked={rerun} onChange={(event) => setRerun(event.target.checked)} />
-        Auto re-run on edit
-      </label>
+      {mismatch && (
+        <div className="hint-zero-match hint-mismatch">
+          ⚠ This hint does not match the test URL:
+          {!mismatch.domainOk && (
+            <span>
+              {" "}domain "{hint.domain || ""}" doesn't cover {testUrl && new URL(testUrl).hostname}
+            </span>
+          )}
+          {!mismatch.pathOk && (
+            <span>
+              {" "}pathPattern "{hint.pathPattern || "/**"}" doesn't match path{" "}
+              {testUrl && new URL(testUrl).pathname}
+            </span>
+          )}
+          {" "}— it would never be applied to this URL; adjust the test URL or the pattern.
+        </div>
+      )}
+      <div className="hint-check-row">
+        <label className="hint-check">
+          <input type="checkbox" checked={rerun} onChange={(event) => setRerun(event.target.checked)} />
+          Auto re-run on edit
+        </label>
+        <label className="hint-check" title="Cache the page HTML on first fetch and re-extract from the snapshot — the site is not called again until you uncheck (refresh) it.">
+          <input
+            type="checkbox"
+            checked={useCachedHtml}
+            onChange={(event) => setUseCachedHtml(event.target.checked)}
+          />
+          Use cached page HTML
+        </label>
+      </div>
       {!testUrl && <p className="hint">Add a test URL to run the hint against a real page.</p>}
       {result && (
         <div className="hint-test-result">
           <div className={`hint-test-status ${result.ok ? "ok" : "error"}`}>
             {result.ok
-              ? `✓ ${result.chars} chars · ${result.tables} table${result.tables === 1 ? "" : "s"} · source: override`
+              ? `✓ ${result.chars} chars · ${result.tables} table${result.tables === 1 ? "" : "s"} · source: override · cache: ${useCachedHtml ? (result.cacheState === "hit" ? "hit ✓" : "miss") : "off"}`
               : `✕ ${result.error}`}
           </div>
           {!result.ok && result.validation?.errors?.length > 0 && (

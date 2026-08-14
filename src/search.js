@@ -779,8 +779,28 @@ function renderHintFields(element, fields, baseUrl) {
   return output.join("\n\n");
 }
 
+function renderTableAsText(element) {
+  const rows = [];
+  for (const tr of element.querySelectorAll("tr")) {
+    const cells = Array.from(tr.querySelectorAll("th, td"))
+      .map((cell) => cleanWhitespace(cell.textContent || ""))
+      .filter(Boolean);
+    if (cells.length) rows.push(cells.join(" "));
+  }
+  return rows.join("\n");
+}
+
+function renderTableAsMarkdown(table) {
+  const lines = [];
+  if (table.headers?.length) lines.push(table.headers.join(" | "));
+  for (const row of table.rows || []) lines.push(row.join(" | "));
+  return lines.join("\n");
+}
+
 function renderLeafContent(element, format, url) {
-  if (format === "text") return cleanWhitespace(element.textContent || "");
+  if (format === "text") {
+    return element.matches?.("table") ? renderTableAsText(element) : cleanWhitespace(element.textContent || "");
+  }
   const innerHtml = element.innerHTML || "";
   if (format === "html") return `\`\`\`html\n${innerHtml}\n\`\`\``;
   if (format === "markdown" || format === "html_to_markdown") return htmlToMarkdown(innerHtml, { baseUrl: url }).trim();
@@ -857,13 +877,17 @@ function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = ""
         return block.itemLabel ? `#### ${block.itemLabel} ${index + 1}\n\n${fieldText}` : fieldText;
       }).filter(Boolean).join("\n\n");
     } else if (block.format === "table") {
+      const tables = [];
       for (const el of elements) {
         const elTables = extractTablesFromDocument(doc, { container: el });
         if (elTables.length) {
           for (const t of elTables) t.node?.remove();
-          allTables.push(...elTables.map(({ node, ...rest }) => rest));
+          tables.push(...elTables.map(({ node, ...rest }) => rest));
           blockHadTable = true;
         }
+      }
+      if (tables.length) {
+        markdown = tables.map(renderTableAsMarkdown).join("\n\n");
       }
     } else if (block.format === "list") {
       markdown = Array.from(elements).map((el) => {
@@ -885,13 +909,17 @@ function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = ""
       }
     } else {
       for (const el of elements) {
+        if (el.matches?.("table")) {
+          const rendered = renderLeafContent(el, block.format, url);
+          if (rendered) markdown += rendered + "\n";
+          continue;
+        }
         const elTables = extractTablesFromDocument(doc, { container: el });
         if (elTables.length) {
           for (const t of elTables) t.node?.remove();
           allTables.push(...elTables.map(({ node, ...rest }) => rest));
           blockHadTable = true;
         }
-        if (el.matches?.("table")) continue;
         const rendered = renderLeafContent(el, block.format, url);
         if (rendered) markdown += rendered + "\n";
       }
@@ -2145,6 +2173,75 @@ function mergeExtractedStages(stages, maxChars, preCollectedLinks = []) {
   };
 }
 
+function isInteractionFreeFlow(flow) {
+  return flow.every(
+    (step) =>
+      step.action === "extract" ||
+      (step.action === "wait" && !step.selector)
+  );
+}
+
+async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNote }) {
+  const flow = hint.flow;
+  const flowOptions = hint.flowOptions || {};
+  const continueOnEmptyExtract = flowOptions.continueOnEmptyExtract === true;
+  const state = { html, url, title: "", browserText: "" };
+  const stages = [];
+  const linksByHref = new Map();
+  const warnings = [];
+
+  flow.forEach((step, index) => {
+    if (step.action !== "extract") return;
+    const stageLinks = extractLinksFromHtml({ html: state.html, url: state.url });
+    for (const link of stageLinks) {
+      if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
+    }
+    const extracted = extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug);
+    if (extracted.tables?.length && !(extracted.text || "").trim()) {
+      extracted.text = insertTablesInline("", extracted.tables);
+      extracted.tables = [];
+    }
+    const stageLabel = (step.label || "").trim();
+    const stage = renderExtractedStage(stageLabel, extracted);
+    const emptyStage = !stage.text.trim() || stage.text.trim() === (stageLabel ? `## ${stageLabel}` : "");
+    if (emptyStage) {
+      const message = `Domain hint flow step ${index + 1} extract "${step.label}" produced no content`;
+      if (!continueOnEmptyExtract) {
+        throw new Error(message);
+      }
+      warnings.push(`${message} (skipped)`);
+      return;
+    }
+    stages.push(stage);
+  });
+
+  const merged = mergeExtractedStages(stages, maxChars, [...linksByHref.values()]);
+  merged.warnings = [...merged.warnings, ...warnings];
+
+  let finalText = merged.text || "";
+  const textWasTruncated = merged.textWasTruncated;
+  if (textWasTruncated || finalText.length > maxChars) {
+    const fullSize = merged.textOriginalLength || finalText.length;
+    if (textWasTruncated) {
+      finalText = finalText.slice(0, -3).trimEnd();
+    }
+    finalText += `\n\n*(Response truncated — full page is ${fullSize} chars, increase maxChars to see more)*`;
+  }
+  if (hintNote) {
+    finalText = `${hintNote}\n\n${finalText}`;
+  }
+
+  return {
+    title: "",
+    url,
+    text: finalText,
+    textOriginalLength: merged.textOriginalLength,
+    ...(merged.tables.length ? { tables: merged.tables } : {}),
+    ...(merged.links.length ? { links: merged.links } : {}),
+    ...(merged.warnings.length ? { warnings: merged.warnings } : {})
+  };
+}
+
 async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, debugLog, withPageTimeout, operationTimeoutMs }) {
   const flow = hint.flow;
   const flowOptions = hint.flowOptions || {};
@@ -2158,6 +2255,7 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
   const stages = [];
   const linksByHref = new Map();
   const warnings = [];
+
   const flowStart = Date.now();
   let stepIndex = 0;
 
@@ -2188,6 +2286,10 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
           if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
         }
         const extracted = extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug);
+        if (extracted.tables?.length && !(extracted.text || "").trim()) {
+          extracted.text = insertTablesInline("", extracted.tables);
+          extracted.tables = [];
+        }
         const stageLabel = (step.label || "").trim();
         const stage = renderExtractedStage(stageLabel, extracted);
         const emptyStage = !stage.text.trim() || stage.text.trim() === (stageLabel ? `## ${stageLabel}` : "");
@@ -2229,16 +2331,18 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
           await checkBot();
         }
       } else if (step.action === "wait") {
-        const waitTimeout = step.timeoutMs ?? FLOW_STEP_DEFAULT_TIMEOUT_MS;
-        await withPageTimeout("flow_wait", () =>
-          page.waitForSelector(step.selector, { state: step.state || "visible", timeout: waitTimeout })
-        ).catch((error) => {
-          throw new Error(
-            `Domain hint flow step ${stepIndex} wait failed: selector "${step.selector}" (state "${step.state || "visible"}"): ${String(error?.message || error)}`
-          );
-        });
+        if (step.selector) {
+          const waitTimeout = step.timeoutMs ?? FLOW_STEP_DEFAULT_TIMEOUT_MS;
+          await withPageTimeout("flow_wait", () =>
+            page.waitForSelector(step.selector, { state: step.state || "visible", timeout: waitTimeout })
+          ).catch((error) => {
+            throw new Error(
+              `Domain hint flow step ${stepIndex} wait failed: selector "${step.selector}" (state "${step.state || "visible"}"): ${String(error?.message || error)}`
+            );
+          });
+        }
         if (step.stabilizeStrategy !== "none") {
-          await stabilizePage(page, hint, config, step.stabilizeStrategy, step.selector);
+          await stabilizePage(page, hint, config, step.stabilizeStrategy, step.selector || undefined);
           await checkBot();
         }
       } else if (step.action === "type") {
@@ -2368,7 +2472,7 @@ async function runFlowExtraction({ page, hint, config, maxChars, debug, debugLog
   return result;
 }
 
-export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, includeSeoAnalysis = true, hintOverride = null }) {
+export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, includeSeoAnalysis = true, hintOverride = null, cachedHtml = null, captureHtml = false }) {
   const tOverall = performance.now();
   activityCounters.fetches += 1;
   incrementUsageTotal("fetches");
@@ -2392,6 +2496,55 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
   debugLog("load_domain_hints", t);
 
   try {
+    const cached = typeof cachedHtml === "string" && cachedHtml.length > 0 ? cachedHtml : null;
+    if (cached && hint?.flow?.length && isInteractionFreeFlow(hint.flow)) {
+      const tCache = performance.now();
+      const replayed = await replayFlowFromSnapshot({
+        url,
+        html: cached,
+        hint,
+        maxChars,
+        debug,
+        hintNote
+      });
+      if (debug) console.log(`[web_fetch] [${url}] cached flow replay: ${Math.round(performance.now() - tCache)}ms (browser skipped)`);
+      return replayed;
+    }
+    if (cached && !(hint?.flow?.length)) {
+      const tCache = performance.now();
+      const extracted = extractTextFromHtml({
+        html: cached,
+        url,
+        maxChars,
+        fallbackTitle: "",
+        hint,
+        browserText: "",
+        debug
+      });
+      const links = extractLinksFromHtml({ html: cached, url });
+      let finalText = extracted.text || "";
+      if (extracted.tables?.length) {
+        finalText = insertTablesInline(finalText, extracted.tables);
+      }
+      const textWasTruncated = extracted.text?.endsWith("...");
+      if (textWasTruncated || finalText.length > maxChars) {
+        const fullSize = extracted.textOriginalLength || finalText.length;
+        if (textWasTruncated) {
+          finalText = finalText.slice(0, -3).trimEnd();
+        }
+        finalText += `\n\n*(Response truncated — full page is ${fullSize} chars, increase maxChars to see more)*`;
+      }
+      if (hintNote) {
+        finalText = `${hintNote}\n\n${finalText}`;
+      }
+      if (debug) console.log(`[web_fetch] [${url}] cached-html extraction: ${Math.round(performance.now() - tCache)}ms (browser skipped)`);
+      return {
+        ...extracted,
+        text: finalText,
+        ...(links.length ? { links } : {})
+      };
+    }
+
     const result = await manager.withPageSlot(async () => {
     t = performance.now();
     const page = await manager.newPage({ backend: manager.config.defaultBackend });
@@ -2468,7 +2621,10 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       debugLog("resolve_hint_dom_final", t);
 
       if (hint?.flow?.length) {
-        return await runFlowExtraction({
+        const flowHtml = captureHtml
+          ? await withPageTimeout("flow_html", () => page.content())
+          : null;
+        const flowResult = await runFlowExtraction({
           page,
           hint,
           config: manager.config,
@@ -2476,11 +2632,16 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
           debug,
           debugLog,
           withPageTimeout,
+
           operationTimeoutMs,
           includeSeoAnalysis,
           hintNote,
           startTime: tOverall
         });
+        if (flowHtml && !flowResult.error) {
+          return { ...flowResult, html: flowHtml };
+        }
+        return flowResult;
       }
 
       t = performance.now();
@@ -2576,6 +2737,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         text: finalText,
         ...(links.length ? { links } : {}),
         ...(seoAnalysis ? { seo: seoAnalysis } : {}),
+        ...(captureHtml ? { html } : {}),
         ...(pageStateWarnings.length
           ? { warnings: [...(extracted.warnings || []), ...pageStateWarnings] }
           : {})

@@ -77,6 +77,7 @@ const toolResultCache = {
   web_fetch: new Map()
 };
 const cacheCounters = { hits: 0, misses: 0 };
+const extractHtmlCache = new Map();
 
 const REQUEST_LOG_MAX = 20000;
 const REQUEST_PERIODS = [
@@ -1518,7 +1519,9 @@ async function openTargetsParallel(targetUrls, maxParallel, includeSeoAnalysis =
         const page = await browserOpenAndExtract({
           url: targetUrl,
           includeSeoAnalysis,
-          hintOverride: opts?.hintOverride || null
+          hintOverride: opts?.hintOverride || null,
+          cachedHtml: opts?.cachedHtmlByUrl?.get(targetUrl) || null,
+          captureHtml: opts?.captureHtml === true
         });
         if (debug) console.log(`[web_fetch] [${targetUrl}] openTargetsParallel process (post-extract): ${Math.round(performance.now() - tUrl)}ms`);
         const result = {
@@ -3040,9 +3043,47 @@ async function maybeStartHttpServer(managerOverride) {
         }
         let payload;
         try {
+          const cacheHtmlParam = String(url.searchParams.get("cacheHtml") || "");
+          const cacheMode = cacheHtmlParam === "1" ? "use" : cacheHtmlParam === "refresh" ? "refresh" : cacheHtmlParam === "0" ? "clear" : null;
+          const cachedByUrl = new Map();
+          let shouldCapture = false;
+          if (cacheMode === "use" || cacheMode === "refresh") {
+            shouldCapture = true;
+            if (cacheMode === "use") {
+              for (const u of targetUrls) {
+                const hit = extractHtmlCache.get(u);
+                if (hit) cachedByUrl.set(u, hit);
+              }
+            }
+          } else if (cacheMode === "clear") {
+            for (const u of targetUrls) extractHtmlCache.delete(u);
+          }
           payload = await runWithHangGuard("http:/extract", () =>
-            openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug, { hintOverride })
+            openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug, {
+              hintOverride,
+              cachedHtmlByUrl: cachedByUrl,
+              captureHtml: shouldCapture
+            })
           );
+          if (shouldCapture) {
+            const entries = payload.entries ?? payload.results ?? (payload.ok ? [payload] : []);
+            for (const entry of entries) {
+              if (entry.ok && entry.html && !cachedByUrl.has(entry.url)) {
+                if (extractHtmlCache.size >= 32) {
+                  const oldest = extractHtmlCache.keys().next().value;
+                  extractHtmlCache.delete(oldest);
+                }
+                extractHtmlCache.set(entry.url, entry.html);
+                const requested = targetUrls.find((u) => u === entry.url);
+                if (!requested) {
+                  targetUrls.forEach((u) => {
+                    if (!extractHtmlCache.has(u)) extractHtmlCache.set(u, entry.html);
+                  });
+                }
+              }
+            }
+          }
+          res.setHeader("X-Cache", cacheMode === "use" && cachedByUrl.size > 0 ? "hit" : cacheMode === "use" ? "miss" : cacheMode === "refresh" ? "refresh" : "off");
         } catch (error) {
           recordActivityRequest("http:/extract", false, error?.message || String(error));
           throw error;

@@ -1004,7 +1004,9 @@ describe("mcp-server HTTP endpoints", () => {
       expect(searchMod.browserOpenAndExtract).toHaveBeenCalledWith({
         url: "https://limits.example.com",
         includeSeoAnalysis: true,
-        hintOverride: null
+        hintOverride: null,
+        cachedHtml: null,
+        captureHtml: false
       });
     });
 
