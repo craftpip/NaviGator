@@ -1931,16 +1931,23 @@ async function handleToolCallInner(name, args = {}) {
     const aiModelIds = getAiModels(manager.config).map((entry) => entry.id);
     let usesAiExtractor = false;
     if (aiModelIds.length) {
-      const hints = await getDomainHints(manager.config);
-      usesAiExtractor = targetUrls.some((url) => {
-        const hint = findDomainHint(url, hints);
-        if (!hint) return false;
-        if (isAiModelFormat(hint.default?.format, aiModelIds)) return true;
-        if ((hint.content?.blocks || []).some((block) => isAiModelFormat(block.format, aiModelIds))) return true;
-        return (hint.flow || []).some((step) =>
-          step.action === "extract" && (step.content?.blocks || []).some((block) => isAiModelFormat(block.format, aiModelIds))
-        );
-      });
+      // DEFAULT_EXTRACT_FORMAT can be an AI model id for pages with no matching
+      // hint (defaultExtractHint in search.js applies it as a synthetic hint),
+      // which the hint scan below can't see.
+      if (isAiModelFormat(manager.config.defaultExtractFormat, aiModelIds)) {
+        usesAiExtractor = true;
+      } else {
+        const hints = await getDomainHints(manager.config);
+        usesAiExtractor = targetUrls.some((url) => {
+          const hint = findDomainHint(url, hints);
+          if (!hint) return false;
+          if (isAiModelFormat(hint.default?.format, aiModelIds)) return true;
+          if ((hint.content?.blocks || []).some((block) => isAiModelFormat(block.format, aiModelIds))) return true;
+          return (hint.flow || []).some((step) =>
+            step.action === "extract" && (step.content?.blocks || []).some((block) => isAiModelFormat(block.format, aiModelIds))
+          );
+        });
+      }
     }
     mark = timer.step("ai_extractor_check", mark);
 

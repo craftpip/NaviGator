@@ -420,7 +420,7 @@ The most important environment variables are:
 - `SEARCH_ENABLED_ENGINES`: routes eligible for automatic `select_best` scheduling
 - `READER_LM_BASE_URL`: base URL of an OpenAI-compatible endpoint for the AI Model extractor (e.g. `http://host.docker.internal:8000/v1`); when unset, the model id defaults to the configured model name
 - `READER_LM_MODEL`: model name sent to that endpoint (e.g. `jinaai/reader-lm-0.5b`)
-- `READER_LM_MODELS`: JSON array to configure multiple AI models, e.g. `[{"id":"reader_lm","label":"reader-lm-0.5b","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]`; overrides `READER_LM_BASE_URL` + `READER_LM_MODEL`
+- `READER_LM_MODELS`: JSON array to configure multiple AI models, e.g. `[{"id":"reader_lm","label":"reader-lm-0.5b","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]`; overrides `READER_LM_BASE_URL` + `READER_LM_MODEL`. Each entry may carry `"kind"`: `"chat"` (default — OpenAI-compatible `/chat/completions` on `baseUrl`, `model` is the model name) or `"mineru"` (POST the page HTML to `<baseUrl>/extract`, `model` is informational). Example MinerU entry: `{"id":"mineru","label":"MinerU-HTML","model":"mineru","kind":"mineru","baseUrl":"http://mineru-html:8000"}`. The compose file ships a `mineru-html` sidecar service (see `docker/mineru-html/`).
 - `READER_LM_TIMEOUT_MS`: per-request timeout for the AI extractor, default `60000`
 - `READER_LM_MAX_INPUT_CHARS`: max HTML chars sent to the model (tail-cut when longer), default `60000`
 - `READER_LM_MAX_TOKENS`: max completion tokens requested, default `8192`

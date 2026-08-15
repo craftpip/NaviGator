@@ -105,6 +105,13 @@ export function parseApiKeys(value) {
     .filter(Boolean))];
 }
 
+const AI_MODEL_KINDS = new Set(["chat", "mineru"]);
+
+export function parseAiModelKind(value, fallback = "chat") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return AI_MODEL_KINDS.has(normalized) ? normalized : fallback;
+}
+
 export function parseReaderLmModels(value) {
   if (!value || typeof value !== "string") return null;
   try {
@@ -122,7 +129,8 @@ export function parseReaderLmModels(value) {
           : null,
         baseUrl: typeof entry.baseUrl === "string" && entry.baseUrl.trim()
           ? String(entry.baseUrl).trim().replace(/\/+$/, "")
-          : null
+          : null,
+        kind: parseAiModelKind(entry.kind)
       }))
       .filter((entry) => entry.model && entry.baseUrl);
     return entries.length ? entries : null;
@@ -446,5 +454,5 @@ function resolveReaderLmModels() {
   const baseUrl = (process.env.READER_LM_BASE_URL || "").trim().replace(/\/+$/, "");
   if (!baseUrl) return [];
   const model = (process.env.READER_LM_MODEL || "reader-lm:0.5b").trim();
-  return [{ id: "reader_lm", label: model, model, baseUrl }];
+  return [{ id: "reader_lm", label: model, model, baseUrl, kind: "chat" }];
 }

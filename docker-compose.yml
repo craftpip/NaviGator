@@ -109,6 +109,32 @@ services:
     stdin_open: true
     tty: true
 
+  # MinerU-HTML v1.1 GPU sidecar — an "AI Model" extractor for web_fetch.
+  # Serves POST /extract {html} -> {text} (markdown) on port 8001. Independent
+  # of navigator: if this container is down, navigator's AI extractor falls
+  # back to html_to_markdown (existing fallback semantics). See
+  # docker/mineru-html/sidecar.py and plans/23_mineru-html-extractor.md.
+  mineru-html:
+    container_name: mineru-html
+    image: mineru-html:latest
+    restart: unless-stopped
+    build:
+      context: ./docker/mineru-html
+      dockerfile: Dockerfile
+    runtime: nvidia
+    shm_size: "2gb"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      # "vllm" (default) or "transformers". vLLM auto-falls back to
+      # transformers on init failure (e.g. low-VRAM GPUs like the GTX 1650).
+      - MINERU_BACKEND=vllm
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+    ports:
+      - "8001:8001"
+
 volumes:
   chrome_profile_data:
     name: navigator_chrome_profile_data

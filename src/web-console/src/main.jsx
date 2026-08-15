@@ -13,7 +13,7 @@ const MANAGE_GROUPS = [
   { label: "Search Scheduler", detail: "How select_best scores, backs off, and recovers eligible engines.", keys: ["SEARCH_QUEUE_MIN_INTERVAL_MS", "SEARCH_QUEUE_MAX_INTERVAL_MS", "SEARCH_QUEUE_ESCALATION_FACTOR", "SEARCH_QUEUE_ERROR_GAP_PERCENTILE", "SEARCH_QUEUE_ERROR_GAP_SAFETY", "SEARCH_QUEUE_DECAY_PER_SUCCESS", "SEARCH_QUEUE_W_SUCCESS", "SEARCH_QUEUE_W_RESULTS", "SEARCH_QUEUE_W_STABILITY", "SEARCH_QUEUE_W_RECENCY", "SEARCH_QUEUE_W_RECOVERY"] },
   { label: "Web Fetch Options", detail: "web_fetch tool options: parallel page opening, navigation wait, and response size.", keys: ["OPEN_PAGE_MAX_PARALLEL", "MAX_CONCURRENT_PAGE_OPS", "NAV_WAIT_UNTIL", "WEB_FETCH_MAX_CHARS"] },
   { label: "Web Fetch Extraction", detail: "How web_fetch renders page content: stabilization, DOM stripping, extraction hints, and no-hint defaults.", keys: ["STABILIZE_STRATEGY", "NON_CONTENT_SELECTORS", "DOMAIN_HINTS_PATH", "DEFAULT_EXTRACT_FORMAT", "DEFAULT_EXTRACT_STABILIZE_STRATEGY", "DEFAULT_EXTRACT_WAIT_FOR_SELECTOR", "DEFAULT_EXTRACT_WAIT_FOR_CONTENT"] },
-  { label: "Web Fetch AI Extractors", detail: "Reader LM models served to web_fetch when an AI extractor is selected.", keys: ["READER_LM_MODELS", "READER_LM_BASE_URL", "READER_LM_MODEL", "READER_LM_TIMEOUT_MS", "READER_LM_MAX_INPUT_CHARS", "READER_LM_MAX_TOKENS"] },
+  { label: "Web Fetch AI Extractors", detail: "AI extractor models served to web_fetch when an AI extractor is selected — reader-lm (chat/completions) or MinerU-HTML (sidecar /extract).", keys: ["READER_LM_MODELS", "READER_LM_BASE_URL", "READER_LM_MODEL", "READER_LM_TIMEOUT_MS", "READER_LM_MAX_INPUT_CHARS", "READER_LM_MAX_TOKENS"] },
   { label: "MCP Transports And Tool Access", detail: "MCP transports, DevTools exposure, tool filtering, and HTTP authentication.", keys: ["ENABLE_HTTP_MCP", "ENABLE_STDIO_MCP", "ENABLE_DEVTOOLS_MCP", "HUMAN_TYPING_DELAY", "DISABLE_TOOLS", "MCP_ALLOW_UNAUTHENTICATED"] },
   { label: "HTTP Server And Console", detail: "HTTP listener, health/status endpoints, and the Navigator console.", keys: ["ENABLE_HTTP_HEALTH", "ENABLE_WEB_CONSOLE", "MCP_API_PORT", "MCP_API_HOST"] },
   { label: "Screenshot Storage And Downloads", detail: "Persist screenshots to enable file and download URL outputs.", keys: ["ENABLE_SCREENSHOT_PATH", "ENABLE_SCREENSHOT_DOWNLOAD_LINK"] },
@@ -1416,7 +1416,7 @@ function ValueControl({ entry, value, changed, engines, tools, aiModels, onChang
       })),
       ...(aiModels || []).map((entry) => ({
         value: entry.id,
-        label: `${entry.label} (AI extractor)`,
+        label: aiModelOptionLabel(entry),
       })),
     ];
     return (
@@ -2358,6 +2358,16 @@ const FORMAT_LABELS = {
 function formatLabel(format) {
   return FORMAT_LABELS[format] || format;
 }
+function aiModelKindLabel(entry) {
+  return entry?.kind === "mineru" ? "MinerU-HTML" : "reader-lm";
+}
+function aiModelOptionLabel(entry) {
+  return `${entry?.label || entry?.id} (${aiModelKindLabel(entry)} extractor)`;
+}
+function aiModelIdLabel(aiModels, id) {
+  const entry = (aiModels || []).find((item) => item.id === id);
+  return entry ? `${id} (${aiModelKindLabel(entry)})` : `${id} (AI)`;
+}
 const FLOW_ACTIONS = ["extract", "click", "wait", "type", "navigate"];
 const FLOW_STATES = ["visible", "attached", "hidden"];
 const FLOW_ACTION_LABELS = {
@@ -2585,7 +2595,8 @@ function FieldRowEditor({ fields, onChange }) {
   );
 }
 
-function BlockRowEditor({ block, aiModelIds = [], onChange, onRemove }) {
+function BlockRowEditor({ block, aiModels = [], onChange, onRemove }) {
+  const aiModelIds = (aiModels || []).map((entry) => entry.id).filter(Boolean);
   const isLeaf = block.format !== undefined || block.fields === undefined;
   const set = (key, value) => onChange({ ...block, [key]: value });
   const toLeaf = () => {
@@ -2636,14 +2647,14 @@ function BlockRowEditor({ block, aiModelIds = [], onChange, onRemove }) {
           <select value={block.format || "text"} onChange={(event) => set("format", event.target.value)}>
             {[...HINT_BLOCK_FORMATS, ...aiModelIds].map((format) => (
               <option key={format} value={format}>
-                {aiModelIds.includes(format) ? `${format} (AI)` : formatLabel(format)}
+                {aiModelIds.includes(format) ? aiModelIdLabel(aiModels, format) : formatLabel(format)}
               </option>
             ))}
           </select>
           {aiModelIds.includes(block.format) && (
             <span className="hint-option-hint hint-warn">
-              ⚠ Sends this element's HTML to the reader-lm model — falls back to
-              html_to_markdown if it fails or is not configured.
+              ⚠ Sends this element's HTML to the {aiModelKindLabel(aiModels.find((entry) => entry.id === block.format))}{" "}
+              model — falls back to html_to_markdown if it fails or is not configured.
             </span>
           )}
         </div>
@@ -2667,7 +2678,7 @@ function BlockRowEditor({ block, aiModelIds = [], onChange, onRemove }) {
   );
 }
 
-function BlocksEditor({ blocks, aiModelIds = [], onChange, legacySectionCount }) {
+function BlocksEditor({ blocks, aiModels = [], onChange, legacySectionCount }) {
   const setBlock = (index, block) => {
     const next = [...(blocks || [])];
     next[index] = block;
@@ -2710,7 +2721,7 @@ function BlocksEditor({ blocks, aiModelIds = [], onChange, legacySectionCount })
         <BlockRowEditor
           key={index}
           block={block}
-          aiModelIds={aiModelIds}
+          aiModels={aiModels}
           onChange={(next) => setBlock(index, next)}
           onRemove={() => removeBlock(index)}
         />
@@ -2737,7 +2748,7 @@ function emptyFlowStep(action) {
   }
 }
 
-function StepEditor({ step, aiModelIds = [], onChange, onRemove, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
+function StepEditor({ step, aiModels = [], onChange, onRemove, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   const set = (key, value) => onChange({ ...step, [key]: value });
   const patchContent = (content) => set("content", content);
   const setNumber = (key, raw) => {
@@ -2802,7 +2813,7 @@ function StepEditor({ step, aiModelIds = [], onChange, onRemove, onMoveUp, onMov
           </div>
           <BlocksEditor
             blocks={step.content?.blocks || []}
-            aiModelIds={aiModelIds}
+            aiModels={aiModels}
             onChange={(blocks) => patchContent({ blocks })}
             legacySectionCount={step.content?.sections?.length || 0}
           />
@@ -2914,7 +2925,7 @@ function StepEditor({ step, aiModelIds = [], onChange, onRemove, onMoveUp, onMov
   );
 }
 
-function FlowEditor({ flow, aiModelIds = [], onChange }) {
+function FlowEditor({ flow, aiModels = [], onChange }) {
   const steps = flow?.length ? flow : [];
   const setStep = (index, step) => {
     const next = [...steps];
@@ -2962,7 +2973,7 @@ function FlowEditor({ flow, aiModelIds = [], onChange }) {
         <StepEditor
           key={index}
           step={step}
-          aiModelIds={aiModelIds}
+          aiModels={aiModels}
           onChange={(next) => setStep(index, next)}
           onRemove={() => removeStep(index)}
           onMoveUp={() => move(index, -1)}
@@ -3177,8 +3188,8 @@ function HintGuide() {
                 <code>readability_to_markdown</code> auto-strips nav/ads/sidebar;
                 <code>html_to_markdown</code> keeps the whole page; <code>html</code> keeps
                 raw HTML; <code>text</code> is a flat dump; <code>table*</code> formats emit
-                only tables; AI entries (when configured) extract via a reader-lm model and
-                fall back to <code>html_to_markdown</code>
+                only tables; AI entries (when configured) extract via a reader-lm or
+                MinerU-HTML model and fall back to <code>html_to_markdown</code>
               </td>
               <td>
                 <code>html_to_markdown</code> for profiles, homepages, data tables
@@ -3425,7 +3436,7 @@ function HintEditorPane({ index, initial, aiModels = [], onClose, onSaved }) {
     ...DEFAULT_FORMATS.map((format) => ({ value: format, label: formatLabel(format) })),
     ...(aiModels || []).map((entry) => ({
       value: entry.id,
-      label: `${entry.label} (AI extractor)`,
+      label: aiModelOptionLabel(entry),
     })),
   ];
   const [tab, setTab] = useState("form");
@@ -3683,7 +3694,7 @@ function HintEditorPane({ index, initial, aiModels = [], onClose, onSaved }) {
                         <select
                           value={hint.default?.format || "readability_to_markdown"}
                           onChange={(event) => patchDefault({ format: event.target.value })}
-                          title="How the page content is rendered. readability_to_markdown strips nav/ads/sidebar; html_to_markdown keeps everything; html keeps raw HTML; text is a flat dump; table formats emit only tables; AI entries (when configured) extract with a reader-lm model."
+                          title="How the page content is rendered. readability_to_markdown strips nav/ads/sidebar; html_to_markdown keeps everything; html keeps raw HTML; text is a flat dump; table formats emit only tables; AI entries (when configured) extract with a reader-lm or MinerU-HTML model."
                         >
                           {formatOptions.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -3695,12 +3706,13 @@ function HintEditorPane({ index, initial, aiModels = [], onClose, onSaved }) {
                           readability_to_markdown = Readability (strips nav, ads, sidebar) ·
                           html_to_markdown = raw HTML-to-markdown · html = raw HTML in a code
                           fence · text = flat dump · table / table_json / table_csv = tables
-                          only. AI extractors (if configured) pass the page HTML to a
-                          reader-lm model.
+                          only. AI extractors (if configured) pass the page HTML to a reader-lm
+                          (/chat/completions) or MinerU-HTML (/extract) model.
                         </span>
                         {aiModelIds.includes(hint.default?.format) && (
                           <span className="hint-option-hint hint-warn">
-                            ⚠ {hint.default.format} sends page HTML to a reader-lm model and
+                            ⚠ {hint.default.format} sends page HTML to the{" "}
+                            {aiModelKindLabel(aiModels.find((entry) => entry.id === hint.default?.format))} model and
                             falls back to html_to_markdown if the model fails or is not
                             configured.
                           </span>
@@ -3712,7 +3724,7 @@ function HintEditorPane({ index, initial, aiModels = [], onClose, onSaved }) {
                   <>
                     <FlowEditor
                       flow={hint.flow || []}
-                      aiModelIds={aiModelIds}
+                      aiModels={aiModels}
                       onChange={(flow) => patch({ flow })}
                     />
                     <FlowOptionsEditor

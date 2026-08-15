@@ -2,6 +2,12 @@ import { performance } from "node:perf_hooks";
 
 const DEFAULT_MAX_CONCURRENCY = 2;
 
+// Absolute safety cap for MinerU-HTML inputs. The sidecar's LLM classifies the
+// whole page (vLLM KV cache on the GPU bounds the effective context), so we
+// send the full HTML — no reader-lm-style tail-cut at READER_LM_MAX_INPUT_CHARS.
+// This cap only guards the HTTP body against pathological pages.
+const MINERU_MAX_INPUT_CHARS = 400000;
+
 export function getAiModels(config) {
   if (!Array.isArray(config?.readerLmModels) || !config.readerLmModels.length) return [];
   return config.readerLmModels.filter((entry) => entry?.id && entry?.model && entry?.baseUrl);
@@ -10,6 +16,11 @@ export function getAiModels(config) {
 export function isReaderLmConfigured(config, modelId) {
   if (!modelId || typeof modelId !== "string") return false;
   return getAiModels(config).some((entry) => entry.id === modelId);
+}
+
+export function getAiModelKind(config, modelId) {
+  const entry = getAiModels(config).find((item) => item.id === modelId);
+  return entry?.kind === "mineru" ? "mineru" : "chat";
 }
 
 let inFlight = 0;
@@ -38,15 +49,13 @@ function truncateTail(text, maxChars) {
   return text.slice(-maxChars);
 }
 
-export async function extractHtmlWithAiModel({ html, model, config, maxChars, debug = false }) {
-  const entries = getAiModels(config);
-  const entry = entries.find((item) => item.id === model);
-  if (!entry) {
-    throw new Error(`AI extractor "${model}" is not configured — set READER_LM_MODELS or READER_LM_BASE_URL`);
-  }
+function timeoutFetch(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 
-  const tStart = performance.now();
-  const timeoutMs = Number(config?.readerLmTimeoutMs) || 60000;
+async function extractWithChat({ entry, html, config, maxChars, timeoutMs, debug }) {
   const maxInputChars = Math.min(
     Number(config?.readerLmMaxInputChars) || 60000,
     Number.isFinite(maxChars) && maxChars > 0 ? Math.max(maxChars * 2, 60000) : Infinity
@@ -65,42 +74,79 @@ export async function extractHtmlWithAiModel({ html, model, config, maxChars, de
     console.log(`[web_fetch] [ai-extractor] ${entry.label} preparing ${prepared.length} chars (of ${html?.length || 0})`);
   }
 
+  const response = await timeoutFetch(`${entry.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: entry.model,
+      messages: [{ role: "user", content: prepared }],
+      max_tokens: maxTokens,
+      temperature: 0
+    })
+  }, timeoutMs);
+
+  if (!response.ok) {
+    throw new Error(`AI extractor HTTP ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (typeof content !== "string" || !content.trim()) {
+    throw new Error("AI extractor returned empty content");
+  }
+  return content.trim();
+}
+
+async function extractWithMineru({ entry, html, config, timeoutMs, debug }) {
+  let prepared = typeof html === "string" ? html : "";
+  if (prepared.length > MINERU_MAX_INPUT_CHARS) {
+    prepared = truncateTail(prepared, MINERU_MAX_INPUT_CHARS);
+  }
+
+  if (debug) {
+    console.log(`[web_fetch] [ai-extractor] ${entry.label} (mineru) sending ${prepared.length} chars (of ${html?.length || 0})`);
+  }
+
+  const response = await timeoutFetch(`${entry.baseUrl}/extract`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ html: prepared })
+  }, timeoutMs);
+
+  if (!response.ok) {
+    throw new Error(`MinerU extractor HTTP ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const content = data?.text;
+  if (typeof content !== "string" || !content.trim()) {
+    throw new Error("MinerU extractor returned empty content");
+  }
+  return content.trim();
+}
+
+export async function extractHtmlWithAiModel({ html, model, config, maxChars, debug = false }) {
+  const entries = getAiModels(config);
+  const entry = entries.find((item) => item.id === model);
+  if (!entry) {
+    throw new Error(`AI extractor "${model}" is not configured — set READER_LM_MODELS or READER_LM_BASE_URL`);
+  }
+
+  const tStart = performance.now();
+  const timeoutMs = Number(config?.readerLmTimeoutMs) || 60000;
+
   await acquireSlot();
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetch(`${entry.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: entry.model,
-          messages: [{ role: "user", content: prepared }],
-          max_tokens: maxTokens,
-          temperature: 0
-        }),
-        signal: controller.signal
-      });
+    const content = entry.kind === "mineru"
+      ? await extractWithMineru({ entry, html, config, timeoutMs, debug })
+      : await extractWithChat({ entry, html, config, maxChars, timeoutMs, debug });
 
-      if (!response.ok) {
-        throw new Error(`AI extractor HTTP ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const content = data?.choices?.[0]?.message?.content;
-      if (typeof content !== "string" || !content.trim()) {
-        throw new Error("AI extractor returned empty content");
-      }
-
-      if (debug) {
-        console.log(
-          `[web_fetch] [ai-extractor] ${entry.label} returned ${content.length} chars in ${Math.round(performance.now() - tStart)}ms`
-        );
-      }
-      return content.trim();
-    } finally {
-      clearTimeout(timer);
+    if (debug) {
+      console.log(
+        `[web_fetch] [ai-extractor] ${entry.label} returned ${content.length} chars in ${Math.round(performance.now() - tStart)}ms`
+      );
     }
+    return content;
   } finally {
     releaseSlot();
   }

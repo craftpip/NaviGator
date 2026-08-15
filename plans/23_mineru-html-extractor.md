@@ -2,20 +2,20 @@
 
 ## Plan Status
 
-**Status: DRAFT** — research complete; no implementation started.
+**Status: DRAFT** — server + console integration implemented and tested; GPU container not yet built. The `mineru-html` service is designed to run on a **separate GPU host** (this app VM has no GPU — no `libcuda*`/`/dev/nvidia*`), so items 1–2 happen there.
 
 ### Checklist
 
-- [ ] 1. Build the standalone **GPU container** (`mineru-html` service): vLLM backend + FastAPI wrapper, NVIDIA runtime, model weights baked into the image, port `8001`.
-- [ ] 2. Verify container: `curl localhost:8001/extract` with a nav-heavy HTML → clean markdown, GPU used (`nvidia-smi` shows process).
-- [ ] 3. Add `kind` field to `READER_LM_MODELS` entries (or a sibling `MINERU_*` config) in `src/config.js` / `src/config-manager.js` / `src/config-schema.js`.
-- [ ] 4. New `src/mineru.js` (or extend `src/reader-lm.js`) HTTP client + fallback + concurrency gate.
-- [ ] 5. `src/search.js`: AI branch dispatch on model `kind` (`chat` vs `mineru`).
-- [ ] 6. `src/mcp-server.js`: cache bypass for AI-model fetches already in place — verify `kind` model paths behave.
-- [ ] 7. Console (`src/web-console/src/main.jsx`): AI-model dropdown entries carry the new kind.
-- [ ] 8. Tests: pipeline service mocked, fallback-on-error, cache bypass, output shapes.
-- [ ] 9. Docs: `AGENTS.md` (extractor entry, env vars, license note), `README.md` env table.
-- [ ] 10. Restart server, verify schema + both flows live.
+- [ ] 1. Build the standalone **GPU container** (`mineru-html` service): vLLM backend + FastAPI wrapper, NVIDIA runtime, model weights baked into the image, port `8001`. (`docker/mineru-html/Dockerfile` + `sidecar.py` written, compose service defined — **image not built**; do this on a host with the `nvidia` runtime, e.g. `docker compose build mineru-html`)
+- [ ] 2. Verify container on the GPU host: `curl localhost:8001/extract` with a nav-heavy HTML → clean markdown, GPU used (`nvidia-smi` shows process). Then point this VM's `READER_LM_MODELS` mineru entry at the GPU host's `baseUrl` (`http://<gpu-host>:8000`; the `http://mineru-html:8000` compose-DNS name only works when both are on the same compose network).
+- [x] 3. Add `kind` field to `READER_LM_MODELS` entries in `src/config.js` (`parseAiModelKind`, `AI_MODEL_KINDS`) + `src/config-schema.js` (enum + license note). `config-manager.js` unchanged (`applies: "recreate"`).
+- [x] 4. Extended `src/reader-lm.js` — `extractWithMineru` POSTs `{html}` to `<baseUrl>/extract`, `MINERU_MAX_INPUT_CHARS` safety cap, concurrency gate reused.
+- [x] 5. `src/search.js`: dispatch centralized in `extractHtmlWithAiModel` (`entry.kind === "mineru" ? mineru : chat`); `search.js` calls it unchanged.
+- [x] 6. `src/mcp-server.js`: `usesAiExtractor` covers any configured AI model id (both kinds) — cache bypass already in place, verified.
+- [x] 7. Console (`src/web-console/src/main.jsx`): `aiModelOptionLabel`/`aiModelKindLabel`/`aiModelIdLabel` — dropdowns label reader-lm vs MinerU-HTML, block-editor warning names the model, prop chain passes entries (`aiModels`) not ids.
+- [x] 8. Tests: `tests/reader-lm.test.js` — dispatch (chat/mineru), fallback-on-error, empty-content, safety cap, helper units. 10 tests, all pass.
+- [x] 9. Docs: `AGENTS.md` (extractor entry, env var table, license note) + `README.md` env table.
+- [x] 10. Restart server, verify schema + config parse. (console rebuilt, container restarted, health OK; live mineru flow blocked on item 1)
 
 ## Goal
 
