@@ -1018,6 +1018,18 @@ function buildFeed(entries, pageOps) {
       return preview(value);
     }
   };
+  const devtoolsRequest = (tool, target) => {
+    const action = tool === "Target.createTarget" ? "open"
+      : tool === "Target.closeTarget" ? "close"
+        : tool === "Target.getTargets" ? "list"
+          : tool === "Page.navigate" ? "navigate"
+            : tool === "web_page_screenshot" ? "capture"
+              : tool.startsWith("DOM.") ? "inspect"
+                : tool.startsWith("Runtime.") ? "run script in"
+                  : tool.startsWith("Input.") ? "interact with"
+                    : "use";
+    return target ? `${action} ${requestTarget(target)}` : action;
+  };
   const rows = [];
   for (const search of entries || []) {
     const attempts = (search.attempts || []).filter((attempt) => attempt.status !== "skip").map((attempt) => ({
@@ -1044,6 +1056,7 @@ function buildFeed(entries, pageOps) {
       category: "Web",
       tool: "web_search",
       backend: backends.join("/") || "-",
+      requestLabel: "query",
       request: preview(search.query),
       response:
         search.error ? "error" : search.result_count != null ? `${search.result_count} results` : search.status || "running",
@@ -1053,15 +1066,18 @@ function buildFeed(entries, pageOps) {
     });
   }
   for (const op of pageOps || []) {
+    const isDevtools = op.source === "devtools";
+    const pageAction = op.tool === "web_page_screenshot" ? "capture" : "fetch";
     rows.push({
       key: `p-${op.id}`,
       ts: op.ts,
-      kind: op.source === "devtools" ? "devtools" : "page_op",
+      kind: isDevtools ? "devtools" : "page_op",
       status: op.ok ? "ok" : "fail",
-      category: op.source === "devtools" ? "Dev" : "Web",
+      category: isDevtools ? "Dev" : "Web",
       tool: op.tool || "page",
       backend: formatBackend(op.backend),
-      request: requestTarget(op.url),
+      requestLabel: isDevtools ? "tab" : "page",
+      request: isDevtools ? devtoolsRequest(op.tool || "", op.url) : `${pageAction}: ${requestTarget(op.url)}`,
       response: op.error ? "error" : op.response_chars ? `${Number(op.response_chars).toLocaleString()} chars` : "- chars",
       duration: op.duration_ms != null ? formatMs(op.duration_ms) : "",
       error: op.error || "",
@@ -1151,7 +1167,7 @@ function LiveFeed({ feed, enabledEngines, feedMaxHeight }) {
                       <span className="feed-tool">
                         {entry.tool} <span className="feed-backend">{entry.backend || "-"}</span>
                       </span>
-                      <span className="feed-request" title={entry.request}>req: {entry.request || "-"}</span>
+                      <span className="feed-request" title={entry.request}>{entry.requestLabel || "request"}: {entry.request || "-"}</span>
                       {entry.attempts?.length ? (
                         <span className="feed-attempts">
                           {entry.attempts.map((attempt) => (
