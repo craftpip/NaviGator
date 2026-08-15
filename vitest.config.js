@@ -12,5 +12,8 @@ export default defineConfig({
     include: ["tests/**/*.test.js"],
     testTimeout: 10000,
     hookTimeout: 10000,
+    env: {
+      NAVIGATOR_ENV_FILE: "/tmp/navigator-test-env.missing",
+    },
   },
 });

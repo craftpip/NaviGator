@@ -391,4 +391,33 @@ describe("loadConfig (parse engine behavior)", () => {
     expect(config.searchQueueExplorationEvery).toBe(4);
     expect(config.searchQueueLatencySamples).toBe(12);
   });
+
+  it("merges the .env file over process.env at load time", async () => {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const envFile = path.join(os.tmpdir(), `navigator-test-${Date.now()}.env`);
+    await fs.writeFile(
+      envFile,
+      [
+        "SEARCH_ENABLED_ENGINES=duckduckgo_cb,bing_cb",
+        'BROWSER_BACKEND="lightpanda"',
+        "# commented = ignored",
+        "SEARCH_QUEUE_MIN_INTERVAL_MS=45000"
+      ].join("\n"),
+      "utf8"
+    );
+    process.env.NAVIGATOR_ENV_FILE = envFile;
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("SEARCH_ENABLED_ENGINES", "google_cb");
+    vi.stubEnv("BROWSER_BACKEND", "chromium");
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    delete process.env.NAVIGATOR_ENV_FILE;
+    await fs.unlink(envFile);
+
+    expect(config.searchEnabledEngines).toEqual(["duckduckgo_cb", "bing_cb"]);
+    expect(config.defaultBackend).toBe("lightpanda");
+    expect(config.searchQueueMinIntervalMs).toBe(45000);
+  });
 });

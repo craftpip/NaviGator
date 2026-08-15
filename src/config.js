@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { SUPPORTED_ENGINES } from "./engines/index.js";
+import { getEnvFilePath, parseEnvFile, readEnvFile } from "./env-file.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -272,7 +273,22 @@ export const DEFAULT_SEARCH_ENABLED_ENGINES = Object.freeze([
   "startpage_cb"
 ]);
 
+async function applyEnvFileToProcessEnv() {
+  try {
+    const filePath = getEnvFilePath();
+    const text = await readEnvFile(filePath);
+    if (!text) return;
+    const { keyToLine } = parseEnvFile(text);
+    for (const [key, entry] of keyToLine) {
+      if (entry.hasValue) process.env[key] = entry.value;
+    }
+  } catch (error) {
+    // Keep process.env as-is if the env file is missing or unreadable.
+  }
+}
+
 export async function loadConfig() {
+  await applyEnvFileToProcessEnv();
   const navWaitUntilRaw = process.env.NAV_WAIT_UNTIL || "domcontentloaded";
   const navWaitUntil = WAIT_UNTIL_VALUES.has(navWaitUntilRaw)
     ? navWaitUntilRaw
