@@ -47,7 +47,9 @@ Opens pages and returns cleaned, readable text content.
 - `maxChars: number` (default `90000`) — Maximum characters per page
 - `bypassCache: boolean` (default `false`) — Skip cached data and refresh the response
 
-**Output:** Per-item success/error with readable text, tables, warnings, and a page reference. Tables are extracted by default, but a domain hint may limit or disable them. Links are shown inline as `[text](ref_id)`; resolve them with `web_page_links(ref_ids: [link_ref_id])`, then fetch with `web_fetch(ref_ids: [link_ref_id])`.
+**Output:** Per-item success/error with readable text, tables, warnings, and a page reference. The page's extractor (set by the domain hint, see the Domain Hints workflow) decides how content is rendered — tables are that extractor's job, not a separate flag. Links are shown inline as `[text](ref_id)`; resolve them with `web_page_links(ref_ids: [link_ref_id])`, then fetch with `web_fetch(ref_ids: [link_ref_id])`.
+
+**Extractor formats** (`default.format`, or per-block `format` in flows) — the drop-downs are labeled **Extractor**: `text` (flat dump) · `html` (raw HTML in a ```html fence) · `html_to_markdown` (whole page → markdown) · `readability_to_markdown` (Readability strips nav/ads → markdown, default) · `table` / `table_json` / `table_csv` (tables-only output) · `list` (blocks only) · any configured **AI Model** id (page/element HTML sent to a reader-lm model → markdown; falls back to `html_to_markdown` on failure or if the model isn't configured). Requests using an AI-model extractor bypass the web_fetch result cache (each call re-runs the model). Serving the model is a separate concern — navigator only POSTs to an OpenAI-compatible `<baseUrl>/chat/completions`. Note `jinaai/reader-lm-0.5b` is **CC-BY-NC-4.0** (non-commercial).
 
 ---
 
@@ -221,6 +223,16 @@ For visual verification, call `web_page_screenshot` with the same `ref_ids`.
 | `LOG_TOOL_ERRORS` | `1` | Log every erroring tool call to `logs/tool-errors.log` (one JSON line per error, redacted args, 5MB rotation). Default on — set to `0` to disable |
 | `ENABLE_INSTANT_ANSWERS` | `1` | Make the independent DuckDuckGo Instant Answer API call on every `web_search` (rendered as the `**Instant Answer:**` section). Set to `0` to disable |
 | `DISABLE_TOOLS` | `` | Comma-separated MCP tool names to hide from `tools/list` and reject on call. Matched case-insensitively. Example: `web_page_ascii,web_page_links`. Empty enables all tools, including in Compose. |
+| `READER_LM_MODELS` | `` | JSON array of AI-extractor model entries: `[{"id":"reader_lm","label":"reader-lm-0.5b","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]`. Each `id` becomes an "AI Model" option in the extractor dropdowns. Overrides `READER_LM_BASE_URL`+`READER_LM_MODEL` |
+| `READER_LM_BASE_URL` | `` | Base URL of an OpenAI-compatible endpoint for the single-model AI extractor (e.g. `http://host.docker.internal:8000/v1`). Id defaults to the configured model name |
+| `READER_LM_MODEL` | `` | Model name sent to that endpoint (e.g. `jinaai/reader-lm-0.5b`) |
+| `READER_LM_TIMEOUT_MS` | `60000` | Per-request timeout for the AI extractor |
+| `READER_LM_MAX_INPUT_CHARS` | `60000` | Max HTML chars sent to the model; longer HTML is **tail-cut** (the interesting content — tables, footnotes — lives at the end) |
+| `READER_LM_MAX_TOKENS` | `8192` | Max completion tokens requested |
+| `DEFAULT_EXTRACT_FORMAT` | `readability_to_markdown` | Extractor format for pages with **no** matching domain hint. Accepts any `default.format` value (see Extractor formats above), including a configured AI model id. Hot-applied |
+| `DEFAULT_EXTRACT_STABILIZE_STRATEGY` | `network_idle` | Stabilization strategy for unmatched pages: `network_idle` · `content_idle` · `mutation` · `none`. Hot-applied |
+| `DEFAULT_EXTRACT_WAIT_FOR_SELECTOR` | `` | CSS selectors (comma-separated) that must appear before extracting unmatched pages. Empty = no wait. Hot-applied |
+| `DEFAULT_EXTRACT_WAIT_FOR_CONTENT` | `` | CSS selectors (comma-separated) to wait for content in before extracting unmatched pages. Empty = no wait. Hot-applied |
 
 ### Key Notes
 
@@ -377,8 +389,7 @@ right selectors for a tricky page; the panel is where you iterate and commit the
         "waitForSelector": "selector-for-dynamic-content",
         "stabilizeStrategy": "content_idle",
         "skipSelectors": ["aside.sidebar"],
-        "format": "readability_to_markdown",
-        "tables": "content"
+        "format": "readability_to_markdown"
       }
    }
    ```
@@ -401,7 +412,7 @@ right selectors for a tricky page; the panel is where you iterate and commit the
    - Selectors must NOT overlap — one element should not be a child of another selected element.
     - `high` priority blocks are always included. `medium` blocks are included only if they have 50+ chars of text.
     - `low` priority blocks are reserved for future use.
-    - Use `default.format: "html_to_markdown"` when normal extraction should skip Readability.
+    - Use `default.format: "html_to_markdown"` when normal extraction should skip Readability. The extractor (`default.format`) decides everything about output rendering — including tables (`table` / `table_json` / `table_csv` = tables-only output). There is no separate `tables` toggle.
    - Select ONLY the container that has the useful content. Exclude UI elements: buttons, block/report forms, follow buttons, empty tables, achievement badges, "Learn more" links, form labels, sticky bars.
    - For profile sidebars: prefer `div.js-profile-editable-area` (bio + stats + details) over `div.h-card` (includes block/report noise). Add separate sections for name (`h1.vcard-names`) and status (`div.user-status-message-wrapper`) if needed.
    - For lists of items: select the `<ol>` or `<ul>` container directly (e.g., `ol.js-pinned-items-reorder-list`). The extraction code auto-detects `<ol>/<ul>` and renders each `<li>` as a separate block with a blank line between items.
@@ -472,6 +483,9 @@ field is rejected as unknown.
 - **Selectors must not overlap** — one selected element should not be a child of another. Otherwise content appears in multiple sections.
 - **Noisy content** comes from UI elements inside a selected container (buttons, modals, block/report forms). Use the most specific selector possible that excludes these. If `div.h-card` includes block/report UI, use `div.js-profile-editable-area` instead. If a Follow button is inside the profile area, check if a more specific container excludes it.
 - **Empty tables** (all body cells empty or whitespace-only) are now filtered out via `hasDataContent` check in `extractTablesFromDocument`. Tables must have at least one body cell with >2 chars of text content.
+- **"Extractor", not "Format"** — the dropdowns (`default.format` and per-block `format`) are labeled **Extractor** in the console because they pick the extraction method (which engine converts HTML → text), not a render format. The block dropdown also carries `list` and any configured AI Model ids; the default-extraction dropdown omits `list` (meaningless whole-page) but includes the `table*` formats and AI ids.
+- **No "Table extraction" dropdown anymore** — `default.tables` (all/content/disabled) was removed from the schema and the console. Tables are now the extractor's job: `readability_to_markdown` keeps what Readability keeps, `html_to_markdown` renders markdown tables, `text` shows whatever the flat dump captures, and `table` / `table_json` / `table_csv` return **tables-only** output. To get tables on a table-heavy page, pick a `table*` extractor — there is no separate toggle. Old hints carrying a `tables` key are migrated (stripped) on load; the console warns once.
+- **AI extractors fall back** — an AI Model extractor that errors (model down, not configured, empty reply) silently falls back to `html_to_markdown` with a console warning, so a dead reader-lm endpoint degrades to full-HTML markdown instead of failing the fetch.
 - **Short values** like "7" (following count) can be lost because `uniqueLines` filters lines with `length < 3`. To preserve them, the parent element should be selected so the full text (e.g., "116 followers · 7 following") stays together.
 - **Duplicated content across page states** (e.g., desktop + mobile versions of the same section) causes duplicate lines. `uniqueLines` filters exact duplicates, but different text content passes through. Use a selector that targets only one state when possible (e.g., prefer `div.user-status-container:not(.d-md-none)` over the classless version).
 - **Smart hints, not smart code.** Do NOT add auto-detection logic (list detection, content type detection) in search.js. Formatting decisions belong in the hint — choose precise selectors that naturally produce clean output. The section extraction code stays simple: textContent → lines → dedup → render as flat list items.
@@ -737,21 +751,29 @@ Hermes agent reported browser tools disappearing after ~5 min. Container logs sh
 ### Table Extraction — Always On, No Flag
 
 **Created:** 2026-07-25
+**Superseded:** 2026-08-16 — see plan `plans/22_jina-reader-lm-extractor.md`. The default path
+no longer appends `### Table N` sections unconditionally, and there is no `default.tables`
+toggle anymore. **The extractor is now the single source of truth for tables:**
+- `table` / `table_json` / `table_csv` extractors return **tables-only** output (the old
+  always-on behavior, on demand).
+- Content extractors render tables however that engine naturally does: `html_to_markdown`
+  → markdown tables via Turndown; `readability_to_markdown` → whatever Readability keeps;
+  AI models → markdown tables from the full HTML they receive; `text` → whatever the flat
+  dump captures.
+- This supersedes the "always on, no flag" design — the old `### Table N` append still exists
+  but only inside the tables-only extractors' flow (and legacy Readability output is clean
+  because Readability strips raw tabular noise).
 
-**What:** There is no `includeTables` flag. `web_fetch` always extracts tables from the HTML via JSDOM and appends them as clean pipe-separated structured tables (`### Table N`). The Readability text is used as the base (it naturally strips inline tabular content), so raw tab-separated table noise is eliminated.
+**What (was):** There is no `includeTables` flag. `web_fetch` always extracted tables from the HTML via JSDOM and appended them as clean pipe-separated structured tables (`### Table N`). The Readability text was used as the base (it naturally strips inline tabular content), so raw tab-separated table noise is eliminated.
 
-**Why:** The raw SEO text (browser `innerText`) always contains table data as tab-separated noise (106+ rows for NSE). There is no point in letting that noise through raw when we can always parse it into a clean format. Removing the flag simplifies the API — the LLM never needs to decide whether to include tables.
+**Why (was):** The raw SEO text (browser `innerText`) always contains table data as tab-separated noise (106+ rows for NSE). There was no point letting that noise through raw when it could always be parsed into a clean format. Removing the flag simplified the API — the LLM never needed to decide whether to include tables.
 
-**Key changes:**
+**Key changes (was):**
 - Removed `includeTables` parameter from `web_fetch` schema, `handleToolCall`, `openTargetsParallel`, and `browserOpenAndExtract`.
-- `selectedText` always uses `extracted.text` (Readability text) as the base — avoids raw tabular data while keeping article content.
-- `extractTablesFromDocument()` always runs and `insertTablesInline()` always appends structured tables.
+- `selectedText` always used `extracted.text` (Readability text) as the base — avoided raw tabular data while keeping article content.
+- `extractTablesFromDocument()` always ran and `insertTablesInline()` always appended structured tables.
 
-**Flow:**
-1. `web_fetch(url)` → Readability text + `### Table N` (pipe-separated)
-2. No raw tab-separated noise. No flags needed.
-
-**Verified on:** NSE India option chain (0 tab rows in output, clean structured table)
+**Verified on (was):** NSE India option chain (0 tab rows in output, clean structured table)
 
 ---
 
@@ -944,3 +966,17 @@ For each site:
 - Plan for JSON output: `plans/web-fetch-json.md`.
 
 **Plans convention:** Every plan is numbered by creation date, oldest first. New feature plans go in `plans/<NN>_<topic>.md` with the next sequential number (e.g., `17_<topic>.md` after `16_domain-hint-flows.md`) — always prepend the number when creating a plan. When a plan is fully implemented, absorb its durable knowledge into this file (or `docs/`) and move the plan file to `plans/archive/`.
+
+### DEFAULT_EXTRACT — No-Hint Default Extraction
+
+**Created:** 2026-08-16
+
+**What:** Pages that match **no** domain hint now get configurable default extraction via the flattened `DEFAULT_EXTRACT_FORMAT` / `DEFAULT_EXTRACT_STABILIZE_STRATEGY` / `DEFAULT_EXTRACT_WAIT_FOR_SELECTOR` / `DEFAULT_EXTRACT_WAIT_FOR_CONTENT` env vars (hot-applied). The defaults behave exactly like a hint's `default` block — applied as a synthetic `{ default: ... }` hint. **Skip selectors are NOT part of it** — they live in `NON_CONTENT_SELECTORS`, which is the global default skip list stripped before extraction for every page. Originally shipped as a single `DEFAULT_EXTRACT` JSON var; flattened 2026-08-16 because one JSON blob could not be edited field-by-field in the Manage panel (each var now has its own row/dropdown).
+
+**Implementation notes:**
+- `parseDefaultExtractFormat()` (src/config.js) returns `readability_to_markdown` for missing/blank values and keeps any real value (including a configured AI model id). `parseStabilizeStrategy(value, "")` gives the empty-inherit default for the stabilize strategy (empty = follow the global `STABILIZE_STRATEGY`, which itself defaults to `network_idle`); the selector vars are `parseSelectorList(value, [])`. `config.defaultExtractStabilizeStrategy` defaults to `""` (inherit).
+- `defaultExtractHint(config)` (src/search.js, near `firstMatchingHint`) returns `null` when nothing is configured — cheap no-op. It is applied at **two** points in `browserOpenAndExtract()`: once right after hint resolution for the cached-HTML replay path (no page available), and again after the final `requireSelector` retry, because that retry **overwrites** `hint` to `null` when candidates exist but none match — the early application alone would be lost.
+- Config plumbing: the four `DEFAULT_EXTRACT_*` keys are `type: "string"` / `"enum"` in config-schema.js with `applies: "hot"` and individual appliers in config-manager.js. In `getConsoleConfigPayload()` `DEFAULT_EXTRACT_STABILIZE_STRATEGY` returns the schema fallback when the runtime value is empty (so the Manage dropdown auto-selects `network_idle`); the enum's `values` are `["network_idle","content_idle","mutation","none"]` — empty is not a selectable option (picking `network_idle` pins it explicitly, which matches the global default shown on the left).
+- Console UI: Manage tab's "Web Fetch Extraction" group lists the four vars (extractor dropdown, stabilize dropdown, two selector line editors) plus `NON_CONTENT_SELECTORS`.
+- The default hint must NOT carry a `flow` — `defaultExtractHint` never sets one, so `runFlowExtraction` is never triggered for unmatched pages.
+- Test gotcha: single-row key/value tables (`columnCount === 2 && rows.length === 1`) are filtered out by `extractTablesFromDocument`, so a "tables-only" default-extract test needs a table with ≥2 body rows.

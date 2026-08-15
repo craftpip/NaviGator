@@ -286,6 +286,19 @@ Hints live in `domain-hints.json` at the project root. You can point to a differ
 
 The `comment` field is for maintainers and appears in the console editor, not fetch output.
 
+### Default extraction when no hint matches
+
+Pages that match **no** hint are extracted with the built-in defaults (Readability → markdown, `network_idle` stabilization). You can override those defaults globally so unmatched pages are extracted the way you want:
+
+```json
+# .env
+DEFAULT_EXTRACT_FORMAT=html_to_markdown
+DEFAULT_EXTRACT_STABILIZE_STRATEGY=content_idle
+NON_CONTENT_SELECTORS=script,style,nav,aside,.advert
+```
+
+The four `DEFAULT_EXTRACT_*` vars mirror the fields of a hint's `default` block: `DEFAULT_EXTRACT_FORMAT` (extractor), `DEFAULT_EXTRACT_STABILIZE_STRATEGY` (stabilization), `DEFAULT_EXTRACT_WAIT_FOR_SELECTOR` and `DEFAULT_EXTRACT_WAIT_FOR_CONTENT` (pre-extraction gates). An empty `DEFAULT_EXTRACT_STABILIZE_STRATEGY` inherits the global `STABILIZE_STRATEGY`. Skip selectors are **not** part of it — they live in `NON_CONTENT_SELECTORS`, which is the global default skip list stripped before extraction on every page. All are hot-applied — edit them in the web console under **Manage → Web Fetch Extraction** (or the Domain hints panel), and they take effect immediately, no restart.
+
 ### Currently shipped hints
 
 The shipped rules are maintained in `domain-hints.json`. Add a rule only after inspecting the live page and testing the candidate extraction.
@@ -405,6 +418,12 @@ The most important environment variables are:
 - `DEVTOOLS_BROWSER_BACKEND`: backend for the browser-testing tools; defaults to `BROWSER_BACKEND`
 - `SEARCH_ROUTE_WARMUP_ENGINES`: browser routes to open and keep warm at startup
 - `SEARCH_ENABLED_ENGINES`: routes eligible for automatic `select_best` scheduling
+- `READER_LM_BASE_URL`: base URL of an OpenAI-compatible endpoint for the AI Model extractor (e.g. `http://host.docker.internal:8000/v1`); when unset, the model id defaults to the configured model name
+- `READER_LM_MODEL`: model name sent to that endpoint (e.g. `jinaai/reader-lm-0.5b`)
+- `READER_LM_MODELS`: JSON array to configure multiple AI models, e.g. `[{"id":"reader_lm","label":"reader-lm-0.5b","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]`; overrides `READER_LM_BASE_URL` + `READER_LM_MODEL`
+- `READER_LM_TIMEOUT_MS`: per-request timeout for the AI extractor, default `60000`
+- `READER_LM_MAX_INPUT_CHARS`: max HTML chars sent to the model (tail-cut when longer), default `60000`
+- `READER_LM_MAX_TOKENS`: max completion tokens requested, default `8192`
 - `ENABLE_VNC`: enable VNC and noVNC in Docker
 
 See `.env.example` for the full list (the pre-cleanup reference copy is kept at `.env.example.full`).

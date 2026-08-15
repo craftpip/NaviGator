@@ -44,7 +44,11 @@ export const CONFIG_SCHEMA = [
   { key: "LOG_TOOL_ERRORS", category: "ops", type: "boolean", fallback: true, applies: "hot", description: "Log tool errors to logs/tool-errors.log." },
   { key: "DISABLE_TOOLS", category: "ops", type: "toolList", fallback: [], applies: "hot", description: "MCP tools to hide/reject (comma-separated)." },
   { key: "DOMAIN_HINTS_PATH", category: "ops", type: "string", fallback: "domain-hints.json", applies: "recreate", description: "Path to extraction hints file." },
-  { key: "NON_CONTENT_SELECTORS", category: "ops", type: "string", fallback: "script,style,noscript,template,svg,canvas,iframe,nav,aside,select,option,.cookie,.cookies,[class*='cookie'],[id*='cookie'],[class*='consent'],[id*='consent'],[class*='subscribe'],[id*='subscribe'],[class*='banner'],[id*='banner'],[role='dialog']", applies: "hot", description: "DOM elements stripped before extraction (comma-separated CSS selectors). Leave empty to keep everything." },
+  { key: "NON_CONTENT_SELECTORS", category: "ops", type: "string", fallback: "script,style,noscript,template,svg,canvas,iframe,nav,aside,select,option,.cookie,.cookies,[class*='cookie'],[id*='cookie'],[class*='consent'],[id*='consent'],[class*='subscribe'],[id*='subscribe'],[class*='banner'],[id*='banner'],[role='dialog']", applies: "hot", description: "DOM elements stripped before extraction (comma-separated CSS selectors). This is the default skip list for pages with no matching hint; leave empty to keep everything." },
+  { key: "DEFAULT_EXTRACT_FORMAT", category: "ops", type: "string", fallback: "readability_to_markdown", applies: "hot", description: "Extractor format used when no domain hint matches a page (default readability_to_markdown). Pick one in the Manage dropdown or the Domain hints panel; it also accepts any configured AI model id." },
+  { key: "DEFAULT_EXTRACT_STABILIZE_STRATEGY", category: "ops", type: "enum", values: ["network_idle", "content_idle", "mutation", "none"], fallback: "network_idle", applies: "hot", description: "Stabilization strategy for pages with no matching hint." },
+  { key: "DEFAULT_EXTRACT_WAIT_FOR_SELECTOR", category: "ops", type: "string", fallback: "", applies: "hot", description: "CSS selectors (comma-separated) that must appear before extracting unmatched pages. Empty = no wait." },
+  { key: "DEFAULT_EXTRACT_WAIT_FOR_CONTENT", category: "ops", type: "string", fallback: "", applies: "hot", description: "CSS selectors (comma-separated) to wait for content in before extracting unmatched pages. Empty = no wait." },
   { key: "ENABLE_HANG_RESTART", category: "ops", type: "boolean", fallback: false, applies: "hot", description: "Exit process on hung top-level ops so Docker restarts." },
   { key: "HANG_RESTART_TIMEOUT_MS", category: "ops", type: "number", fallback: 120000, applies: "hot", description: "Hang threshold for forced restart (ms)." },
 
@@ -61,5 +65,12 @@ export const CONFIG_SCHEMA = [
 
   { key: "ENABLE_VNC", category: "vnc", type: "boolean", fallback: false, applies: "hot", description: "VNC mode. Toggled automatically by the console VNC control." },
   { key: "VNC_PORT", category: "vnc", type: "number", fallback: 5900, applies: "recreate", description: "x11vnc port." },
-  { key: "NOVNC_PORT", category: "vnc", type: "number", fallback: 7900, applies: "recreate", description: "noVNC web port (published to host)." }
+  { key: "NOVNC_PORT", category: "vnc", type: "number", fallback: 7900, applies: "recreate", description: "noVNC web port (published to host)." },
+
+  { key: "READER_LM_MODELS", category: "extractor", type: "string", fallback: "[]", applies: "recreate", description: 'JSON array of AI extractor models, e.g. [{"id":"reader_lm","label":"reader-lm-0.5b","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]. When set, it overrides the single READER_LM_BASE_URL entry. CC-BY-NC-4.0 non-commercial license.' },
+  { key: "READER_LM_BASE_URL", category: "extractor", type: "string", fallback: "", applies: "recreate", description: "OpenAI-compatible base URL for the built-in AI extractor (e.g. http://localhost:11434/v1 or http://host.docker.internal:8000/v1). Empty disables the AI extractor." },
+  { key: "READER_LM_MODEL", category: "extractor", type: "string", fallback: "reader-lm:0.5b", applies: "recreate", description: "Model id for the built-in AI extractor entry (vLLM would use jinaai/reader-lm-0.5b)." },
+  { key: "READER_LM_TIMEOUT_MS", category: "extractor", type: "number", fallback: 60000, applies: "hot", description: "Per-call timeout for the AI extractor (ms)." },
+  { key: "READER_LM_MAX_INPUT_CHARS", category: "extractor", type: "number", fallback: 60000, applies: "hot", description: "Prepared HTML truncation for the AI extractor (~15K tokens)." },
+  { key: "READER_LM_MAX_TOKENS", category: "extractor", type: "number", fallback: 8192, applies: "hot", description: "Generation token cap for the AI extractor." }
 ];

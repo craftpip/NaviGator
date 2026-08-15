@@ -89,12 +89,46 @@ export function parseSelectorList(value, fallback) {
   return [...new Set(parsed)];
 }
 
+const DEFAULT_EXTRACT_FORMAT_DEFAULT = "readability_to_markdown";
+
+export function parseDefaultExtractFormat(value) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return DEFAULT_EXTRACT_FORMAT_DEFAULT;
+  return raw;
+}
+
 export function parseApiKeys(value) {
   if (!value || typeof value !== "string") return [];
   return [...new Set(value
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean))];
+}
+
+export function parseReaderLmModels(value) {
+  if (!value || typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return null;
+    const entries = parsed
+      .filter((entry) => entry && typeof entry === "object" && typeof entry.id === "string" && entry.id.trim())
+      .map((entry) => ({
+        id: String(entry.id).trim(),
+        label: typeof entry.label === "string" && entry.label.trim()
+          ? String(entry.label).trim()
+          : String(entry.id).trim(),
+        model: typeof entry.model === "string" && entry.model.trim()
+          ? String(entry.model).trim()
+          : null,
+        baseUrl: typeof entry.baseUrl === "string" && entry.baseUrl.trim()
+          ? String(entry.baseUrl).trim().replace(/\/+$/, "")
+          : null
+      }))
+      .filter((entry) => entry.model && entry.baseUrl);
+    return entries.length ? entries : null;
+  } catch {
+    return null;
+  }
 }
 
 export function parseBrowserBackend(value, fallback = "cloakbrowser") {
@@ -388,12 +422,29 @@ export async function loadConfig() {
     domainHintsPath,
     nonContentSelectors: parseSelectorList(process.env.NON_CONTENT_SELECTORS, DEFAULT_NON_CONTENT_SELECTORS),
     stabilizeStrategy: parseStabilizeStrategy(process.env.STABILIZE_STRATEGY, "network_idle"),
+    defaultExtractFormat: parseDefaultExtractFormat(process.env.DEFAULT_EXTRACT_FORMAT),
+    defaultExtractStabilizeStrategy: parseStabilizeStrategy(process.env.DEFAULT_EXTRACT_STABILIZE_STRATEGY, ""),
+    defaultExtractWaitForSelector: parseSelectorList(process.env.DEFAULT_EXTRACT_WAIT_FOR_SELECTOR, []),
+    defaultExtractWaitForContent: parseSelectorList(process.env.DEFAULT_EXTRACT_WAIT_FOR_CONTENT, []),
     searchRouteWarmupEngines: process.env.SEARCH_ROUTE_WARMUP_ENGINES === undefined
       ? ["brave_cb", "duckduckgo_api", "duckduckgo_cb"]
       : parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, []),
     searchEnabledEngines: parseEngines(
       process.env.SEARCH_ENABLED_ENGINES,
       DEFAULT_SEARCH_ENABLED_ENGINES
-    )
+    ),
+    readerLmModels: resolveReaderLmModels(),
+    readerLmTimeoutMs: parseNumber(process.env.READER_LM_TIMEOUT_MS, 60000),
+    readerLmMaxInputChars: parseInteger(process.env.READER_LM_MAX_INPUT_CHARS, 60000),
+    readerLmMaxTokens: parseInteger(process.env.READER_LM_MAX_TOKENS, 8192)
   };
+}
+
+function resolveReaderLmModels() {
+  const configured = parseReaderLmModels(process.env.READER_LM_MODELS);
+  if (configured) return configured;
+  const baseUrl = (process.env.READER_LM_BASE_URL || "").trim().replace(/\/+$/, "");
+  if (!baseUrl) return [];
+  const model = (process.env.READER_LM_MODEL || "reader-lm:0.5b").trim();
+  return [{ id: "reader_lm", label: model, model, baseUrl }];
 }

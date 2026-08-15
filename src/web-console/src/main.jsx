@@ -11,7 +11,9 @@ const MANAGE_GROUPS = [
   { label: "Browser Startup And Desktop Access", detail: "VNC toggles HEADLESS automatically; use the header VNC action to change them together.", keys: ["PRELAUNCH_BROWSER", "STARTUP_URL", "HEADLESS", "ENABLE_VNC", "VNC_PORT", "NOVNC_PORT"] },
   { label: "Search Route Availability", detail: "Eligible engines, startup warming, route cooldowns, and browser-window capacity.", keys: ["SEARCH_ENABLED_ENGINES", "SEARCH_ROUTE_WARMUP_ENGINES", "SEARCH_ROUTE_CIRCUIT_OPEN_MS", "SEARCH_KEEP_MIN_WORKING_WINDOWS", "SEARCH_MAX_WORKING_WINDOWS"] },
   { label: "Search Scheduler", detail: "How select_best scores, backs off, and recovers eligible engines.", keys: ["SEARCH_QUEUE_MIN_INTERVAL_MS", "SEARCH_QUEUE_MAX_INTERVAL_MS", "SEARCH_QUEUE_ESCALATION_FACTOR", "SEARCH_QUEUE_ERROR_GAP_PERCENTILE", "SEARCH_QUEUE_ERROR_GAP_SAFETY", "SEARCH_QUEUE_DECAY_PER_SUCCESS", "SEARCH_QUEUE_W_SUCCESS", "SEARCH_QUEUE_W_RESULTS", "SEARCH_QUEUE_W_STABILITY", "SEARCH_QUEUE_W_RECENCY", "SEARCH_QUEUE_W_RECOVERY"] },
-  { label: "Page Operations And Extraction", detail: "Parallelism, navigation, stabilization, extraction hints, and response size.", keys: ["OPEN_PAGE_MAX_PARALLEL", "MAX_CONCURRENT_PAGE_OPS", "NAV_WAIT_UNTIL", "STABILIZE_STRATEGY", "DOMAIN_HINTS_PATH", "WEB_FETCH_MAX_CHARS"] },
+  { label: "Web Fetch Options", detail: "web_fetch tool options: parallel page opening, navigation wait, and response size.", keys: ["OPEN_PAGE_MAX_PARALLEL", "MAX_CONCURRENT_PAGE_OPS", "NAV_WAIT_UNTIL", "WEB_FETCH_MAX_CHARS"] },
+  { label: "Web Fetch Extraction", detail: "How web_fetch renders page content: stabilization, DOM stripping, extraction hints, and no-hint defaults.", keys: ["STABILIZE_STRATEGY", "NON_CONTENT_SELECTORS", "DOMAIN_HINTS_PATH", "DEFAULT_EXTRACT_FORMAT", "DEFAULT_EXTRACT_STABILIZE_STRATEGY", "DEFAULT_EXTRACT_WAIT_FOR_SELECTOR", "DEFAULT_EXTRACT_WAIT_FOR_CONTENT"] },
+  { label: "Web Fetch AI Extractors", detail: "Reader LM models served to web_fetch when an AI extractor is selected.", keys: ["READER_LM_MODELS", "READER_LM_BASE_URL", "READER_LM_MODEL", "READER_LM_TIMEOUT_MS", "READER_LM_MAX_INPUT_CHARS", "READER_LM_MAX_TOKENS"] },
   { label: "MCP Transports And Tool Access", detail: "MCP transports, DevTools exposure, tool filtering, and HTTP authentication.", keys: ["ENABLE_HTTP_MCP", "ENABLE_STDIO_MCP", "ENABLE_DEVTOOLS_MCP", "HUMAN_TYPING_DELAY", "DISABLE_TOOLS", "MCP_ALLOW_UNAUTHENTICATED"] },
   { label: "HTTP Server And Console", detail: "HTTP listener, health/status endpoints, and the Navigator console.", keys: ["ENABLE_HTTP_HEALTH", "ENABLE_WEB_CONSOLE", "MCP_API_PORT", "MCP_API_HOST"] },
   { label: "Screenshot Storage And Downloads", detail: "Persist screenshots to enable file and download URL outputs.", keys: ["ENABLE_SCREENSHOT_PATH", "ENABLE_SCREENSHOT_DOWNLOAD_LINK"] },
@@ -1269,7 +1271,8 @@ function validateEntryValue(entry, value, engineIds) {
   const raw = String(value ?? "");
   const type = entry.type || "string";
   if (raw === "") {
-    if (type === "enum" || type === "boolean") {
+    const enumAllowsEmpty = (entry.values || []).includes("");
+    if ((type === "enum" && !enumAllowsEmpty) || type === "boolean") {
       return { ok: false, message: "Choose a value." };
     }
     return { ok: true };
@@ -1393,7 +1396,7 @@ function MultiSelect({ items, value, changed, ok, message, emptyLabel, ariaLabel
     </>
   );
 }
-function ValueControl({ entry, value, changed, engines, tools, onChange }) {
+function ValueControl({ entry, value, changed, engines, tools, aiModels, onChange }) {
   const type = entry.type || "string";
   const engineIds = new Set((engines || []).map((engine) => engine.id));
   const { ok, message } = validateEntryValue(entry, value, engineIds);
@@ -1404,6 +1407,36 @@ function ValueControl({ entry, value, changed, engines, tools, onChange }) {
     value,
     onChange: (event) => onChange(event.target.value),
   };
+  if (entry.key === "DEFAULT_EXTRACT_FORMAT") {
+    const formatOptions = [
+      { value: "", label: "Readability → markdown (auto-strips nav/ads/sidebar)" },
+      ...DEFAULT_FORMATS.filter((format) => format !== "readability_to_markdown").map((format) => ({
+        value: format,
+        label: formatLabel(format),
+      })),
+      ...(aiModels || []).map((entry) => ({
+        value: entry.id,
+        label: `${entry.label} (AI extractor)`,
+      })),
+    ];
+    return (
+      <>
+        <select
+          className={cls}
+          aria-label={`${entry.key} extractor format`}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {formatOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {!ok && <div className="field-error">{message}</div>}
+      </>
+    );
+  }
   if (type === "engines") {
     return (
       <MultiSelect
@@ -1618,8 +1651,7 @@ function Manage({ config, reload }) {
         <table className="manage-table">
           <thead>
             <tr>
-              <th>Variable</th>
-              <th>Default</th>
+              <th>Variable / Default</th>
               <th>Value to save</th>
               <th>Applies</th>
               <th>Description</th>
@@ -1643,6 +1675,7 @@ function Manage({ config, reload }) {
                 changed={changed.some((item) => item.key === entry.key)}
                 engines={availableEngines}
                 tools={config.tools || []}
+                aiModels={config.aiModels || []}
                 onChange={(value) => setDraft({ ...draft, [entry.key]: value })}
                 reset={() =>
                   save(
@@ -1655,7 +1688,7 @@ function Manage({ config, reload }) {
           }))}
           {!groupedSchema.length && (
             <tr className="section">
-              <td colSpan="6">No variables match “{query}”.</td>
+              <td colSpan="5">No variables match “{query}”.</td>
             </tr>
           )}
         </tbody>
@@ -1674,6 +1707,7 @@ function FragmentRows({
   changed,
   engines,
   tools,
+  aiModels,
   onChange,
   reset,
 }) {
@@ -1681,16 +1715,18 @@ function FragmentRows({
     <>
       {heading && (
         <tr className="section">
-          <td colSpan="6">
-            <span>{label}</span>
+          <td colSpan="5">
+            <span className="manage-section-blue">{label}</span>
             <small>{detail}</small>
             {label === "MCP Transports And Tool Access" && <a href="/console/keys">Manage API keys</a>}
           </td>
         </tr>
       )}
       <tr>
-        <td>{entry.key}</td>
-        <td className="val-default">{fallback}</td>
+        <td className="var-cell">
+          <span className="var-name">{entry.key}</span>
+          <span className="val-default">{fallback}</span>
+        </td>
         <td>
           <ValueControl
             entry={entry}
@@ -1698,6 +1734,7 @@ function FragmentRows({
             changed={changed}
             engines={engines}
             tools={tools}
+            aiModels={aiModels}
             onChange={onChange}
           />
         </td>
@@ -2288,8 +2325,15 @@ function Keys() {
 
 const HINT_PRIORITIES = ["high", "medium", "low"];
 const HINT_FORMATS = ["text", "list", "markdown", "html", "html_to_markdown", "readability_to_markdown"];
-const DEFAULT_PAGE_FORMATS = ["readability_to_markdown", "html_to_markdown", "text"];
-const DEFAULT_TABLES = ["all", "content", "disabled"];
+const DEFAULT_FORMATS = [
+  "readability_to_markdown",
+  "html_to_markdown",
+  "html",
+  "text",
+  "table",
+  "table_json",
+  "table_csv",
+];
 const HINT_BLOCK_FORMATS = [
   "text",
   "list",
@@ -2300,6 +2344,20 @@ const HINT_BLOCK_FORMATS = [
   "table_json",
   "table_csv",
 ];
+const FORMAT_LABELS = {
+  readability_to_markdown: "Readability → markdown (auto-strips nav/ads/sidebar)",
+  html_to_markdown: "HTML → markdown (keeps the whole page)",
+  html: "HTML (raw, in a code block)",
+  text: "Text (flat dump)",
+  list: "List (blocks only)",
+  markdown: "Markdown (rendered text)",
+  table: "Tables only",
+  table_json: "Tables only (JSON)",
+  table_csv: "Tables only (CSV)",
+};
+function formatLabel(format) {
+  return FORMAT_LABELS[format] || format;
+}
 const FLOW_ACTIONS = ["extract", "click", "wait", "type", "navigate"];
 const FLOW_STATES = ["visible", "attached", "hidden"];
 const FLOW_ACTION_LABELS = {
@@ -2321,7 +2379,6 @@ function emptyHint() {
       waitForContent: [],
       skipSelectors: [],
       format: "readability_to_markdown",
-      tables: "all",
     },
     flowOptions: {},
   };
@@ -2515,7 +2572,7 @@ function FieldRowEditor({ fields, onChange }) {
           >
             {HINT_FORMATS.map((format) => (
               <option key={format} value={format}>
-                {format}
+                {formatLabel(format)}
               </option>
             ))}
           </select>
@@ -2528,7 +2585,7 @@ function FieldRowEditor({ fields, onChange }) {
   );
 }
 
-function BlockRowEditor({ block, onChange, onRemove }) {
+function BlockRowEditor({ block, aiModelIds = [], onChange, onRemove }) {
   const isLeaf = block.format !== undefined || block.fields === undefined;
   const set = (key, value) => onChange({ ...block, [key]: value });
   const toLeaf = () => {
@@ -2575,14 +2632,20 @@ function BlockRowEditor({ block, onChange, onRemove }) {
       </div>
       {isLeaf ? (
         <div className="hint-option hint-block-format">
-          <span className="hint-option-name">Format</span>
+          <span className="hint-option-name">Extractor</span>
           <select value={block.format || "text"} onChange={(event) => set("format", event.target.value)}>
-            {HINT_BLOCK_FORMATS.map((format) => (
+            {[...HINT_BLOCK_FORMATS, ...aiModelIds].map((format) => (
               <option key={format} value={format}>
-                {format}
+                {aiModelIds.includes(format) ? `${format} (AI)` : formatLabel(format)}
               </option>
             ))}
           </select>
+          {aiModelIds.includes(block.format) && (
+            <span className="hint-option-hint hint-warn">
+              ⚠ Sends this element's HTML to the reader-lm model — falls back to
+              html_to_markdown if it fails or is not configured.
+            </span>
+          )}
         </div>
       ) : (
         <>
@@ -2604,7 +2667,7 @@ function BlockRowEditor({ block, onChange, onRemove }) {
   );
 }
 
-function BlocksEditor({ blocks, onChange, legacySectionCount }) {
+function BlocksEditor({ blocks, aiModelIds = [], onChange, legacySectionCount }) {
   const setBlock = (index, block) => {
     const next = [...(blocks || [])];
     next[index] = block;
@@ -2647,6 +2710,7 @@ function BlocksEditor({ blocks, onChange, legacySectionCount }) {
         <BlockRowEditor
           key={index}
           block={block}
+          aiModelIds={aiModelIds}
           onChange={(next) => setBlock(index, next)}
           onRemove={() => removeBlock(index)}
         />
@@ -2673,7 +2737,7 @@ function emptyFlowStep(action) {
   }
 }
 
-function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
+function StepEditor({ step, aiModelIds = [], onChange, onRemove, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   const set = (key, value) => onChange({ ...step, [key]: value });
   const patchContent = (content) => set("content", content);
   const setNumber = (key, raw) => {
@@ -2738,6 +2802,7 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
           </div>
           <BlocksEditor
             blocks={step.content?.blocks || []}
+            aiModelIds={aiModelIds}
             onChange={(blocks) => patchContent({ blocks })}
             legacySectionCount={step.content?.sections?.length || 0}
           />
@@ -2849,7 +2914,7 @@ function StepEditor({ step, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp,
   );
 }
 
-function FlowEditor({ flow, onChange }) {
+function FlowEditor({ flow, aiModelIds = [], onChange }) {
   const steps = flow?.length ? flow : [];
   const setStep = (index, step) => {
     const next = [...steps];
@@ -2897,6 +2962,7 @@ function FlowEditor({ flow, onChange }) {
         <StepEditor
           key={index}
           step={step}
+          aiModelIds={aiModelIds}
           onChange={(next) => setStep(index, next)}
           onRemove={() => removeStep(index)}
           onMoveUp={() => move(index, -1)}
@@ -3106,24 +3172,16 @@ function HintGuide() {
               </td>
             </tr>
             <tr>
-              <td>Format (content)</td>
+              <td>Extractor</td>
               <td>
                 <code>readability_to_markdown</code> auto-strips nav/ads/sidebar;
-                <code>html_to_markdown</code> keeps the whole page; <code>text</code> is a
-                flat dump
+                <code>html_to_markdown</code> keeps the whole page; <code>html</code> keeps
+                raw HTML; <code>text</code> is a flat dump; <code>table*</code> formats emit
+                only tables; AI entries (when configured) extract via a reader-lm model and
+                fall back to <code>html_to_markdown</code>
               </td>
               <td>
                 <code>html_to_markdown</code> for profiles, homepages, data tables
-              </td>
-            </tr>
-            <tr>
-              <td>Table extraction</td>
-              <td>
-                <code>all</code> = every table · <code>content</code> = only inside the
-                content node · <code>disabled</code> when tables are layout noise
-              </td>
-              <td>
-                <code>disabled</code> on Cricbuzz
               </td>
             </tr>
             <tr>
@@ -3149,8 +3207,7 @@ function HintGuide() {
     "stabilizeStrategy": "network_idle",
     "waitForContent": ["article.markdown-body"],
     "skipSelectors": [".navbar", ".sidebar"],
-    "format": "readability_to_markdown",  // readability_to_markdown | html_to_markdown | text
-    "tables": "all"                        // all | content | disabled
+    "format": "readability_to_markdown",  // readability_to_markdown | html_to_markdown | html | text | table | table_json | table_csv | <AI model id>
   }
 }`}</pre>
         <p className="hint-guide-note">
@@ -3161,6 +3218,7 @@ function HintGuide() {
     </details>
   );
 }
+
 
 function Hints() {
   const [state, setState] = useState(null);
@@ -3256,6 +3314,7 @@ function Hints() {
         key={editor.index === null ? "new" : editor.index}
         index={editor.index}
         initial={editingHint}
+        aiModels={state.aiModels || []}
         onClose={() => closeEditor(false)}
         onSaved={async ({ index: savedIndex } = {}) => {
           await load();
@@ -3360,7 +3419,15 @@ function Hints() {
   );
 }
 
-function HintEditorPane({ index, initial, onClose, onSaved }) {
+function HintEditorPane({ index, initial, aiModels = [], onClose, onSaved }) {
+  const aiModelIds = (aiModels || []).map((entry) => entry.id).filter(Boolean);
+  const formatOptions = [
+    ...DEFAULT_FORMATS.map((format) => ({ value: format, label: formatLabel(format) })),
+    ...(aiModels || []).map((entry) => ({
+      value: entry.id,
+      label: `${entry.label} (AI extractor)`,
+    })),
+  ];
   const [tab, setTab] = useState("form");
   const [mode, setMode] = useState(() => modeFromHint(initial));
   const [hint, setHint] = useState(initial);
@@ -3552,7 +3619,7 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                     <p className="hint hint-default">
                       The page runs the standard pipeline:{" "}
                       <strong>page load → Readability → tables → links</strong>. Everything
-                      that tunes default extraction — load behavior, content format, tables —
+                      that tunes default extraction — load behavior, content extractor —
                       lives here. Switch to <em>Interactive flow</em> to script your own steps.
                     </p>
                     <LineListEditor
@@ -3612,44 +3679,42 @@ function HintEditorPane({ index, initial, onClose, onSaved }) {
                     />
                     <div className="hint-options-grid">
                       <div className="hint-option">
-                        <span className="hint-option-name">Format (content)</span>
+                        <span className="hint-option-name">Extractor</span>
                         <select
                           value={hint.default?.format || "readability_to_markdown"}
                           onChange={(event) => patchDefault({ format: event.target.value })}
-                          title="How the page content is rendered. readability_to_markdown strips nav/ads/sidebar; html_to_markdown keeps everything; text is a flat text dump."
+                          title="How the page content is rendered. readability_to_markdown strips nav/ads/sidebar; html_to_markdown keeps everything; html keeps raw HTML; text is a flat dump; table formats emit only tables; AI entries (when configured) extract with a reader-lm model."
                         >
-                          {DEFAULT_PAGE_FORMATS.map((format) => (
-                            <option key={format} value={format}>
-                              {format}
+                          {formatOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
                             </option>
                           ))}
                         </select>
                         <span className="hint-option-hint">
                           readability_to_markdown = Readability (strips nav, ads, sidebar) ·
-                          html_to_markdown = raw HTML-to-markdown keeps everything · text =
-                          flat text dump.
+                          html_to_markdown = raw HTML-to-markdown · html = raw HTML in a code
+                          fence · text = flat dump · table / table_json / table_csv = tables
+                          only. AI extractors (if configured) pass the page HTML to a
+                          reader-lm model.
                         </span>
-                      </div>
-                      <div className="hint-option">
-                        <span className="hint-option-name">Table extraction</span>
-                        <select
-                          value={hint.default?.tables || "all"}
-                          onChange={(event) => patchDefault({ tables: event.target.value })}
-                        >
-                          <option value="all">All tables</option>
-                          <option value="content">Content tables only</option>
-                          <option value="disabled">Disabled</option>
-                        </select>
-                        <span className="hint-option-hint">
-                          all = every table on the page · content = only tables inside the
-                          rendered content node · disabled = no table extraction.
-                        </span>
+                        {aiModelIds.includes(hint.default?.format) && (
+                          <span className="hint-option-hint hint-warn">
+                            ⚠ {hint.default.format} sends page HTML to a reader-lm model and
+                            falls back to html_to_markdown if the model fails or is not
+                            configured.
+                          </span>
+                        )}
                       </div>
                     </div>
                   </>
                 ) : (
                   <>
-                    <FlowEditor flow={hint.flow || []} onChange={(flow) => patch({ flow })} />
+                    <FlowEditor
+                      flow={hint.flow || []}
+                      aiModelIds={aiModelIds}
+                      onChange={(flow) => patch({ flow })}
+                    />
                     <FlowOptionsEditor
                       options={hint.flowOptions || {}}
                       onChange={(flowOptions) => patch({ flowOptions })}

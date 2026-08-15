@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
-import { findDomainHint, findMatchingHints, getDomainHints, loadDomainHints, loadRawDomainHints, saveDomainHints, validateHintRule } from "../src/domain-hints.js";
+import { findDomainHint, findMatchingHints, getDomainHints, loadDomainHints, loadRawDomainHints, migrateHintShape, saveDomainHints, validateHintRule } from "../src/domain-hints.js";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hintsPath = path.join(projectRoot, "domain-hints.json");
@@ -52,7 +52,7 @@ describe("domain hints", () => {
   it("loads every configured hint", async () => {
     const loaded = await loadDomainHints(hintsPath);
     expect(loaded).toHaveLength(rawHints.length);
-    expect(loaded).toEqual(rawHints);
+    expect(loaded).toEqual(rawHints.map((hint) => migrateHintShape(hint).hint));
   });
 
   it.each(rawHints.map((hint, index) => [index + 1, hint]))(
@@ -129,7 +129,6 @@ describe("validateHintRule", () => {
       waitForContent: [".article"],
       skipSelectors: [".ads"],
       format: "readability_to_markdown",
-      tables: "content",
       stabilizeStrategy: "network_idle"
     },
     flowOptions: {}
@@ -206,14 +205,19 @@ describe("validateHintRule", () => {
     }
   });
 
-  it("treats empty default.tables and default.stabilizeStrategy as unset but rejects bogus values", () => {
-    for (const hint of [{ default: { tables: "" } }, { default: { stabilizeStrategy: "" } }, { default: { tables: "", stabilizeStrategy: "" } }]) {
-      const { errors } = validateHintRule(hint, { scope: "test" });
+  it("treats empty default.tables as unset and warns (not errors) for real values", () => {
+    for (const hint of [{ default: { tables: "" } }, { default: { tables: "all" } }]) {
+      const { errors, warnings } = validateHintRule(hint, { scope: "test" });
       expect(errors.map((e) => e.field)).not.toContain("default.tables");
-      expect(errors.map((e) => e.field)).not.toContain("default.stabilizeStrategy");
+      expect(warnings.map((w) => w.field)).not.toContain("default.tables");
     }
+    const warned = validateHintRule({ default: { tables: "content" } }, { scope: "test" });
+    expect(warned.errors.map((e) => e.field)).not.toContain("default.tables");
+    expect(warned.warnings.map((w) => w.field)).toContain("default.tables");
     const bogus = validateHintRule({ default: { tables: "bogus", stabilizeStrategy: "x" } }, { scope: "test" });
-    expect(bogus.errors.map((e) => e.field)).toEqual(expect.arrayContaining(["default.tables", "default.stabilizeStrategy"]));
+    expect(bogus.errors.map((e) => e.field)).not.toContain("default.tables");
+    expect(bogus.errors.map((e) => e.field)).toEqual(expect.arrayContaining(["default.stabilizeStrategy"]));
+    expect(bogus.warnings.map((w) => w.field)).toContain("default.tables");
   });
 
   it("accepts a bare skeleton hint (console emptyHint shape) with no errors beyond domain", () => {
@@ -704,5 +708,62 @@ describe("saveDomainHints and loadRawDomainHints", () => {
     expect(raw).toHaveLength(2);
     const filtered = await loadDomainHints(hintsPath);
     expect(filtered).toHaveLength(1);
+  });
+});
+
+describe("extractor formats and AI models", () => {
+  it("accepts every DEFAULT_FORMATS extractor in default.format", () => {
+    for (const format of ["readability_to_markdown", "html_to_markdown", "html", "text", "table", "table_json", "table_csv"]) {
+      const { errors, warnings } = validateHintRule({ default: { format } }, { scope: "test" });
+      expect(errors.map((e) => e.field)).not.toContain("default.format");
+      expect(warnings.map((w) => w.field)).not.toContain("default.format");
+    }
+  });
+
+  it("rejects 'list' in default.format (block-only)", () => {
+    const { errors } = validateHintRule({ default: { format: "list" } }, { scope: "test" });
+    expect(errors.map((e) => e.field)).toContain("default.format");
+  });
+
+  it("accepts AI-model ids in default.format and block.format when configured", () => {
+    const aiModelIds = ["reader_lm", "reader-lm-qwen"];
+    const defaults = validateHintRule({ default: { format: "reader_lm" } }, { scope: "test", aiModelIds });
+    expect(defaults.errors).toEqual([]);
+    const block = validateHintRule(
+      { flow: [{ action: "extract", content: { blocks: [{ selector: "main", priority: "high", format: "reader-lm-qwen" }] } }] },
+      { scope: "test", aiModelIds }
+    );
+    expect(block.errors).toEqual([]);
+  });
+
+  it("rejects an unknown AI-model id in default.format and block.format", () => {
+    const aiModelIds = ["reader_lm"];
+    const defaults = validateHintRule({ default: { format: "unknown_model" } }, { scope: "test", aiModelIds });
+    expect(defaults.errors.map((e) => e.field)).toContain("default.format");
+    const block = validateHintRule(
+      { flow: [{ action: "extract", content: { blocks: [{ selector: "main", priority: "high", format: "unknown_model" }] } }] },
+      { scope: "test", aiModelIds }
+    );
+    expect(block.errors.map((e) => e.field)).toContain("flow[0].content.blocks[0].format");
+  });
+
+  it("warns (not errors) when default.tables carries a real value and skips the warning for '' / 'all'", () => {
+    for (const value of ["", "all"]) {
+      const { errors, warnings } = validateHintRule({ default: { tables: value } }, { scope: "test" });
+      expect(errors).toEqual([]);
+      expect(warnings).toEqual([]);
+    }
+    const warned = validateHintRule({ default: { tables: "disabled" } }, { scope: "test" });
+    expect(warned.errors).toEqual([]);
+    expect(warned.warnings.map((w) => w.field)).toContain("default.tables");
+  });
+
+  it("migrateHintShape strips default.tables (silently for 'all', warning otherwise)", () => {
+    const silent = migrateHintShape({ domain: "a.com", default: { format: "readability_to_markdown", tables: "all" } });
+    expect(silent.hint.default.tables).toBeUndefined();
+    expect(silent.warnings).toEqual([]);
+    const loud = migrateHintShape({ domain: "a.com", default: { format: "readability_to_markdown", tables: "content" } });
+    expect(loud.hint.default.tables).toBeUndefined();
+    expect(loud.warnings.join(" ")).toMatch(/default\.tables/);
   });
 });

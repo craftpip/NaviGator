@@ -5,10 +5,16 @@ import { JSDOM } from "jsdom";
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll, beforeEach } from "vitest";
 
 const mockGetBrowserManager = vi.fn();
+const { mockExtractHtmlWithAiModel } = vi.hoisted(() => ({ mockExtractHtmlWithAiModel: vi.fn() }));
 
 vi.mock("../src/browser.js", () => ({
   getBrowserManager: (...args) => mockGetBrowserManager(...args),
 }));
+
+vi.mock("../src/reader-lm.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, extractHtmlWithAiModel: mockExtractHtmlWithAiModel };
+});
 
 vi.mock("cloakbrowser", () => ({}));
 vi.mock("cloakbrowser/puppeteer", () => ({ launch: vi.fn() }));
@@ -431,6 +437,77 @@ describe("browserOpenAndExtract", () => {
     expect(kept.text).toContain("Main content.");
   });
 
+  it("applies DEFAULT_EXTRACT (no-hint defaults) when no hint matches", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-defaults-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, "[]");
+
+    const html = `<!doctype html><html><head><title>Default extract page</title></head><body>
+      <div class="advert">Sponsor noise to strip</div>
+      <main><h1>Heading</h1><p>Real body paragraph.</p></main>
+      <table><caption>Metrics</caption><tr><th>Name</th><th>Value</th></tr><tr><td>Visitors</td><td>12345</td></tr><tr><td>Subscribers</td><td>67890</td></tr></table>
+    </body></html>`;
+
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+      hintsPath,
+      html,
+      configOverrides: {
+        defaultExtractFormat: "table",
+        nonContentSelectors: [".advert"]
+      }
+    }));
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({
+        url: "https://unmatched.example.com/page",
+        includeSeoAnalysis: false
+      });
+
+      expect(result.text).toContain("Visitors | 12345");
+      expect(result.text).not.toContain("Sponsor noise to strip");
+      expect(result.text).not.toContain("Real body paragraph.");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("a matching domain hint wins over DEFAULT_EXTRACT", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-defaults-win-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([{
+      domain: "example.com",
+      pathPattern: "/**",
+      default: { format: "text" }
+    }]));
+
+    const html = `<!doctype html><html><head><title>Hinted default page</title></head><body>
+      <main><p>Hinted text output.</p></main>
+      <table><caption>Metrics</caption><tr><th>Name</th><th>Value</th></tr><tr><td>Visitors</td><td>12345</td></tr></table>
+    </body></html>`;
+
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+      hintsPath,
+      html,
+      configOverrides: {
+        defaultExtractFormat: "table"
+      }
+    }));
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({
+        url: "https://example.com/page",
+        includeSeoAnalysis: false
+      });
+
+      expect(result.text).toContain("Hinted text output.");
+      expect(result.text).not.toContain("Visitors | 12345");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("renders structured hint fields without post UI noise", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-hints-"));
     const hintsPath = path.join(tempDir, "domain-hints.json");
@@ -630,6 +707,214 @@ describe("browserOpenAndExtract", () => {
       expect(result.text).not.toContain("### Profile");
     } finally {
       cleanup();
+    }
+  });
+
+  it("table extractor returns tables-only output (no prose)", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-table-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([{
+      domain: "example.com",
+      pathPattern: "/**",
+      default: { format: "table" }
+    }]));
+
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+      hintsPath,
+      html: `<!doctype html><html><head><title>Table page</title></head><body>
+        <p>Prose that must not appear</p>
+        <table><caption>Metrics</caption><tr><th>Name</th><th>Value</th></tr><tr><td>Visitors</td><td>12345</td></tr><tr><td>Subscribers</td><td>67890</td></tr></table>
+      </body></html>`
+    }));
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.text).toContain("Visitors | 12345");
+      expect(result.text).toContain("Subscribers | 67890");
+      expect(result.text).not.toContain("Prose that must not appear");
+      expect(result.tables).toBeDefined();
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("table_json and table_csv extractors return fenced tables-only output", async () => {
+    for (const [format, fence] of [["table_json", "```json"], ["table_csv", "```csv"]]) {
+      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-table-"));
+      const hintsPath = path.join(tempDir, "domain-hints.json");
+      await fs.writeFile(hintsPath, JSON.stringify([{
+        domain: "example.com",
+        pathPattern: "/**",
+        default: { format }
+      }]));
+
+      mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+        hintsPath,
+        html: `<!doctype html><html><head><title>T</title></head><body>
+          <p>Prose</p>
+          <table><tr><th>Name</th><th>Value</th></tr><tr><td>Visitors</td><td>12345</td></tr><tr><td>Subscribers</td><td>67890</td></tr></table>
+        </body></html>`
+      }));
+
+      try {
+        const { browserOpenAndExtract } = await import("../src/search.js");
+        const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+        expect(result.text).toContain(fence);
+        expect(result.text).toContain("12345");
+        expect(result.text).not.toContain("Prose");
+      } finally {
+        await fs.rm(tempDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("html extractor wraps the best content container in a fenced code block", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-html-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([{
+      domain: "example.com",
+      pathPattern: "/**",
+      default: { format: "html" }
+    }]));
+
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+      hintsPath,
+      html: `<!doctype html><html><head><title>HTML page</title></head><body>
+        <main><p>Hello there</p><table><tr><th>K</th><th>V</th></tr><tr><td>A</td><td>1</td></tr></table></main>
+      </body></html>`
+    }));
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.text).toContain("```html");
+      expect(result.text).toContain("<p>Hello there</p>");
+      expect(result.tables).toBeUndefined();
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("html_to_markdown keeps table markdown inline (no strip) and returns no tables", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-h2m-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([{
+      domain: "example.com",
+      pathPattern: "/**",
+      default: { format: "html_to_markdown" }
+    }]));
+
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+      hintsPath,
+      html: `<!doctype html><html><head><title>Markdown page</title></head><body>
+        <main><h1>Heading</h1><p>Intro paragraph.</p>
+          <table><tr><th>Name</th><th>Value</th></tr><tr><td>Visitors</td><td>12345</td></tr></table>
+        </main>
+      </body></html>`
+    }));
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.text).toContain("Visitors");
+      expect(result.text).toContain("12345");
+      expect(result.tables).toBeUndefined();
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("AI extractor returns the model's markdown for a default hint", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-ai-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([{
+      domain: "example.com",
+      pathPattern: "/**",
+      default: { format: "reader_lm" }
+    }]));
+
+    mockExtractHtmlWithAiModel.mockResolvedValue("# Model output\n\nSummary paragraph.");
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+      hintsPath,
+      configOverrides: { readerLmModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
+      html: `<!doctype html><html><head><title>AI page</title></head><body><main><p>Source content.</p></main></body></html>`
+    }));
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.text).toContain("# Model output");
+      expect(mockExtractHtmlWithAiModel).toHaveBeenCalledWith(expect.objectContaining({ model: "reader_lm" }));
+    } finally {
+      mockExtractHtmlWithAiModel.mockReset();
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("AI extractor failure falls back to html_to_markdown", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-ai-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([{
+      domain: "example.com",
+      pathPattern: "/**",
+      default: { format: "reader_lm" }
+    }]));
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockExtractHtmlWithAiModel.mockRejectedValue(new Error("HTTP 500"));
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+      hintsPath,
+      configOverrides: { readerLmModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
+      html: `<!doctype html><html><head><title>AI fallback</title></head><body><main><h1>Fallback heading</h1><p>Fallback content here.</p></main></body></html>`
+    }));
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.text).toContain("Fallback content here.");
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("falling back to html_to_markdown"));
+    } finally {
+      mockExtractHtmlWithAiModel.mockReset();
+      warnSpy.mockRestore();
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("AI extractor works as a block format inside a flow", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-ai-"));
+    const hintsPath = path.join(tempDir, "domain-hints.json");
+    await fs.writeFile(hintsPath, JSON.stringify([{
+      domain: "example.com",
+      pathPattern: "/**",
+      flow: [{
+        action: "extract",
+        label: "AI section",
+        content: { blocks: [{ selector: "article", label: "Article", priority: "high", format: "reader_lm" }] }
+      }]
+    }]));
+
+    mockExtractHtmlWithAiModel.mockResolvedValue("Block AI output");
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
+      hintsPath,
+      configOverrides: { readerLmModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
+      html: `<!doctype html><html><head><title>AI block</title></head><body><article><p>Article body.</p></article></body></html>`
+    }));
+
+    try {
+      const { browserOpenAndExtract } = await import("../src/search.js");
+      const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
+
+      expect(result.text).toContain("Block AI output");
+      expect(mockExtractHtmlWithAiModel).toHaveBeenCalledWith(expect.objectContaining({ model: "reader_lm" }));
+    } finally {
+      mockExtractHtmlWithAiModel.mockReset();
+      await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 });

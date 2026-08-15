@@ -175,19 +175,18 @@
   },
   {
     "domain": "10.69.1.164",
-    "pathPattern": "/readability-bad/**",
+    "pathPattern": "/**",
     "pageType": "chaos-article",
     "comment": "ChaosHub fake article — sections + comments list. Content randomized per visit; ignore fake bot-check/popup.",
     "testUrls": [
-      "http://10.69.1.164:32768/readability-bad/article/"
+      "http://10.69.1.164:32768/table/"
     ],
     "default": {
       "waitForSelector": [],
       "stabilizeStrategy": "",
       "waitForContent": [],
       "skipSelectors": [],
-      "format": "readability_to_markdown",
-      "tables": "all"
+      "format": "html_to_markdown"
     }
   },
   {

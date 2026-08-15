@@ -81,6 +81,24 @@ services:
       # the .env file (DISABLE_TOOLS) — empty means all tools enabled.
       # Example: web_page_ascii,web_page_links
       DISABLE_TOOLS: ${DISABLE_TOOLS:-}
+
+      # AI Model extractor — an OpenAI-compatible endpoint serving a reader-lm
+      # model (e.g. jinaai/reader-lm-0.5b). Each READER_LM_MODELS entry becomes
+      # an "(AI extractor)" option in the console's Extractor dropdowns.
+      READER_LM_MODELS: ${READER_LM_MODELS:-}
+      READER_LM_BASE_URL: ${READER_LM_BASE_URL:-}
+      READER_LM_MODEL: ${READER_LM_MODEL:-}
+      READER_LM_TIMEOUT_MS: ${READER_LM_TIMEOUT_MS:-60000}
+      READER_LM_MAX_INPUT_CHARS: ${READER_LM_MAX_INPUT_CHARS:-60000}
+      READER_LM_MAX_TOKENS: ${READER_LM_MAX_TOKENS:-8192}
+
+      # Default extraction settings for pages with no matching domain hint.
+      # Each is editable in the console: Manage → Web Fetch Extraction.
+      # Empty stabilize strategy inherits the global STABILIZE_STRATEGY.
+      DEFAULT_EXTRACT_FORMAT: ${DEFAULT_EXTRACT_FORMAT:-}
+      DEFAULT_EXTRACT_STABILIZE_STRATEGY: ${DEFAULT_EXTRACT_STABILIZE_STRATEGY:-}
+      DEFAULT_EXTRACT_WAIT_FOR_SELECTOR: ${DEFAULT_EXTRACT_WAIT_FOR_SELECTOR:-}
+      DEFAULT_EXTRACT_WAIT_FOR_CONTENT: ${DEFAULT_EXTRACT_WAIT_FOR_CONTENT:-}
     volumes:
       - .:/app
       - /tmp/screenshots:/app/screenshots

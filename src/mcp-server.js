@@ -28,7 +28,8 @@ import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
 import { SUPPORTED_ENGINES, getEngineMetadata } from "./engines/index.js";
 import { getAuthorizedMcpKey, getMcpApiKey, isAuthorizedMcpRequest } from "./mcp-api-auth.js";
-import { loadRawDomainHints, saveDomainHints, validateHintRule } from "./domain-hints.js";
+import { findDomainHint, getDomainHints, isAiModelFormat, loadRawDomainHints, saveDomainHints, validateHintRule } from "./domain-hints.js";
+import { getAiModels } from "./reader-lm.js";
 
 const require = createRequire(import.meta.url);
 const PACKAGE_JSON = require("../package.json");
@@ -405,9 +406,19 @@ async function getConsoleConfigPayload(manager) {
     config: manager.config,
     env: getConfigEnvSubset(),
     configValues: Object.fromEntries(
-      CONFIG_SCHEMA.map((entry) => [entry.key, manager.config[envKeyToConfigKey(entry.key)]])
+      CONFIG_SCHEMA.map((entry) => [
+        entry.key,
+        entry.key === "READER_LM_MODELS"
+          ? (process.env.READER_LM_MODELS ?? JSON.stringify(manager.config.readerLmModels ?? []))
+          : entry.key === "DOMAIN_HINTS_PATH"
+            ? (process.env.DOMAIN_HINTS_PATH ?? entry.fallback)
+            : entry.key === "DEFAULT_EXTRACT_STABILIZE_STRATEGY"
+              ? (manager.config.defaultExtractStabilizeStrategy || entry.fallback)
+              : manager.config[envKeyToConfigKey(entry.key)]
+      ])
     ),
     envFile: { path: envPath, changedOnDisk: envFileState.changed, backup: backupPath },
+    aiModels: getAiModels(manager.config),
     engines: enabledEngines.map((id) => CONSOLE_ENGINE_BY_ID.get(id)).filter(Boolean),
     availableEngines: CONSOLE_ENGINE_REGISTRY,
     tools: [...new Set([...WEB_TOOL_NAMES, ...devtoolsToolDefinitions.map((tool) => tool.name)])].sort(),
@@ -740,7 +751,7 @@ function findHintDuplicate(hints, hint, excludeIndex) {
   return null;
 }
 
-async function createHint(hintsPath, rawHint) {
+async function createHint(hintsPath, rawHint, aiModelIds) {
   if (!rawHint || typeof rawHint !== "object" || Array.isArray(rawHint)) {
     return { ok: false, error: "hint must be an object" };
   }
@@ -748,7 +759,7 @@ async function createHint(hintsPath, rawHint) {
   if (hint.pathPattern === undefined || hint.pathPattern === null || hint.pathPattern === "") {
     hint.pathPattern = "/**";
   }
-  const validation = validateHintRule(hint, { scope: "static" });
+  const validation = validateHintRule(hint, { scope: "static", aiModelIds });
   if (validation.errors.length) {
     return { ok: false, error: "invalid hint", validation };
   }
@@ -765,7 +776,7 @@ async function createHint(hintsPath, rawHint) {
   });
 }
 
-async function updateHint(hintsPath, index, rawHint) {
+async function updateHint(hintsPath, index, rawHint, aiModelIds) {
   if (!Number.isInteger(index) || index < 0) {
     return { ok: false, error: "invalid index" };
   }
@@ -776,7 +787,7 @@ async function updateHint(hintsPath, index, rawHint) {
   if (hint.pathPattern === undefined || hint.pathPattern === null || hint.pathPattern === "") {
     hint.pathPattern = "/**";
   }
-  const validation = validateHintRule(hint, { scope: "static" });
+  const validation = validateHintRule(hint, { scope: "static", aiModelIds });
   if (validation.errors.length) {
     return { ok: false, error: "invalid hint", validation };
   }
@@ -1900,15 +1911,6 @@ async function handleToolCallInner(name, args = {}) {
     const manager = await getBrowserManager();
     const bypassCache = args.bypassCache === true;
     const cacheKeyArgs = excludeMaxChars(getCacheArgs(args));
-    const cached = bypassCache ? null : await getCachedToolResult(name, cacheKeyArgs);
-    if (cached) {
-      const maxChars = parseMaxChars(args.maxChars, manager.config.maxChars || DEFAULT_MAX_CHARS);
-      const truncated = truncateResultsText(cached, maxChars);
-      timer.step("cache_hit", mark);
-      timer.end({ cacheHit: true, status: "ok" });
-      return formatOpenPageResponse(truncated);
-    }
-    mark = timer.step("cache_miss", mark);
     let targetUrls;
     try {
       targetUrls = resolveOpenTarget(args);
@@ -1922,6 +1924,35 @@ async function handleToolCallInner(name, args = {}) {
       throw error;
     }
     mark = timer.step("resolve_targets", mark);
+
+    // AI-model extractors are expensive + non-deterministic (model output, context-window
+    // limits) and the cache key can't see the hint's extractor — skip the cache read AND
+    // write when any target matches a hint whose effective extractor is an AI model.
+    const aiModelIds = getAiModels(manager.config).map((entry) => entry.id);
+    let usesAiExtractor = false;
+    if (aiModelIds.length) {
+      const hints = await getDomainHints(manager.config);
+      usesAiExtractor = targetUrls.some((url) => {
+        const hint = findDomainHint(url, hints);
+        if (!hint) return false;
+        if (isAiModelFormat(hint.default?.format, aiModelIds)) return true;
+        if ((hint.content?.blocks || []).some((block) => isAiModelFormat(block.format, aiModelIds))) return true;
+        return (hint.flow || []).some((step) =>
+          step.action === "extract" && (step.content?.blocks || []).some((block) => isAiModelFormat(block.format, aiModelIds))
+        );
+      });
+    }
+    mark = timer.step("ai_extractor_check", mark);
+
+    const cached = (bypassCache || usesAiExtractor) ? null : await getCachedToolResult(name, cacheKeyArgs);
+    if (cached) {
+      const maxChars = parseMaxChars(args.maxChars, manager.config.maxChars || DEFAULT_MAX_CHARS);
+      const truncated = truncateResultsText(cached, maxChars);
+      timer.step("cache_hit", mark);
+      timer.end({ cacheHit: true, status: "ok" });
+      return formatOpenPageResponse(truncated);
+    }
+    mark = timer.step("cache_miss", mark);
     const maxChars = parseMaxChars(args.maxChars, manager.config.maxChars || DEFAULT_MAX_CHARS);
     const includeSeoAnalysis = args.includeSeoAnalysis !== false;
     mark = timer.step("prepare_execution", mark);
@@ -1929,8 +1960,10 @@ async function handleToolCallInner(name, args = {}) {
       openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, includeSeoAnalysis, manager.config.debug)
     );
     mark = timer.step("open_targets", mark);
-    await setCachedToolResult(name, cacheKeyArgs, fullResult);
-    timer.step("cache_store", mark);
+    if (!usesAiExtractor) {
+      await setCachedToolResult(name, cacheKeyArgs, fullResult);
+      timer.step("cache_store", mark);
+    }
     const truncated = truncateResultsText(fullResult, maxChars);
     const response = formatOpenPageResponse(truncated);
     mark = timer.step("format_response", mark);
@@ -2729,6 +2762,7 @@ async function maybeStartHttpServer(managerOverride) {
           requests: getRequestStats(),
           engineAttempts: getEngineAttemptStats(),
           engineProfiles: getEngineProfiles(),
+          aiModels: getAiModels(manager.config),
           activity: getRecentActivity({ sinceId: 0, limit: 20, includePageOps: true })
         };
         logEvent("http.request", { method, path: url.pathname });
@@ -2878,23 +2912,25 @@ async function maybeStartHttpServer(managerOverride) {
           return;
         }
         const hintsPath = manager.config.domainHintsPath;
+        const aiModels = getAiModels(manager.config);
+        const aiModelIds = aiModels.map((entry) => entry.id);
         try {
           if (method === "GET" && url.pathname === "/console/api/hints") {
             const hints = await loadRawDomainHints(hintsPath);
             logEvent("http.request", { method, path: url.pathname });
-            sendJson(res, 200, { ok: true, hintsPath, count: hints.length, hints });
+            sendJson(res, 200, { ok: true, hintsPath, count: hints.length, hints, aiModels });
             return;
           }
           if (method === "POST" && url.pathname === "/console/api/hints/validate") {
             const body = await readJsonBody(req);
             const scope = body?.scope === "test" ? "test" : "static";
-            const validation = validateHintRule(body?.hint, { scope });
+            const validation = validateHintRule(body?.hint, { scope, aiModelIds });
             sendJson(res, 200, { ok: true, valid: validation.errors.length === 0, ...validation });
             return;
           }
           if (method === "POST" && url.pathname === "/console/api/hints") {
             const body = await readJsonBody(req);
-            const result = await createHint(hintsPath, body?.hint);
+            const result = await createHint(hintsPath, body?.hint, aiModelIds);
             if (!result.ok) {
               sendJson(res, 400, result);
               return;
@@ -2907,7 +2943,7 @@ async function maybeStartHttpServer(managerOverride) {
           if (method === "PUT" && updateMatch) {
             const index = Number(updateMatch[1]);
             const body = await readJsonBody(req);
-            const result = await updateHint(hintsPath, index, body?.hint);
+            const result = await updateHint(hintsPath, index, body?.hint, aiModelIds);
             if (!result.ok) {
               sendJson(res, 400, result);
               return;
@@ -3045,7 +3081,7 @@ async function maybeStartHttpServer(managerOverride) {
             sendJson(res, 400, { ok: false, error: "hint param must be URL-encoded JSON" });
             return;
           }
-          const validation = validateHintRule(candidate, { scope: "test" });
+          const validation = validateHintRule(candidate, { scope: "test", aiModelIds: getAiModels(manager.config).map((entry) => entry.id) });
           if (validation.errors.length) {
             recordActivityRequest("http:/extract", false, "invalid hint param");
             sendJson(res, 400, { ok: false, error: "invalid hint", validation });

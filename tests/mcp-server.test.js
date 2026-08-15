@@ -318,7 +318,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(schemaKeys).toContain("ENABLE_VNC");
       expect(schemaKeys).toContain("NOVNC_PORT");
       expect(schemaKeys).toContain("SEARCH_QUEUE_MIN_INTERVAL_MS");
-      expect(schemaKeys).toContain("SEARCH_QUEUE_LATENCY_SAMPLES");
+      expect(schemaKeys).toContain("SEARCH_QUEUE_W_RECOVERY");
       expect(typeof body.env).toBe("object");
       expect(typeof body.envPath).toBe("string");
     });
@@ -405,12 +405,32 @@ describe("mcp-server HTTP endpoints", () => {
       const res = await fetch(`${MCP_BASE}/console/config`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ updates: { SEARCH_QUEUE_READY_INTERVAL_MS: 15000 } }),
+        body: JSON.stringify({ updates: { SEARCH_QUEUE_ESCALATION_FACTOR: 3 } }),
       });
       const body = await res.json();
       expect(body.ok).toBe(true);
-      expect(body.hotApplied).toContain("SEARCH_QUEUE_READY_INTERVAL_MS");
-      expect(fs.readFileSync(envFile, "utf8")).toContain("SEARCH_QUEUE_READY_INTERVAL_MS=15000");
+      expect(body.hotApplied).toContain("SEARCH_QUEUE_ESCALATION_FACTOR");
+      expect(fs.readFileSync(envFile, "utf8")).toContain("SEARCH_QUEUE_ESCALATION_FACTOR=3");
+    });
+
+    it("hot-applies flattened DEFAULT_EXTRACT_* vars and exposes configValues", async () => {
+      const res = await fetch(`${MCP_BASE}/console/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ updates: { DEFAULT_EXTRACT_FORMAT: "html_to_markdown", DEFAULT_EXTRACT_STABILIZE_STRATEGY: "content_idle" } }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.hotApplied).toContain("DEFAULT_EXTRACT_FORMAT");
+      expect(body.hotApplied).toContain("DEFAULT_EXTRACT_STABILIZE_STRATEGY");
+      expect(fs.readFileSync(envFile, "utf8")).toContain("DEFAULT_EXTRACT_FORMAT=html_to_markdown");
+      expect(fs.readFileSync(envFile, "utf8")).toContain("DEFAULT_EXTRACT_STABILIZE_STRATEGY=content_idle");
+
+      const get = await fetch(`${MCP_BASE}/console/config`);
+      const payload = await get.json();
+      expect(payload.configValues.DEFAULT_EXTRACT_FORMAT).toBe("html_to_markdown");
+      expect(payload.configValues.DEFAULT_EXTRACT_STABILIZE_STRATEGY).toBe("content_idle");
     });
 
     it("returns restartRequired for recreate-apply keys", async () => {
@@ -1651,6 +1671,42 @@ describe("mcp-server HTTP endpoints", () => {
       });
       expect(cachedFetch.body.result.content[0].text).toContain("Fresh Page");
       expect(searchMod.browserOpenAndExtract).not.toHaveBeenCalled();
+    });
+
+    it("skips the web_fetch result cache when the matched hint uses an AI extractor", async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-ai-cache-"));
+      const hintsPath = path.join(tempDir, "domain-hints.json");
+      fs.writeFileSync(hintsPath, JSON.stringify([{
+        domain: "ai.example.com",
+        pathPattern: "/**",
+        default: { format: "reader_lm" }
+      }]));
+
+      const browserMod = await import("../src/browser.js");
+      browserMod.getBrowserManager.mockResolvedValue(makeMockManager({
+        domainHintsPath: hintsPath,
+        readerLmModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }]
+      }));
+
+      const searchMod = await import("../src/search.js");
+      searchMod.browserOpenAndExtract.mockReset();
+      searchMod.browserOpenAndExtract.mockResolvedValue({ text: "ai extracted", title: "AI Page", url: "https://ai.example.com/page" });
+
+      try {
+        const url = `https://ai.example.com/page-${Date.now()}`;
+        for (let i = 0; i < 2; i += 1) {
+          const res = await mcpPost({
+            jsonrpc: "2.0", id: 70 + i, method: "tools/call",
+            params: { name: "web_fetch", arguments: { url } }
+          });
+          expect(res.status).toBe(200);
+          expect(res.body.result.content[0].text).toContain("ai extracted");
+        }
+        expect(searchMod.browserOpenAndExtract).toHaveBeenCalledTimes(2);
+      } finally {
+        browserMod.getBrowserManager.mockResolvedValue(makeMockManager());
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 

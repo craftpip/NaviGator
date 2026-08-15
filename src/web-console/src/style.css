@@ -96,10 +96,12 @@ header,
 
 /* Header — logo/stats on the left, mode + option buttons in one right-aligned group */
 header {
+  border: none;
+  background: none;
+  padding: 14px 0 0px;
   display: flex;
   align-items: center;
   gap: 8px 12px;
-  padding: 10px 12px;
   margin-bottom: 10px;
   flex-wrap: wrap;
 }
@@ -1272,7 +1274,7 @@ p,
   text-transform: uppercase;
 }
 .manage-table th:nth-child(2) {
-  width: 180px;
+  width: 320px;
 }
 .manage-table td {
   padding: 6px 8px;
@@ -1299,6 +1301,9 @@ p,
   font: 400 10px var(--sans);
   letter-spacing: 0;
   text-transform: none;
+}
+.manage-table tr.section td span.manage-section-blue {
+  color: var(--blue);
 }
 .manage-table tr.section td a {
   margin-left: 10px;
@@ -1389,8 +1394,23 @@ select.config-input option {
   font: 10px var(--sans);
   margin-top: 3px;
 }
+.var-cell {
+  min-width: 200px;
+}
+.var-cell .var-name {
+  font-family: var(--mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+.var-cell .val-default {
+  display: block;
+  margin-top: 2px;
+  width: auto;
+  font-size: 10px;
+  word-break: break-all;
+  opacity: 0.85;
+}
 .val-default {
-  width: 180px;
   color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;

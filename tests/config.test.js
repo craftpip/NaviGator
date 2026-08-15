@@ -127,6 +127,65 @@ describe("findCloakbrowserPath", () => {
   });
 });
 
+describe("parseDefaultExtract", () => {
+  it("defaults the format when missing or empty", async () => {
+    const { parseDefaultExtractFormat } = await import("../src/config.js");
+    expect(parseDefaultExtractFormat(undefined)).toBe("readability_to_markdown");
+    expect(parseDefaultExtractFormat("")).toBe("readability_to_markdown");
+    expect(parseDefaultExtractFormat("   ")).toBe("readability_to_markdown");
+  });
+
+  it("keeps a real format value", async () => {
+    const { parseDefaultExtractFormat } = await import("../src/config.js");
+    expect(parseDefaultExtractFormat("html_to_markdown")).toBe("html_to_markdown");
+    expect(parseDefaultExtractFormat("table_csv")).toBe("table_csv");
+    expect(parseDefaultExtractFormat("reader_lm")).toBe("reader_lm");
+  });
+
+  it("parses the stabilize strategy with an empty-string inherit default", async () => {
+    const { parseStabilizeStrategy } = await import("../src/config.js");
+    expect(parseStabilizeStrategy("", "")).toBe("");
+    expect(parseStabilizeStrategy("content_idle", "")).toBe("content_idle");
+    expect(parseStabilizeStrategy("banana", "")).toBe("");
+  });
+
+  it("parses selector lists and drops blanks", async () => {
+    const { parseSelectorList } = await import("../src/config.js");
+    expect(parseSelectorList("#app", [])).toEqual(["#app"]);
+    expect(parseSelectorList(["article", "", null, "  "], [])).toEqual(["article"]);
+  });
+});
+
+describe("loadConfig (parse engine behavior)", () => {
+  it("defaults the flattened DEFAULT_EXTRACT_* vars", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("DEFAULT_EXTRACT_FORMAT", undefined);
+    vi.stubEnv("DEFAULT_EXTRACT_STABILIZE_STRATEGY", undefined);
+    vi.stubEnv("DEFAULT_EXTRACT_WAIT_FOR_SELECTOR", undefined);
+    vi.stubEnv("DEFAULT_EXTRACT_WAIT_FOR_CONTENT", undefined);
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.defaultExtractFormat).toBe("readability_to_markdown");
+    expect(config.defaultExtractStabilizeStrategy).toBe("");
+    expect(config.defaultExtractWaitForSelector).toEqual([]);
+    expect(config.defaultExtractWaitForContent).toEqual([]);
+  });
+
+  it("parses explicit flattened DEFAULT_EXTRACT_* values", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("DEFAULT_EXTRACT_FORMAT", "html_to_markdown");
+    vi.stubEnv("DEFAULT_EXTRACT_STABILIZE_STRATEGY", "content_idle");
+    vi.stubEnv("DEFAULT_EXTRACT_WAIT_FOR_SELECTOR", "#app");
+    vi.stubEnv("DEFAULT_EXTRACT_WAIT_FOR_CONTENT", "article,main");
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.defaultExtractFormat).toBe("html_to_markdown");
+    expect(config.defaultExtractStabilizeStrategy).toBe("content_idle");
+    expect(config.defaultExtractWaitForSelector).toEqual(["#app"]);
+    expect(config.defaultExtractWaitForContent).toEqual(["article", "main"]);
+  });
+});
+
 describe("loadConfig (parse engine behavior)", () => {
   it("defaults SEARCH_ROUTE_WARMUP_ENGINES to the primary routes", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
@@ -333,12 +392,12 @@ describe("loadConfig (parse engine behavior)", () => {
       "bing_cb", "bing_lp", "google_ch", "duckduckgo_ch", "mojeek_lp", "yahoo_cb",
       "startpage_cb"
     ]);
-    expect(config.searchQueueMinIntervalMs).toBe(300000);
-    expect(config.searchQueueMaxIntervalMs).toBe(3600000);
+    expect(config.searchQueueMinIntervalMs).toBe(30000);
+    expect(config.searchQueueMaxIntervalMs).toBe(1800000);
     expect(config.searchQueueEscalationFactor).toBe(2);
-    expect(config.searchQueueReadyIntervalMs).toBe(10000);
-    expect(config.searchQueueExplorationEvery).toBe(5);
-    expect(config.searchQueueLatencySamples).toBe(20);
+    expect(config.searchQueueErrorGapPercentile).toBe(0.75);
+    expect(config.searchQueueErrorGapSafety).toBe(1.25);
+    expect(config.searchQueueWRecovery).toBe(0.05);
     expect(config.openPageMaxParallel).toBe(6);
     expect(config.maxConcurrentPageOps).toBe(30);
     expect(config.humanTypingDelay).toBe(15);
@@ -379,17 +438,13 @@ describe("loadConfig (parse engine behavior)", () => {
     vi.stubEnv("SEARCH_QUEUE_MIN_INTERVAL_MS", "600000");
     vi.stubEnv("SEARCH_QUEUE_MAX_INTERVAL_MS", "7200000");
     vi.stubEnv("SEARCH_QUEUE_ESCALATION_FACTOR", "3");
-    vi.stubEnv("SEARCH_QUEUE_READY_INTERVAL_MS", "15000");
-    vi.stubEnv("SEARCH_QUEUE_EXPLORATION_EVERY", "4");
-    vi.stubEnv("SEARCH_QUEUE_LATENCY_SAMPLES", "12");
+    vi.stubEnv("SEARCH_QUEUE_W_RECOVERY", "0.1");
     const { loadConfig } = await import("../src/config.js");
     const config = await loadConfig();
     expect(config.searchQueueMinIntervalMs).toBe(600000);
     expect(config.searchQueueMaxIntervalMs).toBe(7200000);
     expect(config.searchQueueEscalationFactor).toBe(3);
-    expect(config.searchQueueReadyIntervalMs).toBe(15000);
-    expect(config.searchQueueExplorationEvery).toBe(4);
-    expect(config.searchQueueLatencySamples).toBe(12);
+    expect(config.searchQueueWRecovery).toBe(0.1);
   });
 
   it("merges the .env file over process.env at load time", async () => {

@@ -166,7 +166,7 @@ export function migrateHintShape(hint) {
         out.default.format = out.preferReadability === false ? "html_to_markdown" : "readability_to_markdown";
       }
       if (out.tableExtraction !== undefined) {
-        out.default.tables = out.tableExtraction === "disabled" ? "disabled" : out.tableExtraction === "content" ? "content" : "all";
+        warnings.push("tableExtraction removed — tables are rendered by the extractor now");
       }
       if (out.waitForSelector !== undefined) out.default.waitForSelector = out.waitForSelector;
       if (out.stabilizeStrategy !== undefined) out.default.stabilizeStrategy = out.stabilizeStrategy;
@@ -184,7 +184,12 @@ export function migrateHintShape(hint) {
       delete def.readability;
     }
     if (def.format === undefined) def.format = "readability_to_markdown";
-    if (def.tables === undefined) def.tables = "all";
+    if (def.tables !== undefined) {
+      if (def.tables !== "" && def.tables !== "all") {
+        warnings.push(`default.tables ("${def.tables}") removed — tables are rendered by the extractor now`);
+      }
+      delete def.tables;
+    }
   }
 
   delete out.preferReadability;
@@ -220,9 +225,28 @@ export const BLOCK_FORMATS = [
   "table_csv"
 ];
 
-export const DEFAULT_FORMATS = ["readability_to_markdown", "html_to_markdown", "text"];
+export const DEFAULT_FORMATS = [
+  "readability_to_markdown",
+  "html_to_markdown",
+  "html",
+  "text",
+  "table",
+  "table_json",
+  "table_csv"
+];
 
 const LEGACY_MARKDOWN_FORMAT = "markdown";
+
+export function isAiModelFormat(format, aiModelIds = []) {
+  if (!format || typeof format !== "string") return false;
+  if (!Array.isArray(aiModelIds)) return false;
+  return aiModelIds.includes(format);
+}
+
+export function getValidExtractors(baseFormats, aiModelIds = []) {
+  const ids = Array.isArray(aiModelIds) ? aiModelIds : [];
+  return [...baseFormats, ...ids.filter((id) => id && !baseFormats.includes(id))];
+}
 
 export const FIELD_FORMATS = [
   "text",
@@ -284,7 +308,7 @@ function validateField(field, errors, fieldPrefix) {
   }
 }
 
-function validateBlock(block, errors, fieldPrefix) {
+function validateBlock(block, errors, fieldPrefix, aiModelIds) {
   if (!block || typeof block !== "object" || Array.isArray(block)) {
     errors.push({ field: fieldPrefix, message: "must be an object" });
     return;
@@ -314,8 +338,9 @@ function validateBlock(block, errors, fieldPrefix) {
   }
 
   if (hasFormat) {
-    if (!BLOCK_FORMATS.includes(block.format) && block.format !== LEGACY_MARKDOWN_FORMAT) {
-      errors.push({ field: `${prefix}format`, message: `must be one of ${BLOCK_FORMATS.map((f) => `"${f}"`).join(", ")}` });
+    const validExtractors = getValidExtractors(BLOCK_FORMATS, aiModelIds);
+    if (!validExtractors.includes(block.format) && block.format !== LEGACY_MARKDOWN_FORMAT) {
+      errors.push({ field: `${prefix}format`, message: `must be one of ${validExtractors.map((f) => `"${f}"`).join(", ")}` });
     }
     return;
   }
@@ -332,7 +357,7 @@ function validateBlock(block, errors, fieldPrefix) {
   }
 }
 
-function validateContent(content, errors, fieldPrefix, warnings) {
+function validateContent(content, errors, fieldPrefix, warnings, aiModelIds) {
   if (!content || typeof content !== "object" || Array.isArray(content)) {
     errors.push({ field: fieldPrefix, message: "must be an object with a blocks array" });
     return;
@@ -342,7 +367,7 @@ function validateContent(content, errors, fieldPrefix, warnings) {
       errors.push({ field: `${fieldPrefix}.blocks`, message: "must be a non-empty array" });
     } else {
       content.blocks.forEach((block, index) => {
-        validateBlock(block, errors, `${fieldPrefix}.blocks[${index}]`);
+        validateBlock(block, errors, `${fieldPrefix}.blocks[${index}]`, aiModelIds);
       });
     }
   }
@@ -360,7 +385,7 @@ function validateContent(content, errors, fieldPrefix, warnings) {
   }
 }
 
-function validateFlow(flow, errors, warnings, fieldPrefix = "flow") {
+function validateFlow(flow, errors, warnings, fieldPrefix = "flow", aiModelIds) {
   if (!Array.isArray(flow) || !flow.length) {
     errors.push({ field: fieldPrefix, message: "must be a non-empty array of steps" });
     return;
@@ -410,7 +435,7 @@ function validateFlow(flow, errors, warnings, fieldPrefix = "flow") {
       if (step.content === undefined) {
         errors.push({ field: `${stepField}.content`, message: "required" });
       } else {
-        validateContent(step.content, errors, `${stepField}.content`, warnings);
+        validateContent(step.content, errors, `${stepField}.content`, warnings, aiModelIds);
       }
     } else if (action === "click") {
       clickCount += 1;
@@ -540,7 +565,6 @@ function validateSection(section, errors, fieldPrefix) {
   }
 }
 
-const DEFAULT_TABLES = ["all", "content", "disabled"];
 const STABILIZE_STRATEGIES = ["none", "network_idle", "content_idle", "mutation"];
 const STEP_STABILIZE_STRATEGIES = STABILIZE_STRATEGIES;
 const TOP_LEVEL_KEYS = [
@@ -573,7 +597,7 @@ function validateSelectorArray(hint, key, errors) {
   });
 }
 
-function validateDefault(defaultBlock, errors, warnings) {
+function validateDefault(defaultBlock, errors, warnings, aiModelIds) {
   if (!defaultBlock || typeof defaultBlock !== "object" || Array.isArray(defaultBlock)) {
     errors.push({ field: "default", message: "must be an object" });
     return;
@@ -602,23 +626,29 @@ function validateDefault(defaultBlock, errors, warnings) {
   if (defaultBlock.waitForContent !== undefined) validateSelectorArray(defaultBlock, "waitForContent", errors);
   if (defaultBlock.skipSelectors !== undefined) validateSelectorArray(defaultBlock, "skipSelectors", errors);
 
-  if (defaultBlock.format !== undefined && !DEFAULT_FORMATS.includes(defaultBlock.format)) {
-    errors.push({ field: "default.format", message: `must be one of ${DEFAULT_FORMATS.map((f) => `"${f}"`).join(", ")}` });
-  }
-  if (defaultBlock.tables !== undefined && defaultBlock.tables !== "" && !DEFAULT_TABLES.includes(defaultBlock.tables)) {
-    errors.push({ field: "default.tables", message: `must be one of ${DEFAULT_TABLES.map((t) => `"${t}"`).join(", ")}` });
+  if (defaultBlock.format !== undefined) {
+    const validExtractors = getValidExtractors(DEFAULT_FORMATS, aiModelIds);
+    if (!validExtractors.includes(defaultBlock.format)) {
+      errors.push({ field: "default.format", message: `must be one of ${validExtractors.map((f) => `"${f}"`).join(", ")}` });
+    }
   }
   if (defaultBlock.readability !== undefined) {
     warnings.push({ field: "default.readability", message: 'replaced by "format" — use "readability_to_markdown" or "html_to_markdown"' });
   }
   for (const key of Object.keys(defaultBlock)) {
-    if (!["waitForSelector", "stabilizeStrategy", "waitForContent", "skipSelectors", "format", "tables"].includes(key)) {
-      warnings.push({ field: `default.${key}`, message: "unknown field (ignored)" });
+    if (!["waitForSelector", "stabilizeStrategy", "waitForContent", "skipSelectors", "format"].includes(key)) {
+      if (key === "tables") {
+        if (defaultBlock.tables !== "" && defaultBlock.tables !== "all") {
+          warnings.push({ field: "default.tables", message: 'removed — tables are rendered by the extractor now (delete this key); the "table" / "table_json" / "table_csv" extractors return tables-only output' });
+        }
+      } else {
+        warnings.push({ field: `default.${key}`, message: "unknown field (ignored)" });
+      }
     }
   }
 }
 
-export function validateHintRule(hint, { scope = "static" } = {}) {
+export function validateHintRule(hint, { scope = "static", aiModelIds = [] } = {}) {
   const errors = [];
   const warnings = [];
   if (!hint || typeof hint !== "object" || Array.isArray(hint)) {
@@ -680,10 +710,10 @@ export function validateHintRule(hint, { scope = "static" } = {}) {
   }
 
   if (hint.default !== undefined) {
-    validateDefault(hint.default, errors, warnings);
+    validateDefault(hint.default, errors, warnings, aiModelIds);
   }
   if (hint.flow !== undefined) {
-    validateFlow(hint.flow, errors, warnings);
+    validateFlow(hint.flow, errors, warnings, "flow", aiModelIds);
   }
   validateFlowOptions(hint, errors, warnings);
 

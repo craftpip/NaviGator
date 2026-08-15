@@ -1,4 +1,4 @@
-import { parseApiKeys, parseBoolean, parseEngines, parseSelectorList, parseToolList, parseStabilizeStrategy } from "./config.js";
+import { parseApiKeys, parseBoolean, parseDefaultExtractFormat, parseEngines, parseSelectorList, parseToolList, parseStabilizeStrategy } from "./config.js";
 
 const WAIT_UNTIL_VALUES = new Set(["load", "domcontentloaded", "networkidle0", "networkidle2"]);
 
@@ -82,11 +82,18 @@ const HOT_APPLYERS = {
   LOG_TOOL_ERRORS: (config, value) => { config.logToolErrors = value; },
   DISABLE_TOOLS: (config, value) => { config.disableTools = value; },
   NON_CONTENT_SELECTORS: (config, value) => { config.nonContentSelectors = parseSelectorList(value, []); },
+  DEFAULT_EXTRACT_FORMAT: (config, value) => { config.defaultExtractFormat = parseDefaultExtractFormat(value); },
+  DEFAULT_EXTRACT_STABILIZE_STRATEGY: (config, value) => { config.defaultExtractStabilizeStrategy = parseStabilizeStrategy(value, ""); },
+  DEFAULT_EXTRACT_WAIT_FOR_SELECTOR: (config, value) => { config.defaultExtractWaitForSelector = parseSelectorList(value, []); },
+  DEFAULT_EXTRACT_WAIT_FOR_CONTENT: (config, value) => { config.defaultExtractWaitForContent = parseSelectorList(value, []); },
   ENABLE_HANG_RESTART: (config, value) => { config.enableHangRestart = value; },
   HANG_RESTART_TIMEOUT_MS: (config, value) => { config.hangRestartTimeoutMs = value; },
   ENABLE_VNC: (config, value) => { config.vncEnabled = value; },
   MCP_API_KEYS: (config, value) => { config.mcpApiKeys = value; },
-  MCP_ALLOW_UNAUTHENTICATED: (config, value) => { config.mcpAllowUnauthenticated = value; }
+  MCP_ALLOW_UNAUTHENTICATED: (config, value) => { config.mcpAllowUnauthenticated = value; },
+  READER_LM_TIMEOUT_MS: (config, value) => { config.readerLmTimeoutMs = value; },
+  READER_LM_MAX_INPUT_CHARS: (config, value) => { config.readerLmMaxInputChars = value; },
+  READER_LM_MAX_TOKENS: (config, value) => { config.readerLmMaxTokens = value; }
 };
 
 export function hotApplyConfig(config, key, value) {

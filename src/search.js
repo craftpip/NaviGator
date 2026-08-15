@@ -12,12 +12,13 @@ import {
   recordSearchStart,
   searchContext
 } from "./activity.js";
-import { findMatchingHints, getDomainHints, FLOW_TOTAL_TIMEOUT_MAX } from "./domain-hints.js";
+import { findMatchingHints, getDomainHints, FLOW_TOTAL_TIMEOUT_MAX, isAiModelFormat } from "./domain-hints.js";
 import { htmlToMarkdown } from "./markdown.js";
 import { getEngineDriver, getEngineMetadata, SUPPORTED_ENGINES } from "./engines/index.js";
 import { fetchDuckDuckGoInstantAnswers } from "./engines/instant-answers.js";
 import { EngineScheduler } from "./engine-scheduler.js";
 import { incrementUsageTotal } from "./db.js";
+import { extractHtmlWithAiModel, getAiModels } from "./reader-lm.js";
 import {
   buildLlmText,
   cleanAndTruncateText,
@@ -801,11 +802,20 @@ function renderTableAsMarkdown(table) {
   return lines.join("\n");
 }
 
-function renderLeafContent(element, format, url) {
+async function renderLeafContent(element, format, url, config) {
   if (format === "text") {
     return element.matches?.("table") ? renderTableAsText(element) : cleanWhitespace(element.textContent || "");
   }
   const innerHtml = element.innerHTML || "";
+  if (isAiModelFormat(format, getAiModels(config).map((entry) => entry.id))) {
+    try {
+      const markdown = await extractHtmlWithAiModel({ html: element.outerHTML || "", model: format, config, debug: false });
+      if (markdown) return markdown;
+    } catch (err) {
+      console.warn(`[web_fetch] AI extractor "${format}" failed for block — falling back to html_to_markdown: ${err.message}`);
+    }
+    return htmlToMarkdown(innerHtml, { baseUrl: url }).trim();
+  }
   if (format === "html") return `\`\`\`html\n${innerHtml}\n\`\`\``;
   if (format === "markdown" || format === "html_to_markdown") return htmlToMarkdown(innerHtml, { baseUrl: url }).trim();
   if (format === "readability_to_markdown") {
@@ -852,7 +862,7 @@ function renderTablesAsCsv(tables) {
   return `\`\`\`csv\n${lines.join("\n")}\n\`\`\``;
 }
 
-function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = "") {
+async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = "", config) {
   const blocks = hint?.content?.blocks?.length ? hint.content.blocks : null;
   const sections = blocks ? null : (hint?.content?.sections?.length ? hint.content.sections : null);
   const content = blocks || sections;
@@ -914,7 +924,7 @@ function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = ""
     } else {
       for (const el of elements) {
         if (el.matches?.("table")) {
-          const rendered = renderLeafContent(el, block.format, url);
+          const rendered = await renderLeafContent(el, block.format, url, config);
           if (rendered) markdown += rendered + "\n";
           continue;
         }
@@ -924,7 +934,7 @@ function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = ""
           allTables.push(...elTables.map(({ node, ...rest }) => rest));
           blockHadTable = true;
         }
-        const rendered = renderLeafContent(el, block.format, url);
+        const rendered = await renderLeafContent(el, block.format, url, config);
         if (rendered) markdown += rendered + "\n";
       }
     }
@@ -952,7 +962,7 @@ function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = ""
   };
 }
 
-function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, debug = false, strict = false, nonContentSelectors = DEFAULT_NON_CONTENT_SELECTORS }) {
+async function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, debug = false, strict = false, nonContentSelectors = DEFAULT_NON_CONTENT_SELECTORS, config }) {
   const tFunc = performance.now();
   if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml called`);
   const rawHtml = typeof html === "string" ? html : "";
@@ -982,7 +992,7 @@ function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browser
 
     if (hint?.content?.blocks?.length) {
       if (debug) console.log(">>> entering blocks path, blocks:", hint.content.blocks.length, "first selector:", hint.content.blocks[0].selector);
-      const blockResult = renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle);
+      const blockResult = await renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle, config);
       if (blockResult) return blockResult;
       if (debug) console.log(">>> blocks produced no output");
     }
@@ -995,20 +1005,49 @@ if (strict && hint?.content?.blocks?.length) {
     /* ==================== Default extraction (hint method: default) ==================== */
     const defaultBlock = hint?.default || {};
     const pageFormat = defaultBlock.format || "readability_to_markdown";
-    const tablesMode = defaultBlock.tables || "all";
-    if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: default extraction (format=${pageFormat}, tables=${tablesMode})`);
+    const aiModelIds = getAiModels(config).map((entry) => entry.id);
+    if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: default extraction (format=${pageFormat})`);
 
-    // Tables are extracted and removed from the DOM before rendering so they don't leak
-    // as tab-separated noise. default.tables: "all" (omitted) = global extraction (current
-    // behavior); "disabled" = no table extraction; "content" = only tables inside the
-    // rendered content node (scoped below after Readability / candidate selection).
-    let tables = [];
-    if (tablesMode === "all") {
-      const globalTables = extractTablesFromDocument(doc);
-      for (const t of globalTables) {
-        t.node?.remove();
+    // The extractor renders tables now — no table nodes are stripped from the DOM in the
+    // default path. The "table"-family extractors return tables-only output instead.
+
+    // Table-family formats: tables only, no DOM mutation.
+    if (pageFormat === "table" || pageFormat === "table_json" || pageFormat === "table_csv") {
+      const tables = extractTablesFromDocument(doc).map(({ node, ...rest }) => rest);
+      if (tables.length) {
+        const text = pageFormat === "table"
+          ? tables.map(renderTableAsMarkdown).join("\n\n")
+          : pageFormat === "table_json"
+            ? renderTablesAsJson(tables)
+            : renderTablesAsCsv(tables);
+        if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: tables-only (${pageFormat}): ${tables.length} tables`);
+        return {
+          title: cleanWhitespace(doc.title || fallbackTitle || ""),
+          url,
+          text: safeTruncateText(text, maxChars),
+          textOriginalLength: text.length,
+          tables
+        };
       }
-      tables = globalTables.map(({ node, ...rest }) => rest);
+    }
+
+    // AI-model formats: serialize the prepared body to the model, render markdown.
+    // Falls through to html_to_markdown below when the model errors or is unconfigured.
+    if (isAiModelFormat(pageFormat, aiModelIds)) {
+      try {
+        const markdown = await extractHtmlWithAiModel({ html: doc.body.innerHTML, model: pageFormat, config, maxChars, debug });
+        if (markdown) {
+          if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: ai-extractor (${pageFormat})`);
+          return {
+            title: cleanWhitespace(doc.title || fallbackTitle || ""),
+            url,
+            text: safeTruncateText(markdown, maxChars),
+            textOriginalLength: markdown.length
+          };
+        }
+      } catch (err) {
+        console.warn(`[web_fetch] [${url}] AI extractor "${pageFormat}" failed — falling back to html_to_markdown: ${err.message}`);
+      }
     }
 
     // Readability path (default format) — extracts a clean article from the whole doc.
@@ -1028,19 +1067,6 @@ if (strict && hint?.content?.blocks?.length) {
         if (debug) console.log(">>> articleLines count:", articleLines.length, "first 5 lines:", JSON.stringify(articleLines.slice(0,5)));
         if (debug) console.log(">>> browserText exists:", !!browserText, "type:", typeof browserText, "length:", browserText?.length);
 
-        if (tablesMode === "content" && article.content) {
-          const contentDom = new JSDOM(`<body>${article.content}</body>`, { url });
-          const scopedTables = extractTablesFromDocument(contentDom.window.document, {
-            container: contentDom.window.document.body
-          });
-          if (scopedTables.length) {
-            for (const t of scopedTables) t.node?.remove();
-            tables = scopedTables.map(({ node, ...rest }) => rest);
-            article.content = contentDom.window.document.body.innerHTML;
-          }
-          contentDom.window.close();
-        }
-
         if (browserText) {
           const articleLen = article.textContent.trim().length;
           const browserLen = browserText.trim().length;
@@ -1053,8 +1079,7 @@ if (strict && hint?.content?.blocks?.length) {
               title: cleanWhitespace(article.title || fallbackTitle || ""),
               url,
               text: safeTruncateText(fullMarkdown, maxChars),
-              textOriginalLength: fullMarkdown.length,
-              ...(tables.length ? { tables } : {})
+              textOriginalLength: fullMarkdown.length
             };
           }
         }
@@ -1071,8 +1096,7 @@ if (strict && hint?.content?.blocks?.length) {
             title: cleanWhitespace(article.title || fallbackTitle || ""),
             url,
             text,
-            textOriginalLength,
-            ...(tables.length ? { tables } : {})
+            textOriginalLength
           };
         } else {
           text = buildCleanText(articleLines, maxChars);
@@ -1084,8 +1108,7 @@ if (strict && hint?.content?.blocks?.length) {
           title: cleanWhitespace(article.title || fallbackTitle || ""),
           url,
           text,
-          textOriginalLength,
-          ...(tables.length ? { tables } : {})
+          textOriginalLength
         };
       }
     }
@@ -1093,19 +1116,15 @@ if (strict && hint?.content?.blocks?.length) {
     // Raw HTML → markdown (Readability off, "html_to_markdown" format, or it produced nothing).
     // Convert the best semantic container's innerHTML so headings/paragraphs survive;
     // a textContent-only dump collapses div-based pages into a single glued line.
-    // "text" format skips markdown entirely and returns a clean flat text dump.
+    // "text" format skips markdown entirely and returns a clean flat text dump;
+    // "html" wraps the best container's innerHTML in a fenced code block.
     let candidates, bestText, bestMarkdown = "";
+    let bestContainerHtml = "";
     try {
       candidates = collectCandidateBlocks(doc);
       const best = candidates[0];
       if (best?.element) {
-        if (tablesMode === "content") {
-          const scopedTables = extractTablesFromDocument(doc, { container: best.element });
-          if (scopedTables.length) {
-            for (const t of scopedTables) t.node?.remove();
-            tables = scopedTables.map(({ node, ...rest }) => rest);
-          }
-        }
+        bestContainerHtml = best.element.innerHTML || "";
         bestMarkdown = htmlToMarkdown(best.element.innerHTML || "", { baseUrl: url }).trim();
       }
       bestText = best?.text || elementTextWithBreaks(doc.body).trim();
@@ -1114,16 +1133,22 @@ if (strict && hint?.content?.blocks?.length) {
       bestText = elementTextWithBreaks(doc.body).trim();
     }
     const lines = toLines(bestText);
-    const fullText = pageFormat === "text"
-      ? buildCleanText(lines, maxChars)
-      : (bestMarkdown ? safeTruncateText(bestMarkdown, maxChars) : buildCleanText(lines, maxChars));
+    let fullText;
+    if (pageFormat === "html") {
+      fullText = bestContainerHtml
+        ? safeTruncateText(`\`\`\`html\n${bestContainerHtml}\n\`\`\``, maxChars)
+        : buildCleanText(lines, maxChars);
+    } else if (pageFormat === "text") {
+      fullText = buildCleanText(lines, maxChars);
+    } else {
+      fullText = bestMarkdown ? safeTruncateText(bestMarkdown, maxChars) : buildCleanText(lines, maxChars);
+    }
     if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: fallback: ${Math.round(performance.now() - tFunc)}ms`);
     return {
       title: cleanWhitespace(doc.title || fallbackTitle || ""),
       url,
       text: fullText,
-      textOriginalLength: bestText.length,
-      ...(tables.length ? { tables } : {})
+      textOriginalLength: bestText.length
     };
   } catch {
     if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: catch_all: ${Math.round(performance.now() - tFunc)}ms`);
@@ -2039,6 +2064,16 @@ async function firstMatchingHint(page, candidates) {
   return null;
 }
 
+function defaultExtractHint(config) {
+  const d = {};
+  if (config?.defaultExtractFormat) d.format = config.defaultExtractFormat;
+  if (config?.defaultExtractStabilizeStrategy) d.stabilizeStrategy = config.defaultExtractStabilizeStrategy;
+  if (config?.defaultExtractWaitForSelector?.length) d.waitForSelector = config.defaultExtractWaitForSelector;
+  if (config?.defaultExtractWaitForContent?.length) d.waitForContent = config.defaultExtractWaitForContent;
+  if (!Object.keys(d).length) return null;
+  return { default: d };
+}
+
 const FLOW_STAGE_CAPTURE_LIMIT = 60000;
 const FLOW_STEP_DEFAULT_TIMEOUT_MS = 10000;
 
@@ -2127,7 +2162,7 @@ async function capturePageState(page) {
   return { html, url, title, browserText };
 }
 
-function extractHintStage(pageState, hint, step, maxChars, debug, nonContentSelectors) {
+async function extractHintStage(pageState, hint, step, maxChars, debug, nonContentSelectors, config) {
   return extractTextFromHtml({
     html: pageState.html,
     url: pageState.url,
@@ -2137,7 +2172,8 @@ function extractHintStage(pageState, hint, step, maxChars, debug, nonContentSele
     browserText: pageState.browserText,
     debug,
     strict: true,
-    nonContentSelectors
+    nonContentSelectors,
+    config
   });
 }
 
@@ -2199,7 +2235,7 @@ function isInteractionFreeFlow(flow) {
   );
 }
 
-async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNote, nonContentSelectors }) {
+async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNote, nonContentSelectors, config }) {
   const flow = hint.flow;
   const flowOptions = hint.flowOptions || {};
   const continueOnEmptyExtract = flowOptions.continueOnEmptyExtract === true;
@@ -2208,13 +2244,13 @@ async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNo
   const linksByHref = new Map();
   const warnings = [];
 
-  flow.forEach((step, index) => {
-    if (step.action !== "extract") return;
+  for (const [index, step] of flow.entries()) {
+    if (step.action !== "extract") continue;
     const stageLinks = extractLinksFromHtml({ html: state.html, url: state.url });
     for (const link of stageLinks) {
       if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
     }
-    const extracted = extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, nonContentSelectors);
+    const extracted = await extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, nonContentSelectors, config);
     if (extracted.tables?.length && !(extracted.text || "").trim()) {
       extracted.text = insertTablesInline("", extracted.tables);
       extracted.tables = [];
@@ -2228,10 +2264,10 @@ async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNo
         throw new Error(message);
       }
       warnings.push(`${message} (skipped)`);
-      return;
+      continue;
     }
     stages.push(stage);
-  });
+  }
 
   const merged = mergeExtractedStages(stages, maxChars, [...linksByHref.values()]);
   merged.warnings = [...merged.warnings, ...warnings];
@@ -2303,7 +2339,7 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
         for (const link of stageLinks) {
           if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
         }
-    const extracted = extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, nonContentSelectors);
+    const extracted = await extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, nonContentSelectors, config);
         if (extracted.tables?.length && !(extracted.text || "").trim()) {
           extracted.text = insertTablesInline("", extracted.tables);
           extracted.tables = [];
@@ -2515,6 +2551,11 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
   }
   debugLog("load_domain_hints", t);
 
+  if (!hint) {
+    hint = defaultExtractHint(manager.config);
+    if (hint && debug) console.log(`[web_fetch] [${url}] hint=default_extract (no domain hint matched)`);
+  }
+
   try {
     const cached = typeof cachedHtml === "string" && cachedHtml.length > 0 ? cachedHtml : null;
     if (cached && hint?.flow?.length && isInteractionFreeFlow(hint.flow)) {
@@ -2526,14 +2567,15 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         maxChars,
         debug,
         hintNote,
-        nonContentSelectors
+        nonContentSelectors,
+        config: manager.config
       });
       if (debug) console.log(`[web_fetch] [${url}] cached flow replay: ${Math.round(performance.now() - tCache)}ms (browser skipped)`);
       return replayed;
     }
     if (cached && !(hint?.flow?.length)) {
       const tCache = performance.now();
-      const extracted = extractTextFromHtml({
+      const extracted = await extractTextFromHtml({
         html: cached,
         url,
         maxChars,
@@ -2541,7 +2583,8 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         hint,
         browserText: "",
         debug,
-        nonContentSelectors
+        nonContentSelectors,
+        config: manager.config
       });
       const links = extractLinksFromHtml({ html: cached, url });
       let finalText = extracted.text || "";
@@ -2642,6 +2685,11 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       }
       debugLog("resolve_hint_dom_final", t);
 
+      if (!hint) {
+        hint = defaultExtractHint(manager.config);
+        if (hint && debug) console.log(`[web_fetch] [${url}] hint=default_extract (candidates matched nothing)`);
+      }
+
       if (hint?.flow?.length) {
         const flowHtml = captureHtml
           ? await withPageTimeout("flow_html", () => page.content())
@@ -2710,7 +2758,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       debugLog("detect_page_state", t);
 
       t = performance.now();
-      const extracted = extractTextFromHtml({
+      const extracted = await extractTextFromHtml({
         html,
         url: resolvedUrl,
         maxChars,
@@ -2718,7 +2766,8 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         hint,
         browserText,
         debug,
-        nonContentSelectors
+        nonContentSelectors,
+        config: manager.config
       });
       debugLog("extract_text_from_html", t);
 
