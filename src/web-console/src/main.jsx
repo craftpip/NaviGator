@@ -1,7 +1,7 @@
 import { StrictMode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
-import logo from "./navigator-logo.svg";
+import logo from "../../../navigator_alligator_sunglasses_cropped.png";
 import { renderMarkdown } from "./markdown.js";
 
 const POLL_MS = 2000;
@@ -184,7 +184,7 @@ function Layout({
       <header>
         <div className="hdr-left">
           <a className="logo" href="/console">
-            <img className="logo-img" src={logo} alt="Navigator logo" />
+            <img className="logo-img" src={logo} alt="Navigator alligator logo" />
             NAVIGATOR <span>{title}</span>
           </a>
           {title === "CONSOLE" && (

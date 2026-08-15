@@ -239,7 +239,7 @@ describe("handleDevtoolsToolCall", () => {
         enableDevtoolsMcp: true,
         devtoolsBackend: "chromium",
         defaultBackend: "cloakbrowser",
-        navWaitUntil: "domcontentloaded",
+        navWaitUntil: "networkidle0",
         browserOpTimeoutMs: 60000,
       },
       newPage: vi.fn().mockResolvedValue({
@@ -253,8 +253,35 @@ describe("handleDevtoolsToolCall", () => {
 
     const { handleDevtoolsToolCall } = await import("../src/devtools.js");
     const result = await handleDevtoolsToolCall("Target.createTarget", { ref_id: ref });
-    expect(goto).toHaveBeenCalledWith("https://ref-example.com/article", expect.any(Object));
+    expect(goto).toHaveBeenCalledWith("https://ref-example.com/article", expect.objectContaining({
+      waitUntil: "networkidle0"
+    }));
     expect(result.url).toBe("https://ref-example.com/article");
+  });
+
+  it("Target.createTarget returns while navigation is still pending", async () => {
+    const goto = vi.fn().mockReturnValue(new Promise(() => {}));
+    getBrowserManager.mockResolvedValue({
+      config: {
+        enableDevtoolsMcp: true,
+        devtoolsBackend: "chromium",
+        defaultBackend: "cloakbrowser",
+        browserOpTimeoutMs: 60000,
+      },
+      newPage: vi.fn().mockResolvedValue({
+        goto,
+        url: vi.fn().mockReturnValue("about:blank"),
+        title: vi.fn().mockResolvedValue(""),
+        isClosed: vi.fn().mockReturnValue(false),
+        on: vi.fn(),
+      }),
+    });
+
+    const { handleDevtoolsToolCall } = await import("../src/devtools.js");
+    const result = await handleDevtoolsToolCall("Target.createTarget", { url: "https://example.com" });
+
+    expect(goto).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ url: "https://example.com" });
   });
 
   it("Target.createTarget applies a viewport before navigation", async () => {
@@ -316,7 +343,7 @@ describe("handleDevtoolsToolCall", () => {
     expect(newPage).not.toHaveBeenCalled();
   });
 
-  it("Target.createTarget closes and unregisters a page when navigation fails", async () => {
+  it("Target.createTarget keeps the tab open when background navigation fails", async () => {
     const close = vi.fn().mockResolvedValue(undefined);
     getBrowserManager.mockResolvedValue({
       config: {
@@ -337,8 +364,15 @@ describe("handleDevtoolsToolCall", () => {
     });
 
     const { handleDevtoolsToolCall } = await import("../src/devtools.js");
-    await expect(handleDevtoolsToolCall("Target.createTarget", { url: "https://example.com" }))
-      .rejects.toThrow("navigation failed");
+    const result = await handleDevtoolsToolCall("Target.createTarget", {
+      targetId: "navigation-failure",
+      url: "https://example.com"
+    });
+
+    expect(result.targetId).toBe("navigation-failure");
+    await Promise.resolve();
+    expect(close).not.toHaveBeenCalled();
+    await handleDevtoolsToolCall("Target.closeTarget", { targetId: "navigation-failure" });
     expect(close).toHaveBeenCalledOnce();
   });
 

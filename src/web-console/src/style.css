@@ -132,9 +132,12 @@ header {
   white-space: nowrap;
 }
 .logo-img {
-  height: 18px;
-  width: auto;
+  /* width: 30px; */
+  height: 73px;
   display: block;
+  border-radius: 5px;
+  object-fit: cover;
+  transform: translate(0px, -9px);
 }
 .logo span,
 .hdr-item,

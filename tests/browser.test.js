@@ -481,6 +481,24 @@ describe("BrowserManager", () => {
     });
   });
 
+  describe("releaseSearchWindow", () => {
+    it("closes the last pooled page when the retained minimum is zero", async () => {
+      const manager = new BrowserManager(makeConfig({
+        searchKeepMinWorkingWindows: 0,
+        searchMaxWorkingWindows: 1
+      }));
+      const close = vi.fn().mockResolvedValue(undefined);
+      const page = { isClosed: () => false, close };
+      const pool = manager.getEnginePool("google_cb");
+      pool.windows.push({ page, inUse: true, pending: false, persistent: true, engine: "google_cb" });
+
+      await manager.releaseSearchWindow("google_cb", page);
+
+      expect(close).toHaveBeenCalledOnce();
+      expect(pool.windows).toEqual([]);
+    });
+  });
+
   describe("relaunchDefaultBackend", () => {
     it("keeps pools belonging to other browser backends", async () => {
       const manager = new BrowserManager(makeConfig({ defaultBackend: "cloakbrowser" }));

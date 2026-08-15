@@ -25,6 +25,15 @@ function cleanWhitespace(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function cleanCssSelector(selector) {
+  return String(selector || "")
+    .replace(/:has-text\(((?:[^()]|\([^()]*\))*)\)/gi, "")
+    .replace(/:text(?:-is|-matches)?\(((?:[^()]|\([^()]*\))*)\)/gi, "")
+    .replace(/:visible\b|:hidden\b/gi, "")
+    .replace(/,\s*,/g, ",")
+    .replace(/^[\s,]+|[\s,]+$/g, "");
+}
+
 function truncate(value, maxChars = 300) {
   const text = String(value || "");
   if (text.length <= maxChars) return text;
@@ -152,11 +161,26 @@ function startInactivityCleanup() {
 
 startInactivityCleanup();
 
+function safePageListener(label, handler) {
+  return (...args) => {
+    try {
+      const result = handler(...args);
+      if (result && typeof result.catch === "function") {
+        result.catch((error) => {
+          console.error(`⚠️  devtools ${label} listener error: ${String(error?.message || error)}`);
+        });
+      }
+    } catch (error) {
+      console.error(`⚠️  devtools ${label} listener error: ${String(error?.message || error)}`);
+    }
+  };
+}
+
 function installPageObservers(state) {
   const { page } = state;
   const pendingRequests = new Map();
 
-  page.on("console", async (message) => {
+  page.on("console", safePageListener("console", async (message) => {
     let args = [];
     try {
       const handles = await Promise.all(
@@ -180,41 +204,41 @@ function installPageObservers(state) {
       location: message.location(),
       timestamp: new Date().toISOString()
     });
-  });
+  }));
 
-  page.on("pageerror", (error) => {
+  page.on("pageerror", safePageListener("pageerror", (error) => {
     recordConsoleMessage(state, {
       type: "pageerror",
       text: truncate(error?.stack || error?.message || String(error), 1000),
       timestamp: new Date().toISOString()
     });
-  });
+  }));
 
-  page.on("requestfailed", (request) => {
+  page.on("requestfailed", safePageListener("requestfailed", (request) => {
     const failure = request.failure();
     recordConsoleMessage(state, {
       type: "requestfailed",
       text: `${request.method()} ${request.url()}${failure?.errorText ? ` - ${failure.errorText}` : ""}`,
       timestamp: new Date().toISOString()
     });
-  });
+  }));
 
-  page.on("request", (request) => {
-    pendingRequests.set(request.id(), {
+  page.on("request", safePageListener("request", (request) => {
+    pendingRequests.set(request, {
       method: request.method(),
       url: request.url(),
       resourceType: request.resourceType() || "other",
       startedAt: Date.now()
     });
-  });
+  }));
 
-  page.on("response", (response) => {
+  page.on("response", safePageListener("response", (response) => {
     const request = response.request();
-    const pending = pendingRequests.get(request.id());
+    const pending = request ? pendingRequests.get(request) : null;
     recordNetworkRequest(state, {
-      method: request.method(),
+      method: request ? request.method() : "?",
       url: response.url(),
-      resourceType: request.resourceType() || "other",
+      resourceType: request ? request.resourceType() || "other" : "other",
       status: response.status(),
       ok: response.ok(),
       fromCache: response.fromCache(),
@@ -222,11 +246,11 @@ function installPageObservers(state) {
       failed: false,
       startedAt: pending?.startedAt || null
     });
-    pendingRequests.delete(request.id());
-  });
+    if (request) pendingRequests.delete(request);
+  }));
 
-  page.on("requestfailed", (request) => {
-    const pending = pendingRequests.get(request.id());
+  page.on("requestfailed", safePageListener("requestfailed", (request) => {
+    const pending = pendingRequests.get(request);
     recordNetworkRequest(state, {
       method: request.method(),
       url: request.url(),
@@ -239,18 +263,18 @@ function installPageObservers(state) {
       error: request.failure()?.errorText || "request failed",
       startedAt: pending?.startedAt || null
     });
-    pendingRequests.delete(request.id());
-  });
+    pendingRequests.delete(request);
+  }));
 
-  page.on("framenavigated", async (frame) => {
+  page.on("framenavigated", safePageListener("framenavigated", async (frame) => {
     if (frame !== page.mainFrame()) return;
     state.lastActiveAt = new Date().toISOString();
     await refreshTitle(state);
-  });
+  }));
 
-  page.on("close", () => {
+  page.on("close", safePageListener("close", () => {
     targetsById.delete(state.targetId);
-  });
+  }));
 }
 
 async function createTarget(args = {}) {
@@ -300,22 +324,20 @@ async function createTarget(args = {}) {
   devtoolsCounters.targetsCreated += 1;
   touchTab(backend, state.targetId);
 
-  try {
-    if (url !== "about:blank") {
-      await page.goto(url, {
-        waitUntil: manager.config.navWaitUntil,
-        timeout: manager.config.browserOpTimeoutMs
-      });
-    }
-
-    await refreshTitle(state);
-    return buildTargetSummary(state);
-  } catch (error) {
-    targetsById.delete(state.targetId);
-    clearTab(backend, state.targetId);
-    await page.close().catch(() => {});
-    throw error;
+  if (url !== "about:blank") {
+    page.goto(url, {
+      waitUntil: manager.config.navWaitUntil,
+      timeout: manager.config.browserOpTimeoutMs
+    }).then(
+      () => refreshTitle(state),
+      (error) => recordConsoleMessage(state, {
+        type: "navigationerror",
+        text: truncate(error?.message || String(error)),
+        timestamp: new Date().toISOString()
+      })
+    );
   }
+  return { ...buildTargetSummary(state), url, navigating: url !== "about:blank" };
 }
 
 async function listTargets() {
@@ -470,11 +492,13 @@ async function goHistory(args = {}, direction) {
     waitUntil: manager.config.navWaitUntil,
     timeout: manager.config.browserOpTimeoutMs
   };
+  const before = state.page.url();
   const response = direction === "forward"
     ? await state.page.goForward(options)
     : await state.page.goBack(options);
   await refreshTitle(state);
-  return { ...buildTargetSummary(state), direction, navigated: Boolean(response) };
+  const navigated = Boolean(response) || state.page.url() !== before;
+  return { ...buildTargetSummary(state), direction, navigated };
 }
 
 async function dispatchKeyEvent(args = {}) {
@@ -830,6 +854,14 @@ async function querySelector(args = {}, multiple = false) {
   const state = getTargetState(args.targetId);
   const limit = Math.max(1, Math.min(MAX_QUERY_RESULTS, Number(args.limit) || 10));
   const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
+  const rawSelector = typeof args.selector === "string" ? args.selector : "";
+  const selector = rawSelector ? cleanCssSelector(rawSelector) : "";
+  if (rawSelector && !selector) {
+    throw new Error(
+      `Invalid selector "${rawSelector}": only Playwright pseudo-classes (:has-text, :text, :visible, :hidden) were found, which the browser does not understand. ` +
+      `Use a standard CSS selector (tag, .class, #id, [attribute]) or Runtime.evaluate for complex matching.`
+    );
+  }
   const result = await Promise.race([
     state.page.evaluate(({ selector, xpath, multiple: wantsMany, limit: limitValue }) => {
     function cleanWhitespaceInner(value) {
@@ -924,22 +956,13 @@ async function querySelector(args = {}, multiple = false) {
       return results;
     }
 
-    const cleanedSelector = selector
-      ? selector
-          .replace(/:has-text\([^)]*\)/gi, "")
-          .replace(/:text\([^)]*\)/gi, "")
-          .replace(/,\s*,/g, ",")
-          .replace(/^[\s,]+|[\s,]+$/g, "")
-      : "";
-    const nodes = cleanedSelector
-      ? Array.from(document.querySelectorAll(cleanedSelector))
-      : selector
-        ? []
-        : nodesFromXpath(xpath);
+    const nodes = selector
+      ? Array.from(document.querySelectorAll(selector))
+      : nodesFromXpath(xpath);
     const described = nodes.slice(0, limitValue).map((node) => describe(node));
     return wantsMany ? described : described[0] || null;
   }, {
-    selector: args.selector || "",
+    selector,
     xpath: args.xpath || "",
     multiple,
     limit
@@ -1438,11 +1461,15 @@ async function insertText(args = {}) {
     const rect = element.getBoundingClientRect();
     element.focus();
     const focused = document.activeElement === element || (document.activeElement || {}).contains?.(element) === true;
-    const hadValue = "value" in element ? Boolean(element.value) : false;
+    const isContentEditable = element.isContentEditable === true;
+    const hadValue = "value" in element ? Boolean(element.value) : isContentEditable ? Boolean(element.textContent) : false;
     if ("value" in element) {
       element.value = "";
       element.dispatchEvent(new Event("input", { bubbles: true }));
       element.dispatchEvent(new Event("change", { bubbles: true }));
+    } else if (isContentEditable) {
+      element.textContent = "";
+      element.dispatchEvent(new Event("input", { bubbles: true }));
     }
     return {
       found: true,

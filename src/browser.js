@@ -944,7 +944,7 @@ export class BrowserManager {
 
     if (entry.pending || !entry.page || entry.page.isClosed()) {
       pool.windows = pool.windows.filter((item) => item !== entry);
-    } else if (!entry.persistent && pool.windows.length > Math.max(this.config.searchKeepMinWorkingWindows, 1)) {
+    } else if (!entry.persistent && pool.windows.length > this.config.searchKeepMinWorkingWindows) {
       pool.windows = pool.windows.filter((item) => item !== entry);
       try {
         await entry.page.close();
@@ -960,7 +960,7 @@ export class BrowserManager {
     }
 
     if (!pool.waiters.length) {
-      await this.trimIdleWindows(pool, Math.max(this.config.searchKeepMinWorkingWindows, 1));
+      await this.trimIdleWindows(pool, this.config.searchKeepMinWorkingWindows);
     }
 
     this.wakeSearchWaiter(pool);
