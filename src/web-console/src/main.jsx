@@ -1,7 +1,7 @@
 import { StrictMode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
-import logo from "../../../navigator_alligator_sunglasses_cropped.png";
+import logo from "../../../navigator-logo.png";
 import { renderMarkdown } from "./markdown.js";
 
 const POLL_MS = 2000;
