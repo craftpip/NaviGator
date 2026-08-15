@@ -206,7 +206,7 @@
               "selector": "#optionChainTable-indices",
               "label": "",
               "priority": "high",
-              "format": "table"
+              "format": "reader_lm"
             }
           ]
         }
