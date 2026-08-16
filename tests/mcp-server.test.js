@@ -1673,7 +1673,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(searchMod.browserOpenAndExtract).not.toHaveBeenCalled();
     });
 
-    it("skips the web_fetch result cache when the matched hint uses an AI extractor", async () => {
+    it("uses the web_fetch result cache normally for post-processor hints (no longer skips)", async () => {
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-ai-cache-"));
       const hintsPath = path.join(tempDir, "domain-hints.json");
       fs.writeFileSync(hintsPath, JSON.stringify([{
@@ -1685,7 +1685,7 @@ describe("mcp-server HTTP endpoints", () => {
       const browserMod = await import("../src/browser.js");
       browserMod.getBrowserManager.mockResolvedValue(makeMockManager({
         domainHintsPath: hintsPath,
-        aiExtractorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }]
+        postProcessorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }]
       }));
 
       const searchMod = await import("../src/search.js");
@@ -1702,7 +1702,7 @@ describe("mcp-server HTTP endpoints", () => {
           expect(res.status).toBe(200);
           expect(res.body.result.content[0].text).toContain("ai extracted");
         }
-        expect(searchMod.browserOpenAndExtract).toHaveBeenCalledTimes(2);
+        expect(searchMod.browserOpenAndExtract).toHaveBeenCalledTimes(1);
       } finally {
         browserMod.getBrowserManager.mockResolvedValue(makeMockManager());
         fs.rmSync(tempDir, { recursive: true, force: true });

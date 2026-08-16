@@ -766,4 +766,26 @@ describe("extractor formats and AI models", () => {
     expect(loud.hint.default.tables).toBeUndefined();
     expect(loud.warnings.join(" ")).toMatch(/default\.tables/);
   });
+
+  it("migrateHintShape coerces legacy model-id format to readability_to_markdown", () => {
+    const result = migrateHintShape({ domain: "a.com", default: { format: "reader_lm" } });
+    expect(result.hint.default.format).toBe("readability_to_markdown");
+    expect(result.warnings.join(" ")).toMatch(/legacy model id/);
+
+    const mineru = migrateHintShape({ domain: "b.com", default: { format: "mineru" } });
+    expect(mineru.hint.default.format).toBe("readability_to_markdown");
+
+    const valid = migrateHintShape({ domain: "c.com", default: { format: "html_to_markdown" } });
+    expect(valid.hint.default.format).toBe("html_to_markdown");
+    expect(valid.warnings).toEqual([]);
+  });
+
+  it("migrateHintShape coerces legacy model-id in flow block format", () => {
+    const result = migrateHintShape({
+      domain: "a.com",
+      flow: [{ action: "extract", content: { blocks: [{ selector: "main", format: "reader_lm" }] } }]
+    });
+    expect(result.hint.flow[0].content.blocks[0].format).toBe("readability_to_markdown");
+    expect(result.warnings.join(" ")).toMatch(/legacy model id/);
+  });
 });

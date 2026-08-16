@@ -28,8 +28,8 @@ import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
 import { SUPPORTED_ENGINES, getEngineMetadata } from "./engines/index.js";
 import { getAuthorizedMcpKey, getMcpApiKey, isAuthorizedMcpRequest } from "./mcp-api-auth.js";
-import { findDomainHint, getDomainHints, isAiModelFormat, loadRawDomainHints, saveDomainHints, validateHintRule } from "./domain-hints.js";
-import { getAiExtractorModels } from "./ai-extractor.js";
+import { findDomainHint, getDomainHints, loadRawDomainHints, saveDomainHints, validateHintRule } from "./domain-hints.js";
+import { getPostProcessorModels } from "./post-processor.js";
 
 const require = createRequire(import.meta.url);
 const PACKAGE_JSON = require("../package.json");
@@ -408,8 +408,8 @@ async function getConsoleConfigPayload(manager) {
     configValues: Object.fromEntries(
       CONFIG_SCHEMA.map((entry) => [
         entry.key,
-        entry.key === "AI_EXTRACTOR_MODELS"
-          ? (process.env.AI_EXTRACTOR_MODELS ?? process.env.READER_LM_MODELS ?? JSON.stringify(manager.config.aiExtractorModels ?? []))
+        entry.key === "POST_PROCESSOR_MODELS"
+          ? (process.env.POST_PROCESSOR_MODELS ?? JSON.stringify(manager.config.postProcessorModels ?? []))
           : entry.key === "DOMAIN_HINTS_PATH"
             ? (process.env.DOMAIN_HINTS_PATH ?? entry.fallback)
             : entry.key === "DEFAULT_EXTRACT_STABILIZE_STRATEGY"
@@ -418,7 +418,7 @@ async function getConsoleConfigPayload(manager) {
       ])
     ),
     envFile: { path: envPath, changedOnDisk: envFileState.changed, backup: backupPath },
-    aiModels: getAiExtractorModels(manager.config),
+    postProcessorModels: getPostProcessorModels(manager.config),
     engines: enabledEngines.map((id) => CONSOLE_ENGINE_BY_ID.get(id)).filter(Boolean),
     availableEngines: CONSOLE_ENGINE_REGISTRY,
     tools: [...new Set([...WEB_TOOL_NAMES, ...devtoolsToolDefinitions.map((tool) => tool.name)])].sort(),
@@ -645,6 +645,16 @@ async function applyConfigUpdates(manager, body) {
     const backup = await backupEnvFile(envPath);
     if (backup) payload.backup = backup;
     await writeEnvFile(envPath, envText);
+    if (updates) {
+      for (const [rawKey, rawValue] of Object.entries(updates)) {
+        const key = String(rawKey).toUpperCase();
+        if (changedKeys.has(key)) {
+          process.env[key] = String(rawValue);
+          const entry = CONFIG_SCHEMA.find((s) => s.key === key);
+          if (entry) hotApplyConfig(manager.config, key, rawValue);
+        }
+      }
+    }
     payload.envWritten = true;
     await checkEnvFileChanged(envPath);
     envFileState.changed = false;
@@ -1925,33 +1935,7 @@ async function handleToolCallInner(name, args = {}) {
     }
     mark = timer.step("resolve_targets", mark);
 
-    // AI-model extractors are expensive + non-deterministic (model output, context-window
-    // limits) and the cache key can't see the hint's extractor — skip the cache read AND
-    // write when any target matches a hint whose effective extractor is an AI model.
-    const aiModelIds = getAiExtractorModels(manager.config).map((entry) => entry.id);
-    let usesAiExtractor = false;
-    if (aiModelIds.length) {
-      // DEFAULT_EXTRACT_FORMAT can be an AI model id for pages with no matching
-      // hint (defaultExtractHint in search.js applies it as a synthetic hint),
-      // which the hint scan below can't see.
-      if (isAiModelFormat(manager.config.defaultExtractFormat, aiModelIds)) {
-        usesAiExtractor = true;
-      } else {
-        const hints = await getDomainHints(manager.config);
-        usesAiExtractor = targetUrls.some((url) => {
-          const hint = findDomainHint(url, hints);
-          if (!hint) return false;
-          if (isAiModelFormat(hint.default?.format, aiModelIds)) return true;
-          if ((hint.content?.blocks || []).some((block) => isAiModelFormat(block.format, aiModelIds))) return true;
-          return (hint.flow || []).some((step) =>
-            step.action === "extract" && (step.content?.blocks || []).some((block) => isAiModelFormat(block.format, aiModelIds))
-          );
-        });
-      }
-    }
-    mark = timer.step("ai_extractor_check", mark);
-
-    const cached = (bypassCache || usesAiExtractor) ? null : await getCachedToolResult(name, cacheKeyArgs);
+    const cached = bypassCache ? null : await getCachedToolResult(name, cacheKeyArgs);
     if (cached) {
       const maxChars = parseMaxChars(args.maxChars, manager.config.maxChars || DEFAULT_MAX_CHARS);
       const truncated = truncateResultsText(cached, maxChars);
@@ -1967,10 +1951,8 @@ async function handleToolCallInner(name, args = {}) {
       openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, includeSeoAnalysis, manager.config.debug)
     );
     mark = timer.step("open_targets", mark);
-    if (!usesAiExtractor) {
-      await setCachedToolResult(name, cacheKeyArgs, fullResult);
-      timer.step("cache_store", mark);
-    }
+    await setCachedToolResult(name, cacheKeyArgs, fullResult);
+    timer.step("cache_store", mark);
     const truncated = truncateResultsText(fullResult, maxChars);
     const response = formatOpenPageResponse(truncated);
     mark = timer.step("format_response", mark);
@@ -2769,7 +2751,7 @@ async function maybeStartHttpServer(managerOverride) {
           requests: getRequestStats(),
           engineAttempts: getEngineAttemptStats(),
           engineProfiles: getEngineProfiles(),
-          aiModels: getAiExtractorModels(manager.config),
+          postProcessorModels: getPostProcessorModels(manager.config),
           activity: getRecentActivity({ sinceId: 0, limit: 20, includePageOps: true })
         };
         logEvent("http.request", { method, path: url.pathname });
@@ -2919,25 +2901,25 @@ async function maybeStartHttpServer(managerOverride) {
           return;
         }
         const hintsPath = manager.config.domainHintsPath;
-        const aiModels = getAiExtractorModels(manager.config);
-        const aiModelIds = aiModels.map((entry) => entry.id);
+        const postProcessorModels = getPostProcessorModels(manager.config);
+        const modelIds = postProcessorModels.map((entry) => entry.id);
         try {
           if (method === "GET" && url.pathname === "/console/api/hints") {
             const hints = await loadRawDomainHints(hintsPath);
             logEvent("http.request", { method, path: url.pathname });
-            sendJson(res, 200, { ok: true, hintsPath, count: hints.length, hints, aiModels });
+            sendJson(res, 200, { ok: true, hintsPath, count: hints.length, hints, postProcessorModels });
             return;
           }
           if (method === "POST" && url.pathname === "/console/api/hints/validate") {
             const body = await readJsonBody(req);
             const scope = body?.scope === "test" ? "test" : "static";
-            const validation = validateHintRule(body?.hint, { scope, aiModelIds });
+            const validation = validateHintRule(body?.hint, { scope, aiModelIds: modelIds });
             sendJson(res, 200, { ok: true, valid: validation.errors.length === 0, ...validation });
             return;
           }
           if (method === "POST" && url.pathname === "/console/api/hints") {
             const body = await readJsonBody(req);
-            const result = await createHint(hintsPath, body?.hint, aiModelIds);
+            const result = await createHint(hintsPath, body?.hint, modelIds);
             if (!result.ok) {
               sendJson(res, 400, result);
               return;
@@ -2950,7 +2932,7 @@ async function maybeStartHttpServer(managerOverride) {
           if (method === "PUT" && updateMatch) {
             const index = Number(updateMatch[1]);
             const body = await readJsonBody(req);
-            const result = await updateHint(hintsPath, index, body?.hint, aiModelIds);
+            const result = await updateHint(hintsPath, index, body?.hint, modelIds);
             if (!result.ok) {
               sendJson(res, 400, result);
               return;
@@ -3088,7 +3070,7 @@ async function maybeStartHttpServer(managerOverride) {
             sendJson(res, 400, { ok: false, error: "hint param must be URL-encoded JSON" });
             return;
           }
-          const validation = validateHintRule(candidate, { scope: "test", aiModelIds: getAiExtractorModels(manager.config).map((entry) => entry.id) });
+          const validation = validateHintRule(candidate, { scope: "test", aiModelIds: getPostProcessorModels(manager.config).map((entry) => entry.id) });
           if (validation.errors.length) {
             recordActivityRequest("http:/extract", false, "invalid hint param");
             sendJson(res, 400, { ok: false, error: "invalid hint", validation });

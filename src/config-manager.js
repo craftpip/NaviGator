@@ -1,4 +1,4 @@
-import { parseApiKeys, parseBoolean, parseDefaultExtractFormat, parseEngines, parseSelectorList, parseToolList, parseStabilizeStrategy } from "./config.js";
+import { parseApiKeys, parseBoolean, parseDefaultExtractFormat, parseDefaultExtractPostProcessor, parseEngines, parsePostProcessorModels, parseSelectorList, parseToolList, parseStabilizeStrategy } from "./config.js";
 
 const WAIT_UNTIL_VALUES = new Set(["load", "domcontentloaded", "networkidle0", "networkidle2"]);
 
@@ -90,12 +90,10 @@ const HOT_APPLYERS = {
   ENABLE_VNC: (config, value) => { config.vncEnabled = value; },
   MCP_API_KEYS: (config, value) => { config.mcpApiKeys = value; },
   MCP_ALLOW_UNAUTHENTICATED: (config, value) => { config.mcpAllowUnauthenticated = value; },
-  AI_EXTRACTOR_TIMEOUT_MS: (config, value) => { config.aiExtractorTimeoutMs = value; },
-  AI_EXTRACTOR_MAX_INPUT_CHARS: (config, value) => { config.aiExtractorMaxInputChars = value; },
-  AI_EXTRACTOR_MAX_TOKENS: (config, value) => { config.aiExtractorMaxTokens = value; },
-  READER_LM_TIMEOUT_MS: (config, value) => { config.aiExtractorTimeoutMs = value; },
-  READER_LM_MAX_INPUT_CHARS: (config, value) => { config.aiExtractorMaxInputChars = value; },
-  READER_LM_MAX_TOKENS: (config, value) => { config.aiExtractorMaxTokens = value; }
+  POST_PROCESSOR_MODELS: (config, value) => {
+    config.postProcessorModels = parsePostProcessorModels(value) || [];
+  },
+  DEFAULT_EXTRACT_POST_PROCESSOR: (config, value) => { config.defaultExtractPostProcessor = parseDefaultExtractPostProcessor(value); }
 };
 
 export function hotApplyConfig(config, key, value) {

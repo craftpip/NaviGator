@@ -82,15 +82,11 @@ services:
       # Example: web_page_ascii,web_page_links
       DISABLE_TOOLS: ${DISABLE_TOOLS:-}
 
-      # AI Model extractor — an OpenAI-compatible endpoint serving a reader-lm
-      # model (e.g. jinaai/reader-lm-0.5b). Each AI_EXTRACTOR_MODELS entry becomes
-      # an "(AI extractor)" option in the console's Extractor dropdowns.
-      AI_EXTRACTOR_MODELS: ${AI_EXTRACTOR_MODELS:-}
-      AI_EXTRACTOR_BASE_URL: ${AI_EXTRACTOR_BASE_URL:-}
-      AI_EXTRACTOR_MODEL: ${AI_EXTRACTOR_MODEL:-}
-      AI_EXTRACTOR_TIMEOUT_MS: ${AI_EXTRACTOR_TIMEOUT_MS:-60000}
-      AI_EXTRACTOR_MAX_INPUT_CHARS: ${AI_EXTRACTOR_MAX_INPUT_CHARS:-60000}
-      AI_EXTRACTOR_MAX_TOKENS: ${AI_EXTRACTOR_MAX_TOKENS:-8192}
+      # Post-processor models — an OpenAI-compatible endpoint serving a reader-lm
+      # model (e.g. jinaai/reader-lm-0.5b). Each POST_PROCESSOR_MODELS entry becomes
+      # an "(AI Model)" option in the console's Extractor/Post-processor dropdowns.
+      POST_PROCESSOR_MODELS: ${POST_PROCESSOR_MODELS:-}
+      DEFAULT_EXTRACT_POST_PROCESSOR: ${DEFAULT_EXTRACT_POST_PROCESSOR:-}
 
       # Default extraction settings for pages with no matching domain hint.
       # Each is editable in the console: Manage → Web Fetch Extraction.

@@ -12,13 +12,13 @@ import {
   recordSearchStart,
   searchContext
 } from "./activity.js";
-import { findMatchingHints, getDomainHints, FLOW_TOTAL_TIMEOUT_MAX, isAiModelFormat } from "./domain-hints.js";
+import { findMatchingHints, getDomainHints, FLOW_TOTAL_TIMEOUT_MAX } from "./domain-hints.js";
 import { htmlToMarkdown } from "./markdown.js";
 import { getEngineDriver, getEngineMetadata, SUPPORTED_ENGINES } from "./engines/index.js";
 import { fetchDuckDuckGoInstantAnswers } from "./engines/instant-answers.js";
 import { EngineScheduler } from "./engine-scheduler.js";
 import { incrementUsageTotal } from "./db.js";
-import { extractHtmlWithAiModel, getAiExtractorModels } from "./ai-extractor.js";
+import { runPostProcessor, getPostProcessorModels } from "./post-processor.js";
 import {
   buildLlmText,
   cleanAndTruncateText,
@@ -807,15 +807,6 @@ async function renderLeafContent(element, format, url, config) {
     return element.matches?.("table") ? renderTableAsText(element) : cleanWhitespace(element.textContent || "");
   }
   const innerHtml = element.innerHTML || "";
-  if (isAiModelFormat(format, getAiExtractorModels(config).map((entry) => entry.id))) {
-    try {
-      const markdown = await extractHtmlWithAiModel({ html: element.outerHTML || "", model: format, config, debug: false });
-      if (markdown) return markdown;
-    } catch (err) {
-      console.warn(`[web_fetch] AI extractor "${format}" failed for block — falling back to html_to_markdown: ${err.message}`);
-    }
-    return htmlToMarkdown(innerHtml, { baseUrl: url }).trim();
-  }
   if (format === "html") return `\`\`\`html\n${innerHtml}\n\`\`\``;
   if (format === "markdown" || format === "html_to_markdown") return htmlToMarkdown(innerHtml, { baseUrl: url }).trim();
   if (format === "readability_to_markdown") {
@@ -940,6 +931,18 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
     }
 
     markdown = markdown.trim();
+
+    // Post-processor: block-level override > page-level default > global default
+    const blockPostProcessor = block.postProcessor ?? hint?.default?.postProcessor ?? config.defaultExtractPostProcessor;
+    if (blockPostProcessor && markdown) {
+      try {
+        const ppResult = await runPostProcessor({ text: markdown, model: blockPostProcessor, config });
+        if (ppResult) markdown = ppResult;
+      } catch (err) {
+        console.warn(`[web_fetch] post-processor "${blockPostProcessor}" failed for block — keeping original: ${err.message}`);
+      }
+    }
+
     if (!markdown && !blockHadTable) continue;
     if (block.priority === "medium" && markdown.length < 50 && !blockHadTable) continue;
     const blockLabel = (block.label || "").trim();
@@ -962,7 +965,7 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
   };
 }
 
-async function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, debug = false, strict = false, defaultExtractSkipSelectors = DEFAULT_EXTRACT_SKIP_SELECTORS, config }) {
+async function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, screenshot, debug = false, strict = false, defaultExtractSkipSelectors = DEFAULT_EXTRACT_SKIP_SELECTORS, config }) {
   const tFunc = performance.now();
   if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml called`);
   const rawHtml = typeof html === "string" ? html : "";
@@ -1005,7 +1008,7 @@ if (strict && hint?.content?.blocks?.length) {
     /* ==================== Default extraction (hint method: default) ==================== */
     const defaultBlock = hint?.default || {};
     const pageFormat = defaultBlock.format || "readability_to_markdown";
-    const aiModelIds = getAiExtractorModels(config).map((entry) => entry.id);
+    const postProcessorModel = defaultBlock.postProcessor ?? config.defaultExtractPostProcessor;
     if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: default extraction (format=${pageFormat})`);
 
     // The extractor renders tables now — no table nodes are stripped from the DOM in the
@@ -1031,24 +1034,43 @@ if (strict && hint?.content?.blocks?.length) {
       }
     }
 
-    // AI-model formats: serialize the prepared body to the model, render markdown.
-    // Falls through to html_to_markdown below when the model errors or is unconfigured.
-    if (isAiModelFormat(pageFormat, aiModelIds)) {
-      try {
-        const markdown = await extractHtmlWithAiModel({ html: doc.body.innerHTML, model: pageFormat, config, maxChars, debug });
-        if (markdown) {
-          if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: ai-extractor (${pageFormat})`);
-          return {
-            title: cleanWhitespace(doc.title || fallbackTitle || ""),
-            url,
-            text: safeTruncateText(markdown, maxChars),
-            textOriginalLength: markdown.length
-          };
+    // Screenshot format: requires a live browser page (only works in flow extraction).
+    if (pageFormat === "screenshot") {
+      if (!screenshot) throw new Error("screenshot format requires a live browser page (use in flow steps only)");
+      if (postProcessorModel) {
+        try {
+          const processed = await runPostProcessor({ screenshot, model: postProcessorModel, config });
+          if (processed) {
+            return {
+              title: cleanWhitespace(doc.title || fallbackTitle || ""),
+              url,
+              text: safeTruncateText(processed, maxChars),
+              textOriginalLength: processed.length
+            };
+          }
+        } catch (err) {
+          console.warn(`[web_fetch] [${url}] post-processor "${postProcessorModel}" failed for screenshot — falling back to raw: ${err.message}`);
         }
-      } catch (err) {
-        console.warn(`[web_fetch] [${url}] AI extractor "${pageFormat}" failed — falling back to html_to_markdown: ${err.message}`);
       }
+      return {
+        title: cleanWhitespace(doc.title || fallbackTitle || ""),
+        url,
+        text: screenshot,
+        textOriginalLength: screenshot.length
+      };
     }
+
+    // Post-processor: apply model to extracted text (default path only).
+    const applyPostProcessor = async (result) => {
+      if (!postProcessorModel || !result?.text) return result;
+      try {
+        const ppResult = await runPostProcessor({ text: result.text, model: postProcessorModel, config });
+        if (ppResult) return { ...result, text: ppResult, textOriginalLength: ppResult.length };
+      } catch (err) {
+        console.warn(`[web_fetch] [${url}] post-processor "${postProcessorModel}" failed — keeping original: ${err.message}`);
+      }
+      return result;
+    };
 
     // Readability path (default format) — extracts a clean article from the whole doc.
     // "html_to_markdown" skips Readability and keeps everything; "text" is a flat text dump.
@@ -1075,12 +1097,12 @@ if (strict && hint?.content?.blocks?.length) {
             const fullMarkdown = htmlToMarkdown(doc.body.innerHTML, { baseUrl: url });
             if (debug) console.log(">>> Using htmlToMarkdown(doc.body.innerHTML), length:", fullMarkdown.length, "preview:", fullMarkdown.substring(0,200));
             if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_htmlToMarkdown: ${Math.round(performance.now() - tFunc)}ms`);
-            return {
+            return await applyPostProcessor({
               title: cleanWhitespace(article.title || fallbackTitle || ""),
               url,
               text: safeTruncateText(fullMarkdown, maxChars),
               textOriginalLength: fullMarkdown.length
-            };
+            });
           }
         }
 
@@ -1092,24 +1114,24 @@ if (strict && hint?.content?.blocks?.length) {
           text = safeTruncateText(raw, maxChars);
           textOriginalLength = raw.length;
           if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_content: ${Math.round(performance.now() - tFunc)}ms`);
-          return {
+          return await applyPostProcessor({
             title: cleanWhitespace(article.title || fallbackTitle || ""),
             url,
             text,
             textOriginalLength
-          };
+          });
         } else {
           text = buildCleanText(articleLines, maxChars);
           textOriginalLength = articleLines.join("\n").length;
           if (debug) console.log(">>> Readability path: using buildCleanText, length:", text?.length, "preview:", text?.substring(0,200));
         }
         if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_textContent: ${Math.round(performance.now() - tFunc)}ms`);
-        return {
+        return await applyPostProcessor({
           title: cleanWhitespace(article.title || fallbackTitle || ""),
           url,
           text,
           textOriginalLength
-        };
+        });
       }
     }
 
@@ -1144,12 +1166,12 @@ if (strict && hint?.content?.blocks?.length) {
       fullText = bestMarkdown ? safeTruncateText(bestMarkdown, maxChars) : buildCleanText(lines, maxChars);
     }
     if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: fallback: ${Math.round(performance.now() - tFunc)}ms`);
-    return {
+    return await applyPostProcessor({
       title: cleanWhitespace(doc.title || fallbackTitle || ""),
       url,
       text: fullText,
       textOriginalLength: bestText.length
-    };
+    });
   } catch {
     if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: catch_all: ${Math.round(performance.now() - tFunc)}ms`);
     const fallback = elementTextWithBreaks(dom?.window?.document?.body).trim();
@@ -2153,13 +2175,16 @@ async function countVisibleMatches(page, selector) {
 }
 
 async function capturePageState(page) {
-  const [html, url, title, browserText] = await Promise.all([
+  const [html, url, title, browserText, screenshot] = await Promise.all([
     page.content(),
     Promise.resolve(page.url()),
     page.title(),
-    page.evaluate(() => document.body?.innerText || "").catch(() => "")
+    page.evaluate(() => document.body?.innerText || "").catch(() => ""),
+    typeof page.screenshot === "function"
+      ? page.screenshot({ encoding: "base64", type: "jpeg", quality: 75 }).catch(() => null)
+      : Promise.resolve(null)
   ]);
-  return { html, url, title, browserText };
+  return { html, url, title, browserText, screenshot };
 }
 
 async function extractHintStage(pageState, hint, step, maxChars, debug, defaultExtractSkipSelectors, config) {
@@ -2170,6 +2195,7 @@ async function extractHintStage(pageState, hint, step, maxChars, debug, defaultE
     fallbackTitle: pageState.title,
     hint: { ...hint, content: step.content },
     browserText: pageState.browserText,
+    screenshot: pageState.screenshot,
     debug,
     strict: true,
     defaultExtractSkipSelectors,

@@ -184,11 +184,34 @@ export function migrateHintShape(hint) {
       delete def.readability;
     }
     if (def.format === undefined) def.format = "readability_to_markdown";
+    {
+      const { format: coercedFormat, coerced } = coerceLegacyFormat(def.format);
+      if (coerced) {
+        warnings.push(`default.format "${def.format}" is a legacy model id — coerced to readability_to_markdown`);
+        def.format = coercedFormat;
+      }
+    }
     if (def.tables !== undefined) {
       if (def.tables !== "" && def.tables !== "all") {
         warnings.push(`default.tables ("${def.tables}") removed — tables are rendered by the extractor now`);
       }
       delete def.tables;
+    }
+  }
+
+  if (Array.isArray(out.flow)) {
+    for (const step of out.flow) {
+      if (step.action === "extract" && step.content?.blocks) {
+        for (const block of step.content.blocks) {
+          if (block.format) {
+            const { format: coercedFormat, coerced } = coerceLegacyFormat(block.format);
+            if (coerced) {
+              warnings.push(`block.format "${block.format}" is a legacy model id — coerced to readability_to_markdown`);
+              block.format = coercedFormat;
+            }
+          }
+        }
+      }
     }
   }
 
@@ -222,7 +245,8 @@ export const BLOCK_FORMATS = [
   "readability_to_markdown",
   "table",
   "table_json",
-  "table_csv"
+  "table_csv",
+  "screenshot"
 ];
 
 export const DEFAULT_FORMATS = [
@@ -232,10 +256,19 @@ export const DEFAULT_FORMATS = [
   "text",
   "table",
   "table_json",
-  "table_csv"
+  "table_csv",
+  "screenshot"
 ];
 
 const LEGACY_MARKDOWN_FORMAT = "markdown";
+
+function coerceLegacyFormat(format) {
+  if (!format || typeof format !== "string") return { format, coerced: false };
+  if (DEFAULT_FORMATS.includes(format) || BLOCK_FORMATS.includes(format) || format === LEGACY_MARKDOWN_FORMAT) {
+    return { format, coerced: false };
+  }
+  return { format: "readability_to_markdown", coerced: true };
+}
 
 export function isAiModelFormat(format, aiModelIds = []) {
   if (!format || typeof format !== "string") return false;
@@ -341,6 +374,9 @@ function validateBlock(block, errors, fieldPrefix, aiModelIds) {
     const validExtractors = getValidExtractors(BLOCK_FORMATS, aiModelIds);
     if (!validExtractors.includes(block.format) && block.format !== LEGACY_MARKDOWN_FORMAT) {
       errors.push({ field: `${prefix}format`, message: `must be one of ${validExtractors.map((f) => `"${f}"`).join(", ")}` });
+    }
+    if (block.postProcessor !== undefined && (typeof block.postProcessor !== "string" || !block.postProcessor.trim())) {
+      errors.push({ field: `${prefix}postProcessor`, message: "optional; when present must be a non-empty string (model id from POST_PROCESSOR_MODELS)" });
     }
     return;
   }
@@ -632,11 +668,16 @@ function validateDefault(defaultBlock, errors, warnings, aiModelIds) {
       errors.push({ field: "default.format", message: `must be one of ${validExtractors.map((f) => `"${f}"`).join(", ")}` });
     }
   }
+  if (defaultBlock.postProcessor !== undefined) {
+    if (typeof defaultBlock.postProcessor !== "string" || !defaultBlock.postProcessor.trim()) {
+      errors.push({ field: "default.postProcessor", message: "optional; when present must be a non-empty string (model id from POST_PROCESSOR_MODELS)" });
+    }
+  }
   if (defaultBlock.readability !== undefined) {
     warnings.push({ field: "default.readability", message: 'replaced by "format" — use "readability_to_markdown" or "html_to_markdown"' });
   }
   for (const key of Object.keys(defaultBlock)) {
-    if (!["waitForSelector", "stabilizeStrategy", "waitForContent", "skipSelectors", "format"].includes(key)) {
+    if (!["waitForSelector", "stabilizeStrategy", "waitForContent", "skipSelectors", "format", "postProcessor"].includes(key)) {
       if (key === "tables") {
         if (defaultBlock.tables !== "" && defaultBlock.tables !== "all") {
           warnings.push({ field: "default.tables", message: 'removed — tables are rendered by the extractor now (delete this key); the "table" / "table_json" / "table_csv" extractors return tables-only output' });

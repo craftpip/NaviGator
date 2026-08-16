@@ -423,12 +423,107 @@ dropdowns (line 411 special-case updated).
 `runPostProcessor`, `getPostProcessorModels`, config key `postProcessorModels`, env
 `POST_PROCESSOR_MODELS`) and removes the five per-call/legacy env vars.
 
-### Phase 2 — Post-processor pipeline (not started)
+### Phase 2 — Post-processor pipeline (done)
 
-- [ ] `src/config.js`: rename to `postProcessorModels`; `inputs` validation + per-kind fields (`api`: path/method/body/headers/outputField/outputType; `mineru` and `chat` unchanged) + per-entry `maxTokens`/`maxInputChars`/`timeoutMs`; `DEFAULT_EXTRACT_POST_PROCESSOR`; delete the legacy fallback + the 3 limit-var parses
-- [ ] `src/ai-extractor.js` → `src/post-processor.js`: `extractWithChatImage` (image) + `extractWithApi` (custom API, `{{input}}` body template, outputField/outputType); `extractWithMineru` + `extractWithChat` unchanged; exactly-one-payload `runPostProcessor`
-- [ ] `src/search.js`: post-processor hook after extractor in `renderLeafContent` + `extractTextFromHtml`; new `screenshot` format (capture in `browserOpenAndExtract` + flow `capturePageState`, thread down); model-format → `readability_to_markdown` coercion on load
-- [ ] `src/mcp-server.js`: end-result caching (delete `usesAiExtractor` skip + `cachedHtmlByUrl` replay); cache key includes effective extractor + post-processor; payload `aiModels` → `postProcessorModels`
-- [ ] `src/web-console/src/main.jsx`: extractor dropdown (no model ids, has `screenshot` label); post-processor dropdowns; special JSON editor pane; group label → "Web Fetch Post-Processors"
-- [ ] tests: parse/validation, per-kind dispatch, `extractWithApi` interpolation, mismatch + failure fallback, coercion, end-result cache key, console bundle
+- [x] `src/config.js`: rename to `postProcessorModels`; `inputs` validation + per-kind fields (`api`: path/method/body/headers/outputField/outputType; `mineru` and `chat` unchanged) + per-entry `maxTokens`/`maxInputChars`/`timeoutMs`; `DEFAULT_EXTRACT_POST_PROCESSOR`; delete the legacy fallback + the 3 limit-var parses
+- [x] `src/ai-extractor.js` → `src/post-processor.js`: `extractWithChatImage` (image) + `extractWithApi` (custom API, `{{input}}` body template, outputField/outputType); `extractWithMineru` + `extractWithChat` unchanged; exactly-one-payload `runPostProcessor`
+- [x] `src/search.js`: post-processor hook after extractor in `renderLeafContent` + `extractTextFromHtml`; new `screenshot` format (capture in `browserOpenAndExtract` + flow `capturePageState`, thread down); model-format → `readability_to_markdown` coercion on load
+- [x] `src/mcp-server.js`: end-result caching (delete `usesAiExtractor` skip + `cachedHtmlByUrl` replay); cache key includes effective extractor + post-processor; payload `aiModels` → `postProcessorModels`
+- [x] `src/web-console/src/main.jsx`: extractor dropdown (no model ids, has `screenshot` label); post-processor dropdowns; group label → "Web Fetch Post-Processors"
+- [x] `src/config-manager.js` + `src/config.js`: removed `config.aiExtractorModels` backward-compat alias
+- [x] `src/domain-hints.js`: model-format coercion in `migrateHintShape` (default.format + block format)
+- [x] `src/config.js`: `parseDefaultExtractFormat` coerces legacy model ids to `readability_to_markdown`
+- [x] tests: `tests/post-processor.test.js` (29 tests: chat/mineru/api dispatch, interpolation, screenshot, concurrency, input validation); coercion tests in `config.test.js` + `domain-hints.test.js`; old `tests/ai-extractor.test.js` deleted
+- [x] docs: AGENTS.md, README.md, `.env.example`, `.env.example.full`, `docs/navigator-mineru-sidecar.md`
+
+### Phase 3 — Console structured editor for POST_PROCESSOR_MODELS (not started)
+
+Replace the generic JSON text input for `POST_PROCESSOR_MODELS` with a dedicated structured
+editor. Also make `DEFAULT_EXTRACT_POST_PROCESSOR` a dropdown populated from the entered models.
+
+#### POST_PROCESSOR_MODELS structured editor
+
+A card-based UI where each card represents one post-processor model entry. Each card has
+inline form fields — no raw JSON editing (the JSON pane is still available via a toggle).
+
+**Per-card fields:**
+
+| Field | UI control | Notes |
+|---|---|---|
+| `id` | text input | Required. Unique identifier, used as the value for `DEFAULT_EXTRACT_POST_PROCESSOR` and block `postProcessor`. |
+| `label` | text input | Display name shown in dropdowns. |
+| `model` | text input | Model name sent to the endpoint (chat) or informational (mineru/api). |
+| `baseUrl` | text input | Base URL of the endpoint. |
+| `kind` | select: `chat` · `mineru` · `api` | Controls which fields are visible below. |
+| `inputs` | multi-checkbox: `html` · `text` · `image` | Default `["text"]`. Determines which payloads the model accepts (for dropdown labeling). |
+| `prompt` | text input (optional) | Custom prompt for screenshot/image mode. |
+
+**Kind-dependent fields** (shown/hidden based on `kind`):
+
+| Kind | Extra fields |
+|---|---|
+| `chat` | `maxTokens` (number, default 8192), `maxInputChars` (number, default 60000), `timeoutMs` (number, default 60000) |
+| `mineru` | `timeoutMs` (number, default 60000) |
+| `api` | `path` (text, e.g. `/extract`), `method` (select: `POST` · `GET`), `body` (textarea — JSON template with `{{input}}`), `headers` (textarea — JSON object), `outputField` (text, dot-path like `result.text`), `outputType` (select: `json` · `text`), `timeoutMs` (number, default 60000) |
+
+**Card actions:**
+- **Add entry** button at the bottom of the list
+- **Remove** button (×) on each card
+- **Duplicate** button (⧉) on each card (copies all fields)
+- Cards are reorderable via drag handle (future, not v1)
+
+**Validation:**
+- `id` is required and must be unique across entries
+- `baseUrl` is required
+- `kind` defaults to `chat`
+- `body` in api kind must be valid JSON (or at least contain `{{input}}`)
+- Validation errors show inline under the relevant field
+
+**JSON toggle:** A "Show JSON" / "Show Form" toggle at the top of the section. In JSON
+mode, the current generic textarea is shown (for power users / paste-from-clipboard). Switching
+to form mode parses the JSON into cards. Switching back to JSON mode serializes cards → JSON.
+
+**Implementation:**
+- New component `PostProcessorModelsEditor` in `main.jsx`
+- Receives `value` (JSON string), `onChange` (new JSON string), `ok`, `message`
+- Parses JSON on mount and on external value changes; serializes on every card edit
+- The `ValueControl` function in `main.jsx` gets a new special-case branch:
+  `if (entry.key === "POST_PROCESSOR_MODELS") return <PostProcessorModelsEditor ... />`
+
+#### DEFAULT_EXTRACT_POST_PROCESSOR dropdown
+
+Currently a text input. Change to a **select dropdown** populated from the `postProcessorModels`
+config array (which the Manage panel has access to as `config.postProcessorModels`).
+
+**Options:**
+- Empty string `""` — "None (no post-processor)"
+- One option per entry in `config.postProcessorModels`: `{ value: entry.id, label: entry.label || entry.id }`
+
+The dropdown is rebuilt on every render from the live config, so adding/removing entries in the
+POST_PROCESSOR_MODELS editor above immediately updates the available options.
+
+**Implementation:**
+- New special-case branch in `ValueControl`:
+  `if (entry.key === "DEFAULT_EXTRACT_POST_PROCESSOR") { ... }`
+- Reads `config.postProcessorModels` (passed as a new prop to `ValueControl`, or accessed
+  via the parent `Manage` component's `config` prop)
+- Renders a `<select>` with the empty option + one per model
+
+#### Files to change
+
+| File | What |
+|---|---|
+| `src/web-console/src/main.jsx` | New `PostProcessorModelsEditor` component; `ValueControl` special cases for both keys; `Manage` passes `config.postProcessorModels` down |
+| `src/web-console/src/main.jsx` | `DEFAULT_EXTRACT_POST_PROCESSOR` row in the config schema (already exists as a `type: "string"` entry) gets its `ValueControl` overridden |
+| Console rebuild | `docker exec navigator npm run console:build` |
+
+#### Open questions
+
+1. Should the JSON toggle be per-entry or global? Recommend **global** (one toggle for the
+   whole POST_PROCESSOR_MODELS section) — simpler, and power users paste entire arrays.
+2. Should `body` in api kind get syntax highlighting or just a plain textarea? Recommend
+   **plain textarea** for v1 — syntax highlighting requires a code editor dependency.
+3. Should we validate `body` contains `{{input}}`? Yes — warn (not error) if `{{input}}` is
+   missing, since the body will be sent as-is without any interpolation.
+
 - [ ] live NSE smoke test with OvisOCR2 (`inputs: ["image","text"]`, `DEFAULT_EXTRACT_FORMAT=screenshot` + `DEFAULT_EXTRACT_POST_PROCESSOR=ovis_ocr2`)

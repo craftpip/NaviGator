@@ -54,9 +54,9 @@ own lifecycle. If it is down, navigator's AI extractor **falls back to
 | `docker/navigator-mineru/Dockerfile` | Image: python:3.11-slim + gcc/g++/libcairo2 + `mineru_html[vllm]==1.1.2` + baked model |
 | `docker/navigator-mineru/sidecar.py` | FastAPI wrapper; backend selection; concurrency gate; `MAX_INPUT_CHARS` tail-cut; all runtime knobs from `MINERU_*` env vars |
 | `docker-compose.yml` | `navigator-mineru` service: nvidia runtime, `:8001`, shm 2gb, mem limit; every knob exposed as `${MINERU_*:-default}` |
-| `src/ai-extractor.js` | `extractWithMineru()` client; `MINERU_MAX_INPUT_CHARS` safety cap; concurrency gate |
-| `src/config.js` | `AI_EXTRACTOR_MODELS` entries carry `kind: "mineru"` (`parseAiModelKind`, `AI_MODEL_KINDS`) |
-| `src/search.js` | `extractHtmlWithAiModel` dispatches on `entry.kind` |
+| `src/post-processor.js` | `extractWithMineru()` client; `MINERU_MAX_INPUT_CHARS` safety cap; concurrency gate |
+| `src/config.js` | `POST_PROCESSOR_MODELS` entries carry `kind: "mineru"` (`parsePostProcessorKind`, `POST_PROCESSOR_KINDS`) |
+| `src/search.js` | `runPostProcessor` dispatches on `entry.kind` |
 
 ## Model
 
@@ -246,7 +246,7 @@ navigator-mineru:
   ports: ["${MINERU_PORT:-8001}:8001"]
 ```
 
-### Navigator-side entry (`AI_EXTRACTOR_MODELS`)
+### Navigator-side entry (`POST_PROCESSOR_MODELS`)
 
 Add a model entry with `kind: "mineru"` and the sidecar's base URL, e.g.:
 

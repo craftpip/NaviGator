@@ -94,6 +94,17 @@ const DEFAULT_EXTRACT_FORMAT_DEFAULT = "readability_to_markdown";
 export function parseDefaultExtractFormat(value) {
   const raw = typeof value === "string" ? value.trim() : "";
   if (!raw) return DEFAULT_EXTRACT_FORMAT_DEFAULT;
+  const known = ["readability_to_markdown", "html_to_markdown", "html", "text", "table", "table_json", "table_csv", "screenshot", "markdown"];
+  if (!known.includes(raw)) {
+    console.warn(`[config] DEFAULT_EXTRACT_FORMAT "${raw}" is a legacy model id — coercing to readability_to_markdown`);
+    return DEFAULT_EXTRACT_FORMAT_DEFAULT;
+  }
+  return raw === "markdown" ? DEFAULT_EXTRACT_FORMAT_DEFAULT : raw;
+}
+
+export function parseDefaultExtractPostProcessor(value) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return "";
   return raw;
 }
 
@@ -105,30 +116,40 @@ export function parseApiKeys(value) {
     .filter(Boolean))];
 }
 
-const AI_MODEL_KINDS = new Set(["chat", "mineru"]);
+const POST_PROCESSOR_KINDS = new Set(["chat", "mineru", "api"]);
+const POST_PROCESSOR_INPUTS = new Set(["html", "text", "screenshot"]);
 
-export function parseAiModelKind(value, fallback = "chat") {
+export function parsePostProcessorKind(value, fallback = "chat") {
   const normalized = String(value || "").trim().toLowerCase();
-  return AI_MODEL_KINDS.has(normalized) ? normalized : fallback;
+  return POST_PROCESSOR_KINDS.has(normalized) ? normalized : fallback;
+}
+
+export function parsePostProcessorInputs(value) {
+  if (!value) return undefined;
+  const raw = Array.isArray(value) ? value : String(value).split(",").map((s) => s.trim()).filter(Boolean);
+  const valid = raw.filter((v) => POST_PROCESSOR_INPUTS.has(v));
+  return valid.length ? valid : undefined;
 }
 
 const deprecatedWarned = new Set();
 
-// Read a config env var with a deprecated READER_LM_* fallback. New names win;
+// Read a config env var with one or more deprecated fallbacks. Newest name wins;
 // using an old name logs a one-time warning so the migration is visible but not noisy.
-export function readConfigEnv(newKey, legacyKey) {
+export function readConfigEnv(newKey, ...legacyKeys) {
   if (process.env[newKey] !== undefined) return process.env[newKey];
-  if (process.env[legacyKey] !== undefined) {
-    if (!deprecatedWarned.has(legacyKey)) {
-      deprecatedWarned.add(legacyKey);
-      console.warn(`[config] ${legacyKey} is deprecated — use ${newKey} instead. It still works but will be removed in a future release.`);
+  for (const legacyKey of legacyKeys) {
+    if (process.env[legacyKey] !== undefined) {
+      if (!deprecatedWarned.has(legacyKey)) {
+        deprecatedWarned.add(legacyKey);
+        console.warn(`[config] ${legacyKey} is deprecated — use ${newKey} instead. It still works but will be removed in a future release.`);
+      }
+      return process.env[legacyKey];
     }
-    return process.env[legacyKey];
   }
   return undefined;
 }
 
-export function parseAiExtractorModels(value) {
+export function parsePostProcessorModels(value) {
   if (!value || typeof value !== "string") return null;
   try {
     const parsed = JSON.parse(value);
@@ -146,9 +167,20 @@ export function parseAiExtractorModels(value) {
         baseUrl: typeof entry.baseUrl === "string" && entry.baseUrl.trim()
           ? String(entry.baseUrl).trim().replace(/\/+$/, "")
           : null,
-        kind: parseAiModelKind(entry.kind)
+        kind: parsePostProcessorKind(entry.kind),
+        inputs: parsePostProcessorInputs(entry.inputs),
+        path: typeof entry.path === "string" ? entry.path : undefined,
+        method: typeof entry.method === "string" ? entry.method : undefined,
+        body: entry.body,
+        headers: entry.headers && typeof entry.headers === "object" ? entry.headers : undefined,
+        outputField: typeof entry.outputField === "string" ? entry.outputField : undefined,
+        outputType: typeof entry.outputType === "string" ? entry.outputType : undefined,
+        prompt: typeof entry.prompt === "string" ? entry.prompt : undefined,
+        timeoutMs: typeof entry.timeoutMs === "number" && entry.timeoutMs > 0 ? entry.timeoutMs : undefined,
+        maxInputChars: typeof entry.maxInputChars === "number" && entry.maxInputChars > 0 ? entry.maxInputChars : undefined,
+        maxTokens: typeof entry.maxTokens === "number" && entry.maxTokens > 0 ? entry.maxTokens : undefined,
       }))
-      .filter((entry) => entry.model && entry.baseUrl);
+      .filter((entry) => (entry.kind === "api" ? entry.baseUrl : entry.model && entry.baseUrl));
     return entries.length ? entries : null;
   } catch {
     return null;
@@ -456,18 +488,18 @@ export async function loadConfig() {
       process.env.SEARCH_ENABLED_ENGINES,
       DEFAULT_SEARCH_ENABLED_ENGINES
     ),
-    aiExtractorModels: resolveAiExtractorModels(),
-    aiExtractorTimeoutMs: parseNumber(readConfigEnv("AI_EXTRACTOR_TIMEOUT_MS", "READER_LM_TIMEOUT_MS"), 60000),
-    aiExtractorMaxInputChars: parseInteger(readConfigEnv("AI_EXTRACTOR_MAX_INPUT_CHARS", "READER_LM_MAX_INPUT_CHARS"), 60000),
-    aiExtractorMaxTokens: parseInteger(readConfigEnv("AI_EXTRACTOR_MAX_TOKENS", "READER_LM_MAX_TOKENS"), 8192)
+    postProcessorModels: resolvePostProcessorModels(),
+    defaultExtractPostProcessor: parseDefaultExtractPostProcessor(
+      readConfigEnv("DEFAULT_EXTRACT_POST_PROCESSOR")
+    )
   };
 }
 
-function resolveAiExtractorModels() {
-  const configured = parseAiExtractorModels(readConfigEnv("AI_EXTRACTOR_MODELS", "READER_LM_MODELS"));
+function resolvePostProcessorModels() {
+  const configured = parsePostProcessorModels(readConfigEnv("POST_PROCESSOR_MODELS", "AI_EXTRACTOR_MODELS", "READER_LM_MODELS"));
   if (configured) return configured;
-  const baseUrl = (readConfigEnv("AI_EXTRACTOR_BASE_URL", "READER_LM_BASE_URL") || "").trim().replace(/\/+$/, "");
+  const baseUrl = (readConfigEnv("POST_PROCESSOR_BASE_URL", "AI_EXTRACTOR_BASE_URL", "READER_LM_BASE_URL") || "").trim().replace(/\/+$/, "");
   if (!baseUrl) return [];
-  const model = (readConfigEnv("AI_EXTRACTOR_MODEL", "READER_LM_MODEL") || "reader-lm:0.5b").trim();
+  const model = (readConfigEnv("POST_PROCESSOR_MODEL", "AI_EXTRACTOR_MODEL", "READER_LM_MODEL") || "reader-lm:0.5b").trim();
   return [{ id: "reader_lm", label: model, model, baseUrl, kind: "chat" }];
 }

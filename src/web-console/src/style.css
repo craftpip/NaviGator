@@ -1417,6 +1417,151 @@ select.config-input option {
   overflow-wrap: anywhere;
 }
 
+/* Post-Processor Models Editor */
+.pp-editor {
+  width: 100%;
+  min-width: 380px;
+}
+.pp-toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.pp-json-pane {
+  width: 100%;
+}
+.pp-json-textarea {
+  width: 100%;
+  min-height: 120px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 5px 7px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.pp-json-textarea.invalid {
+  border-color: var(--red);
+}
+.pp-cards {
+  display: flex;
+  flex-direction: column;
+}
+.pp-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+.pp-card {
+  padding: 8px 0;
+}
+.pp-card + .pp-card {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding-top: 12px;
+}
+.pp-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+.pp-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+.pp-card-url {
+  font-weight: 400;
+  font-size: 10px;
+  opacity: 0.6;
+  word-break: break-all;
+}
+.pp-card-actions {
+  display: flex;
+  gap: 4px;
+}
+.pp-card-actions .button {
+  padding: 2px 6px;
+  font-size: 11px;
+}
+.pp-card-actions .button.danger {
+  color: var(--red);
+}
+.pp-card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pp-field-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pp-field-row > label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  min-width: 120px;
+  flex: 1;
+}
+.pp-field-row > label .config-input,
+.pp-field-row > label select.config-input {
+  font-size: 11px;
+  padding: 4px 6px;
+  min-width: 0;
+}
+.pp-field-row > label .pp-textarea {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.4;
+  min-height: 32px;
+  resize: vertical;
+}
+.pp-checkbox-group {
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+}
+.pp-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+  padding: 3px 0;
+}
+.pp-checkbox input[type="checkbox"] {
+  margin: 0;
+  margin-top: -1px;
+  cursor: pointer;
+}
+.pp-checkbox:hover {
+  color: var(--accent);
+}
+
 /* Tools — MCP schema-driven playground */
 .tools {
   padding: 10px;

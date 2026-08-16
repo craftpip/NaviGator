@@ -5,15 +5,15 @@ import { JSDOM } from "jsdom";
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll, beforeEach } from "vitest";
 
 const mockGetBrowserManager = vi.fn();
-const { mockExtractHtmlWithAiModel } = vi.hoisted(() => ({ mockExtractHtmlWithAiModel: vi.fn() }));
+const { mockRunPostProcessor } = vi.hoisted(() => ({ mockRunPostProcessor: vi.fn() }));
 
 vi.mock("../src/browser.js", () => ({
   getBrowserManager: (...args) => mockGetBrowserManager(...args),
 }));
 
-vi.mock("../src/ai-extractor.js", async (importOriginal) => {
+vi.mock("../src/post-processor.js", async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, extractHtmlWithAiModel: mockExtractHtmlWithAiModel };
+  return { ...actual, runPostProcessor: mockRunPostProcessor };
 });
 
 vi.mock("cloakbrowser", () => ({}));
@@ -828,19 +828,19 @@ describe("browserOpenAndExtract", () => {
     }
   });
 
-  it("AI extractor returns the model's markdown for a default hint", async () => {
+  it("post-processor returns the model's markdown for a default hint", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-ai-"));
     const hintsPath = path.join(tempDir, "domain-hints.json");
     await fs.writeFile(hintsPath, JSON.stringify([{
       domain: "example.com",
       pathPattern: "/**",
-      default: { format: "reader_lm" }
+      default: { format: "readability_to_markdown", postProcessor: "reader_lm" }
     }]));
 
-    mockExtractHtmlWithAiModel.mockResolvedValue("# Model output\n\nSummary paragraph.");
+    mockRunPostProcessor.mockResolvedValue("# Model output\n\nSummary paragraph.");
     mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
       hintsPath,
-      configOverrides: { aiExtractorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
+      configOverrides: { postProcessorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
       html: `<!doctype html><html><head><title>AI page</title></head><body><main><p>Source content.</p></main></body></html>`
     }));
 
@@ -849,27 +849,27 @@ describe("browserOpenAndExtract", () => {
       const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
 
       expect(result.text).toContain("# Model output");
-      expect(mockExtractHtmlWithAiModel).toHaveBeenCalledWith(expect.objectContaining({ model: "reader_lm" }));
+      expect(mockRunPostProcessor).toHaveBeenCalledWith(expect.objectContaining({ model: "reader_lm" }));
     } finally {
-      mockExtractHtmlWithAiModel.mockReset();
+      mockRunPostProcessor.mockReset();
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
-  it("AI extractor failure falls back to html_to_markdown", async () => {
+  it("post-processor failure falls back to html_to_markdown", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-ai-"));
     const hintsPath = path.join(tempDir, "domain-hints.json");
     await fs.writeFile(hintsPath, JSON.stringify([{
       domain: "example.com",
       pathPattern: "/**",
-      default: { format: "reader_lm" }
+      default: { format: "readability_to_markdown", postProcessor: "reader_lm" }
     }]));
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    mockExtractHtmlWithAiModel.mockRejectedValue(new Error("HTTP 500"));
+    mockRunPostProcessor.mockRejectedValue(new Error("HTTP 500"));
     mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
       hintsPath,
-      configOverrides: { aiExtractorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
+      configOverrides: { postProcessorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
       html: `<!doctype html><html><head><title>AI fallback</title></head><body><main><h1>Fallback heading</h1><p>Fallback content here.</p></main></body></html>`
     }));
 
@@ -878,15 +878,15 @@ describe("browserOpenAndExtract", () => {
       const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
 
       expect(result.text).toContain("Fallback content here.");
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("falling back to html_to_markdown"));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("post-processor"));
     } finally {
-      mockExtractHtmlWithAiModel.mockReset();
+      mockRunPostProcessor.mockReset();
       warnSpy.mockRestore();
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
 
-  it("AI extractor works as a block format inside a flow", async () => {
+  it("post-processor works as a block format inside a flow", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-ai-"));
     const hintsPath = path.join(tempDir, "domain-hints.json");
     await fs.writeFile(hintsPath, JSON.stringify([{
@@ -895,14 +895,14 @@ describe("browserOpenAndExtract", () => {
       flow: [{
         action: "extract",
         label: "AI section",
-        content: { blocks: [{ selector: "article", label: "Article", priority: "high", format: "reader_lm" }] }
+        content: { blocks: [{ selector: "article", label: "Article", priority: "high", format: "readability_to_markdown", postProcessor: "reader_lm" }] }
       }]
     }]));
 
-    mockExtractHtmlWithAiModel.mockResolvedValue("Block AI output");
+    mockRunPostProcessor.mockResolvedValue("Block AI output");
     mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
       hintsPath,
-      configOverrides: { aiExtractorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
+      configOverrides: { postProcessorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
       html: `<!doctype html><html><head><title>AI block</title></head><body><article><p>Article body.</p></article></body></html>`
     }));
 
@@ -911,9 +911,9 @@ describe("browserOpenAndExtract", () => {
       const result = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
 
       expect(result.text).toContain("Block AI output");
-      expect(mockExtractHtmlWithAiModel).toHaveBeenCalledWith(expect.objectContaining({ model: "reader_lm" }));
+      expect(mockRunPostProcessor).toHaveBeenCalledWith(expect.objectContaining({ model: "reader_lm" }));
     } finally {
-      mockExtractHtmlWithAiModel.mockReset();
+      mockRunPostProcessor.mockReset();
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });

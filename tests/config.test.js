@@ -139,7 +139,13 @@ describe("parseDefaultExtract", () => {
     const { parseDefaultExtractFormat } = await import("../src/config.js");
     expect(parseDefaultExtractFormat("html_to_markdown")).toBe("html_to_markdown");
     expect(parseDefaultExtractFormat("table_csv")).toBe("table_csv");
-    expect(parseDefaultExtractFormat("reader_lm")).toBe("reader_lm");
+  });
+
+  it("coerces legacy model-id format to readability_to_markdown", async () => {
+    const { parseDefaultExtractFormat } = await import("../src/config.js");
+    expect(parseDefaultExtractFormat("reader_lm")).toBe("readability_to_markdown");
+    expect(parseDefaultExtractFormat("mineru")).toBe("readability_to_markdown");
+    expect(parseDefaultExtractFormat("unknown_model")).toBe("readability_to_markdown");
   });
 
   it("parses the stabilize strategy with an empty-string inherit default", async () => {
@@ -206,65 +212,62 @@ describe("loadConfig (DEFAULT_EXTRACT_SKIP_SELECTORS)", () => {
   });
 });
 
-describe("parseAiExtractorModels / readConfigEnv (READER_LM_* → AI_EXTRACTOR_* rename)", () => {
-  it("parses AI_EXTRACTOR_MODELS entries with id/model/baseUrl/kind", async () => {
-    const { parseAiExtractorModels } = await import("../src/config.js");
-    const models = parseAiExtractorModels(
+describe("parsePostProcessorModels / readConfigEnv (READER_LM_* → AI_EXTRACTOR_* → POST_PROCESSOR_* rename)", () => {
+  it("parses POST_PROCESSOR_MODELS entries with id/model/baseUrl/kind/inputs", async () => {
+    const { parsePostProcessorModels } = await import("../src/config.js");
+    const models = parsePostProcessorModels(
       JSON.stringify([
         { id: "reader_lm", label: "reader-lm-0.5b", model: "reader-lm:0.5b", baseUrl: "http://o:11434/v1" },
-        { id: "mineru", label: "MinerU-HTML", model: "mineru", kind: "mineru", baseUrl: "http://mineru:8000" }
+        { id: "mineru", label: "MinerU-HTML", model: "mineru", kind: "mineru", baseUrl: "http://mineru:8000" },
+        { id: "custom_api", label: "Custom API", kind: "api", baseUrl: "http://custom:3000", body: { input: "{{input}}" }, outputField: "result.text", outputType: "json" }
       ])
     );
     expect(models).toEqual([
-      { id: "reader_lm", label: "reader-lm-0.5b", model: "reader-lm:0.5b", baseUrl: "http://o:11434/v1", kind: "chat" },
-      { id: "mineru", label: "MinerU-HTML", model: "mineru", baseUrl: "http://mineru:8000", kind: "mineru" }
+      { id: "reader_lm", label: "reader-lm-0.5b", model: "reader-lm:0.5b", baseUrl: "http://o:11434/v1", kind: "chat", inputs: undefined, path: undefined, method: undefined, body: undefined, headers: undefined, outputField: undefined, outputType: undefined, prompt: undefined, timeoutMs: undefined, maxInputChars: undefined, maxTokens: undefined },
+      { id: "mineru", label: "MinerU-HTML", model: "mineru", baseUrl: "http://mineru:8000", kind: "mineru", inputs: undefined, path: undefined, method: undefined, body: undefined, headers: undefined, outputField: undefined, outputType: undefined, prompt: undefined, timeoutMs: undefined, maxInputChars: undefined, maxTokens: undefined },
+      { id: "custom_api", label: "Custom API", model: null, baseUrl: "http://custom:3000", kind: "api", inputs: undefined, path: undefined, method: undefined, body: { input: "{{input}}" }, headers: undefined, outputField: "result.text", outputType: "json", prompt: undefined, timeoutMs: undefined, maxInputChars: undefined, maxTokens: undefined }
     ]);
   });
 
-  it("readConfigEnv prefers the new name and falls back to the deprecated one", async () => {
+  it("readConfigEnv prefers the newest name and falls back through legacy names", async () => {
     const { readConfigEnv } = await import("../src/config.js");
-    vi.stubEnv("AI_EXTRACTOR_TIMEOUT_MS", "111");
-    vi.stubEnv("READER_LM_TIMEOUT_MS", "222");
-    expect(readConfigEnv("AI_EXTRACTOR_TIMEOUT_MS", "READER_LM_TIMEOUT_MS")).toBe("111");
+    vi.stubEnv("POST_PROCESSOR_MODELS", "111");
+    vi.stubEnv("AI_EXTRACTOR_MODELS", "222");
+    vi.stubEnv("READER_LM_MODELS", "333");
+    expect(readConfigEnv("POST_PROCESSOR_MODELS", "AI_EXTRACTOR_MODELS", "READER_LM_MODELS")).toBe("111");
 
-    vi.stubEnv("AI_EXTRACTOR_TIMEOUT_MS", undefined);
-    vi.stubEnv("READER_LM_TIMEOUT_MS", "222");
-    expect(readConfigEnv("AI_EXTRACTOR_TIMEOUT_MS", "READER_LM_TIMEOUT_MS")).toBe("222");
+    vi.stubEnv("POST_PROCESSOR_MODELS", undefined);
+    expect(readConfigEnv("POST_PROCESSOR_MODELS", "AI_EXTRACTOR_MODELS", "READER_LM_MODELS")).toBe("222");
 
-    vi.stubEnv("AI_EXTRACTOR_TIMEOUT_MS", undefined);
-    vi.stubEnv("READER_LM_TIMEOUT_MS", undefined);
-    expect(readConfigEnv("AI_EXTRACTOR_TIMEOUT_MS", "READER_LM_TIMEOUT_MS")).toBeUndefined();
+    vi.stubEnv("AI_EXTRACTOR_MODELS", undefined);
+    expect(readConfigEnv("POST_PROCESSOR_MODELS", "AI_EXTRACTOR_MODELS", "READER_LM_MODELS")).toBe("333");
+
+    vi.stubEnv("READER_LM_MODELS", undefined);
+    expect(readConfigEnv("POST_PROCESSOR_MODELS", "AI_EXTRACTOR_MODELS", "READER_LM_MODELS")).toBeUndefined();
   });
 
-  it("loadConfig maps AI_EXTRACTOR_* env vars into aiExtractor* config keys", async () => {
+  it("loadConfig maps POST_PROCESSOR_MODELS env var into postProcessorModels config key", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
-    vi.stubEnv("AI_EXTRACTOR_MODELS", JSON.stringify([{ id: "reader_lm", label: "reader-lm-0.5b", model: "reader-lm:0.5b", baseUrl: "http://o:11434/v1" }]));
-    vi.stubEnv("AI_EXTRACTOR_TIMEOUT_MS", "12345");
-    vi.stubEnv("AI_EXTRACTOR_MAX_INPUT_CHARS", "54321");
-    vi.stubEnv("AI_EXTRACTOR_MAX_TOKENS", "4096");
+    vi.stubEnv("POST_PROCESSOR_MODELS", JSON.stringify([{ id: "reader_lm", label: "reader-lm-0.5b", model: "reader-lm:0.5b", baseUrl: "http://o:11434/v1" }]));
     const { loadConfig } = await import("../src/config.js");
     const config = await loadConfig();
-    expect(config.aiExtractorModels).toEqual([
-      { id: "reader_lm", label: "reader-lm-0.5b", model: "reader-lm:0.5b", baseUrl: "http://o:11434/v1", kind: "chat" }
+    expect(config.postProcessorModels).toEqual([
+      { id: "reader_lm", label: "reader-lm-0.5b", model: "reader-lm:0.5b", baseUrl: "http://o:11434/v1", kind: "chat", inputs: undefined, path: undefined, method: undefined, body: undefined, headers: undefined, outputField: undefined, outputType: undefined, prompt: undefined, timeoutMs: undefined, maxInputChars: undefined, maxTokens: undefined }
     ]);
-    expect(config.aiExtractorTimeoutMs).toBe(12345);
-    expect(config.aiExtractorMaxInputChars).toBe(54321);
-    expect(config.aiExtractorMaxTokens).toBe(4096);
   });
 
-  it("loadConfig falls back to deprecated READER_LM_* env vars", async () => {
+  it("loadConfig falls back to deprecated AI_EXTRACTOR_MODELS and READER_LM_* env vars", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("POST_PROCESSOR_MODELS", undefined);
     vi.stubEnv("AI_EXTRACTOR_MODELS", undefined);
     vi.stubEnv("READER_LM_MODELS", undefined);
     vi.stubEnv("READER_LM_BASE_URL", "http://legacy:11434/v1");
     vi.stubEnv("READER_LM_MODEL", "reader-lm:0.5b");
-    vi.stubEnv("READER_LM_TIMEOUT_MS", "777");
     const { loadConfig } = await import("../src/config.js");
     const config = await loadConfig();
-    expect(config.aiExtractorModels).toEqual([
-      { id: "reader_lm", label: "reader-lm:0.5b", model: "reader-lm:0.5b", baseUrl: "http://legacy:11434/v1", kind: "chat" }
+    expect(config.postProcessorModels).toEqual([
+      { id: "reader_lm", label: "reader-lm:0.5b", model: "reader-lm:0.5b", baseUrl: "http://legacy:11434/v1", kind: "chat", inputs: undefined, path: undefined, method: undefined, body: undefined, headers: undefined, outputField: undefined, outputType: undefined, prompt: undefined, timeoutMs: undefined, maxInputChars: undefined, maxTokens: undefined }
     ]);
-    expect(config.aiExtractorTimeoutMs).toBe(777);
   });
 });
 

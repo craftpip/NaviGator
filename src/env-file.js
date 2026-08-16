@@ -35,7 +35,9 @@ function stripInlineComment(value) {
 
 function stripQuotes(value) {
   const trimmed = value.trim();
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) return trimmed.slice(1, -1);
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1).replace(/\\(\\|n|t|")/g, (_, ch) => ch === "\\" ? "\\" : ch === "n" ? "\n" : ch === "t" ? "\t" : '"');
+  }
   if (trimmed.startsWith("'") && trimmed.endsWith("'")) return trimmed.slice(1, -1);
   return trimmed;
 }

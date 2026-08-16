@@ -13,7 +13,7 @@ const MANAGE_GROUPS = [
   { label: "Search Scheduler", detail: "How select_best scores, backs off, and recovers eligible engines.", keys: ["SEARCH_QUEUE_MIN_INTERVAL_MS", "SEARCH_QUEUE_MAX_INTERVAL_MS", "SEARCH_QUEUE_ESCALATION_FACTOR", "SEARCH_QUEUE_ERROR_GAP_PERCENTILE", "SEARCH_QUEUE_ERROR_GAP_SAFETY", "SEARCH_QUEUE_DECAY_PER_SUCCESS", "SEARCH_QUEUE_W_SUCCESS", "SEARCH_QUEUE_W_RESULTS", "SEARCH_QUEUE_W_STABILITY", "SEARCH_QUEUE_W_RECENCY", "SEARCH_QUEUE_W_RECOVERY"] },
   { label: "Web Fetch Options", detail: "web_fetch tool options: parallel page opening, navigation wait, and response size.", keys: ["OPEN_PAGE_MAX_PARALLEL", "MAX_CONCURRENT_PAGE_OPS", "NAV_WAIT_UNTIL", "WEB_FETCH_MAX_CHARS"] },
   { label: "Web Fetch Extraction", detail: "How web_fetch renders page content: stabilization, DOM stripping, extraction hints, and no-hint defaults.", keys: ["DEFAULT_EXTRACT_SKIP_SELECTORS", "DOMAIN_HINTS_PATH", "DEFAULT_EXTRACT_FORMAT", "DEFAULT_EXTRACT_STABILIZE_STRATEGY", "DEFAULT_EXTRACT_WAIT_FOR_SELECTOR", "DEFAULT_EXTRACT_WAIT_FOR_CONTENT"] },
-  { label: "Web Fetch AI Extractors", detail: "AI extractor models served to web_fetch when an AI extractor is selected — reader-lm (chat/completions) or MinerU-HTML (sidecar /extract).", keys: ["AI_EXTRACTOR_MODELS", "AI_EXTRACTOR_BASE_URL", "AI_EXTRACTOR_MODEL", "AI_EXTRACTOR_TIMEOUT_MS", "AI_EXTRACTOR_MAX_INPUT_CHARS", "AI_EXTRACTOR_MAX_TOKENS"] },
+  { label: "Web Fetch Post-Processors", detail: "Post-processor models served to web_fetch — OvisOCR2 (vision), MinerU-HTML (sidecar /extract), or custom API endpoints.", keys: ["POST_PROCESSOR_MODELS", "DEFAULT_EXTRACT_POST_PROCESSOR"] },
   { label: "MCP Transports And Tool Access", detail: "MCP transports, DevTools exposure, tool filtering, and HTTP authentication.", keys: ["ENABLE_HTTP_MCP", "ENABLE_STDIO_MCP", "ENABLE_DEVTOOLS_MCP", "HUMAN_TYPING_DELAY", "DISABLE_TOOLS", "MCP_ALLOW_UNAUTHENTICATED"] },
   { label: "HTTP Server And Console", detail: "HTTP listener, health/status endpoints, and the Navigator console.", keys: ["ENABLE_HTTP_HEALTH", "ENABLE_WEB_CONSOLE", "MCP_API_PORT", "MCP_API_HOST"] },
   { label: "Screenshot Storage And Downloads", detail: "Persist screenshots to enable file and download URL outputs.", keys: ["ENABLE_SCREENSHOT_PATH", "ENABLE_SCREENSHOT_DOWNLOAD_LINK"] },
@@ -1396,7 +1396,188 @@ function MultiSelect({ items, value, changed, ok, message, emptyLabel, ariaLabel
     </>
   );
 }
-function ValueControl({ entry, value, changed, engines, tools, aiModels, onChange }) {
+
+const PP_EMPTY_ENTRY = { id: "", model: "", baseUrl: "", kind: "chat", inputs: ["html"] };
+const PP_KIND_FIELDS = {
+  chat: ["maxTokens", "maxInputChars", "timeoutMs"],
+  mineru: ["timeoutMs"],
+  api: ["path", "method", "body", "headers", "outputField", "outputType", "timeoutMs"],
+};
+const PP_INPUTS_OPTIONS = ["html", "text", "image"];
+const PP_DEFAULTS = { maxTokens: "8192", maxInputChars: "60000", timeoutMs: "60000", method: "POST", outputType: "json", path: "", body: '{"input":"{{input}}"}', headers: "", outputField: "text" };
+
+function parseEntries(rawValue) {
+  try {
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? parsed.map((e) => ({ ...PP_EMPTY_ENTRY, ...e, inputs: Array.isArray(e?.inputs) ? e.inputs : ["html"] })) : [];
+  } catch { return []; }
+}
+function serializeEntries(entries) {
+  return JSON.stringify(entries.map((e) => {
+    const out = { id: e.id, model: e.model, baseUrl: e.baseUrl, kind: e.kind, inputs: e.inputs };
+    if (e.kind === "chat") { if (e.maxTokens) out.maxTokens = Number(e.maxTokens) || 8192; if (e.maxInputChars) out.maxInputChars = Number(e.maxInputChars) || 60000; if (e.timeoutMs) out.timeoutMs = Number(e.timeoutMs) || 60000; }
+    if (e.kind === "mineru") { if (e.timeoutMs) out.timeoutMs = Number(e.timeoutMs) || 60000; }
+    if (e.kind === "api") {
+      if (e.path) out.path = e.path; if (e.method && e.method !== "POST") out.method = e.method;
+      if (e.body && e.body !== PP_DEFAULTS.body) { try { out.body = JSON.parse(e.body); } catch { out.body = e.body; } }
+      if (e.headers) { try { out.headers = JSON.parse(e.headers); } catch { out.headers = e.headers; } }
+      if (e.outputField && e.outputField !== "text") out.outputField = e.outputField;
+      if (e.outputType && e.outputType !== "json") out.outputType = e.outputType;
+      if (e.timeoutMs) out.timeoutMs = Number(e.timeoutMs) || 60000;
+    }
+    if (e.prompt) out.prompt = e.prompt;
+    return out;
+  }), null, 2);
+}
+
+function PostProcessorModelsEditor({ value, onChange, ok, message }) {
+  const [showJson, setShowJson] = useState(false);
+  const [jsonDraft, setJsonDraft] = useState(value || "[]");
+  const [jsonError, setJsonError] = useState("");
+  const entries = parseEntries(value || "[]");
+
+  const patch = (nextEntries) => {
+    const serialized = serializeEntries(nextEntries);
+    setJsonDraft(serialized);
+    onChange(serialized);
+  };
+  const updateEntry = (index, field, fieldValue) => {
+    const next = entries.map((e, i) => i === index ? { ...e, [field]: fieldValue } : e);
+    patch(next);
+  };
+  const toggleInput = (index, input) => {
+    const e = entries[index];
+    const inputs = e.inputs || ["html"];
+    const next = inputs.includes(input) ? inputs.filter((x) => x !== input) : [...inputs, input];
+    updateEntry(index, "inputs", next.length ? next : ["html"]);
+  };
+  const addEntry = () => patch([...entries, { ...PP_EMPTY_ENTRY, id: `model_${Date.now()}` }]);
+  const removeEntry = (index) => patch(entries.filter((_, i) => i !== index));
+  const duplicateEntry = (index) => { const e = { ...entries[index], id: entries[index].id + "_copy" }; const next = [...entries]; next.splice(index + 1, 0, e); patch(next); };
+
+  const switchToJson = () => { setJsonDraft(value || "[]"); setJsonError(""); setShowJson(true); };
+  const switchToForm = () => {
+    try { JSON.parse(jsonDraft); } catch (e) { setJsonError(`Invalid JSON: ${e.message}`); return; }
+    setJsonError(""); setShowJson(false);
+    if (jsonDraft !== value) onChange(jsonDraft);
+  };
+
+  return (
+    <div className="pp-editor">
+      <div className="pp-toolbar">
+        <button className="button small" onClick={showJson ? switchToForm : switchToJson}>
+          {showJson ? "Form view" : "JSON view"}
+        </button>
+        {!showJson && <button className="button small" onClick={addEntry}>+ Add model</button>}
+        {!ok && <span className="field-error">{message}</span>}
+      </div>
+      {showJson ? (
+        <div className="pp-json-pane">
+          <textarea
+            className={`pp-json-textarea ${jsonError ? "invalid" : ""}`}
+            rows={Math.max(6, (jsonDraft.split("\n").length || 1) + 1)}
+            value={jsonDraft}
+            spellCheck={false}
+            onChange={(e) => { setJsonDraft(e.target.value); setJsonError(""); }}
+          />
+          {jsonError && <div className="field-error">{jsonError}</div>}
+        </div>
+      ) : (
+        <div className="pp-cards">
+          {entries.length === 0 && <div className="pp-empty">No post-processor models configured. Click "+ Add model" to create one.</div>}
+          {entries.map((entry, index) => {
+            const kindFields = PP_KIND_FIELDS[entry.kind] || PP_KIND_FIELDS.chat;
+            return (
+              <div key={index} className="pp-card">
+                <div className="pp-card-header">
+                  <div className="pp-card-title">
+                    <span>{entry.id || `Model ${index + 1}`}</span>
+                  </div>
+                  <div className="pp-card-actions">
+                    <button className="button small" onClick={() => duplicateEntry(index)} title="Duplicate">⧉</button>
+                    <button className="button small danger" onClick={() => removeEntry(index)} title="Remove">&times;</button>
+                  </div>
+                </div>
+                <div className="pp-card-fields">
+                  <div className="pp-field-row">
+                    <label>Label (unique ID) *<input className="config-input" value={entry.id} onChange={(e) => updateEntry(index, "id", e.target.value)} placeholder="reader_lm" /></label>
+                    <label>Model name<input className="config-input" value={entry.model} onChange={(e) => updateEntry(index, "model", e.target.value)} placeholder="jinaai/reader-lm-0.5b" /></label>
+                  </div>
+                  <div className="pp-field-row">
+                    <label>Base URL *<input className="config-input" value={entry.baseUrl} onChange={(e) => updateEntry(index, "baseUrl", e.target.value)} placeholder="http://host.docker.internal:8000/v1" /></label>
+                  </div>
+                  <div className="pp-field-row">
+                    <label>Kind
+                      <select className="config-input" value={entry.kind} onChange={(e) => updateEntry(index, "kind", e.target.value)}>
+                        <option value="chat">chat (OpenAI-compatible)</option>
+                        <option value="mineru">mineru (HTML extraction sidecar)</option>
+                        <option value="api">api (custom endpoint)</option>
+                      </select>
+                    </label>
+                    <label>Inputs
+                      <div className="pp-checkbox-group">
+                        {PP_INPUTS_OPTIONS.map((opt) => (
+                          <span key={opt} className="pp-checkbox" onClick={() => toggleInput(index, opt)}>
+                            <input type="checkbox" checked={(entry.inputs || []).includes(opt)} readOnly tabIndex={-1} />
+                            {opt}
+                          </span>
+                        ))}
+                      </div>
+                    </label>
+                  </div>
+                  {entry.kind === "api" && (
+                    <>
+                      <div className="pp-field-row">
+                        <label>Path<input className="config-input" value={entry.path || ""} onChange={(e) => updateEntry(index, "path", e.target.value)} placeholder="/extract" /></label>
+                        <label>Method
+                          <select className="config-input" value={entry.method || "POST"} onChange={(e) => updateEntry(index, "method", e.target.value)}>
+                            <option value="POST">POST</option>
+                            <option value="GET">GET</option>
+                          </select>
+                        </label>
+                        <label>Output type
+                          <select className="config-input" value={entry.outputType || "json"} onChange={(e) => updateEntry(index, "outputType", e.target.value)}>
+                            <option value="json">json</option>
+                            <option value="text">text (raw response)</option>
+                          </select>
+                        </label>
+                        <label>Output field<input className="config-input" value={entry.outputField || ""} onChange={(e) => updateEntry(index, "outputField", e.target.value)} placeholder="result.text" /></label>
+                      </div>
+                      <div className="pp-field-row">
+                        <label>Body template (JSON with {'{{input}}'})
+                          <textarea className="config-input pp-textarea" rows={3} value={entry.body || PP_DEFAULTS.body} spellCheck={false} onChange={(e) => updateEntry(index, "body", e.target.value)} />
+                        </label>
+                      </div>
+                      <div className="pp-field-row">
+                        <label>Headers (JSON object, optional)
+                          <textarea className="config-input pp-textarea" rows={2} value={entry.headers || ""} spellCheck={false} onChange={(e) => updateEntry(index, "headers", e.target.value)} placeholder='{"Authorization":"Bearer ..."}' />
+                        </label>
+                      </div>
+                    </>
+                  )}
+                  <div className="pp-field-row">
+                    {(entry.kind === "chat" || entry.kind === "api") && (
+                      <label>Max tokens<input className="config-input" type="number" value={entry.maxTokens || ""} onChange={(e) => updateEntry(index, "maxTokens", e.target.value)} placeholder={PP_DEFAULTS.maxTokens} /></label>
+                    )}
+                    {entry.kind === "chat" && (
+                      <label>Max input chars<input className="config-input" type="number" value={entry.maxInputChars || ""} onChange={(e) => updateEntry(index, "maxInputChars", e.target.value)} placeholder={PP_DEFAULTS.maxInputChars} /></label>
+                    )}
+                    <label>Timeout (ms)<input className="config-input" type="number" value={entry.timeoutMs || ""} onChange={(e) => updateEntry(index, "timeoutMs", e.target.value)} placeholder={PP_DEFAULTS.timeoutMs} /></label>
+                  </div>
+                  <div className="pp-field-row">
+                    <label>Prompt (screenshot/image mode, optional)<input className="config-input" value={entry.prompt || ""} onChange={(e) => updateEntry(index, "prompt", e.target.value)} placeholder="Extract all readable content..." /></label>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ValueControl({ entry, value, changed, engines, tools, postProcessorModels, onChange }) {
   const type = entry.type || "string";
   const engineIds = new Set((engines || []).map((engine) => engine.id));
   const { ok, message } = validateEntryValue(entry, value, engineIds);
@@ -1414,10 +1595,6 @@ function ValueControl({ entry, value, changed, engines, tools, aiModels, onChang
         value: format,
         label: formatLabel(format),
       })),
-      ...(aiModels || []).map((entry) => ({
-        value: entry.id,
-        label: aiModelOptionLabel(entry),
-      })),
     ];
     return (
       <>
@@ -1431,6 +1608,33 @@ function ValueControl({ entry, value, changed, engines, tools, aiModels, onChang
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
+          ))}
+        </select>
+        {!ok && <div className="field-error">{message}</div>}
+      </>
+    );
+  }
+  if (entry.key === "POST_PROCESSOR_MODELS") {
+    return (
+      <PostProcessorModelsEditor
+        value={value}
+        onChange={onChange}
+        ok={ok}
+        message={message}
+      />
+    );
+  }
+  if (entry.key === "DEFAULT_EXTRACT_POST_PROCESSOR") {
+    const models = postProcessorModels || [];
+    const options = [
+      { value: "", label: "None (no post-processor)" },
+      ...models.map((m) => ({ value: m.id, label: m.label || m.id })),
+    ];
+    return (
+      <>
+        <select {...shared}>
+          {options.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
         {!ok && <div className="field-error">{message}</div>}
@@ -1520,6 +1724,13 @@ function Manage({ config, reload }) {
     const focus = new URLSearchParams(location.search).get("focus");
     return focus ? String(focus) : "";
   });
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (query) params.set("focus", query);
+    else params.delete("focus");
+    const next = `${location.pathname}${params.toString() ? "?" + params.toString() : ""}`;
+    if (next !== location.pathname + location.search) history.replaceState(null, "", next);
+  }, [query]);
   const [message, setMessage] = useState(
     "Changes persist to .env. Green fields apply now; amber fields need a container recreate.",
   );
@@ -1664,7 +1875,7 @@ function Manage({ config, reload }) {
               ? entry.fallback.join(",")
               : String(entry.fallback ?? "");
             return (
-              <FragmentRows
+               <FragmentRows
                 key={entry.key}
                 heading={index === 0}
                 label={group.label}
@@ -1675,7 +1886,7 @@ function Manage({ config, reload }) {
                 changed={changed.some((item) => item.key === entry.key)}
                 engines={availableEngines}
                 tools={config.tools || []}
-                aiModels={config.aiModels || []}
+                postProcessorModels={config.postProcessorModels || []}
                 onChange={(value) => setDraft({ ...draft, [entry.key]: value })}
                 reset={() =>
                   save(
@@ -1707,7 +1918,7 @@ function FragmentRows({
   changed,
   engines,
   tools,
-  aiModels,
+  postProcessorModels,
   onChange,
   reset,
 }) {
@@ -1728,13 +1939,13 @@ function FragmentRows({
           <span className="val-default">{fallback}</span>
         </td>
         <td>
-          <ValueControl
+           <ValueControl
             entry={entry}
             value={value}
             changed={changed}
             engines={engines}
             tools={tools}
-            aiModels={aiModels}
+            postProcessorModels={postProcessorModels}
             onChange={onChange}
           />
         </td>
@@ -2333,6 +2544,7 @@ const DEFAULT_FORMATS = [
   "table",
   "table_json",
   "table_csv",
+  "screenshot",
 ];
 const HINT_BLOCK_FORMATS = [
   "text",
@@ -2343,6 +2555,7 @@ const HINT_BLOCK_FORMATS = [
   "table",
   "table_json",
   "table_csv",
+  "screenshot",
 ];
 const FORMAT_LABELS = {
   readability_to_markdown: "Readability → markdown (auto-strips nav/ads/sidebar)",
@@ -2354,19 +2567,21 @@ const FORMAT_LABELS = {
   table: "Tables only",
   table_json: "Tables only (JSON)",
   table_csv: "Tables only (CSV)",
+  screenshot: "Full-page screenshot (for post-processors)",
 };
 function formatLabel(format) {
   return FORMAT_LABELS[format] || format;
 }
-function aiModelKindLabel(entry) {
+function postProcessorKindLabel(entry) {
+  if (entry?.kind === "api") return "custom API";
   return entry?.kind === "mineru" ? "MinerU-HTML" : "reader-lm";
 }
-function aiModelOptionLabel(entry) {
-  return `${entry?.label || entry?.id} (${aiModelKindLabel(entry)} extractor)`;
+function postProcessorOptionLabel(entry) {
+  return `${entry?.label || entry?.id} (${postProcessorKindLabel(entry)} post-processor)`;
 }
-function aiModelIdLabel(aiModels, id) {
-  const entry = (aiModels || []).find((item) => item.id === id);
-  return entry ? `${id} (${aiModelKindLabel(entry)})` : `${id} (AI)`;
+function postProcessorIdLabel(postProcessorModels, id) {
+  const entry = (postProcessorModels || []).find((item) => item.id === id);
+  return entry ? `${id} (${postProcessorKindLabel(entry)})` : `${id} (AI)`;
 }
 const FLOW_ACTIONS = ["extract", "click", "wait", "type", "navigate"];
 const FLOW_STATES = ["visible", "attached", "hidden"];
@@ -2595,8 +2810,7 @@ function FieldRowEditor({ fields, onChange }) {
   );
 }
 
-function BlockRowEditor({ block, aiModels = [], onChange, onRemove }) {
-  const aiModelIds = (aiModels || []).map((entry) => entry.id).filter(Boolean);
+function BlockRowEditor({ block, postProcessorModels = [], onChange, onRemove }) {
   const isLeaf = block.format !== undefined || block.fields === undefined;
   const set = (key, value) => onChange({ ...block, [key]: value });
   const toLeaf = () => {
@@ -2645,16 +2859,24 @@ function BlockRowEditor({ block, aiModels = [], onChange, onRemove }) {
         <div className="hint-option hint-block-format">
           <span className="hint-option-name">Extractor</span>
           <select value={block.format || "text"} onChange={(event) => set("format", event.target.value)}>
-            {[...HINT_BLOCK_FORMATS, ...aiModelIds].map((format) => (
+            {HINT_BLOCK_FORMATS.map((format) => (
               <option key={format} value={format}>
-                {aiModelIds.includes(format) ? aiModelIdLabel(aiModels, format) : formatLabel(format)}
+                {formatLabel(format)}
               </option>
             ))}
           </select>
-          {aiModelIds.includes(block.format) && (
+          <span className="hint-option-name">Post-processor</span>
+          <select value={block.postProcessor || ""} onChange={(event) => set("postProcessor", event.target.value || undefined)}>
+            <option value="">None</option>
+            {postProcessorModels.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {postProcessorOptionLabel(entry)}
+              </option>
+            ))}
+          </select>
+          {block.postProcessor && (
             <span className="hint-option-hint hint-warn">
-              ⚠ Sends this element's HTML to the {aiModelKindLabel(aiModels.find((entry) => entry.id === block.format))}{" "}
-              model — falls back to html_to_markdown if it fails or is not configured.
+              Post-processor output replaces the extractor output.
             </span>
           )}
         </div>
@@ -2678,7 +2900,7 @@ function BlockRowEditor({ block, aiModels = [], onChange, onRemove }) {
   );
 }
 
-function BlocksEditor({ blocks, aiModels = [], onChange, legacySectionCount }) {
+function BlocksEditor({ blocks, postProcessorModels = [], onChange, legacySectionCount }) {
   const setBlock = (index, block) => {
     const next = [...(blocks || [])];
     next[index] = block;
@@ -2721,7 +2943,7 @@ function BlocksEditor({ blocks, aiModels = [], onChange, legacySectionCount }) {
         <BlockRowEditor
           key={index}
           block={block}
-          aiModels={aiModels}
+          postProcessorModels={postProcessorModels}
           onChange={(next) => setBlock(index, next)}
           onRemove={() => removeBlock(index)}
         />
@@ -2748,7 +2970,7 @@ function emptyFlowStep(action) {
   }
 }
 
-function StepEditor({ step, aiModels = [], onChange, onRemove, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
+function StepEditor({ step, postProcessorModels = [], onChange, onRemove, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   const set = (key, value) => onChange({ ...step, [key]: value });
   const patchContent = (content) => set("content", content);
   const setNumber = (key, raw) => {
@@ -2813,7 +3035,7 @@ function StepEditor({ step, aiModels = [], onChange, onRemove, onMoveUp, onMoveD
           </div>
           <BlocksEditor
             blocks={step.content?.blocks || []}
-            aiModels={aiModels}
+            postProcessorModels={postProcessorModels}
             onChange={(blocks) => patchContent({ blocks })}
             legacySectionCount={step.content?.sections?.length || 0}
           />
@@ -2925,7 +3147,7 @@ function StepEditor({ step, aiModels = [], onChange, onRemove, onMoveUp, onMoveD
   );
 }
 
-function FlowEditor({ flow, aiModels = [], onChange }) {
+function FlowEditor({ flow, postProcessorModels = [], onChange }) {
   const steps = flow?.length ? flow : [];
   const setStep = (index, step) => {
     const next = [...steps];
@@ -2973,7 +3195,7 @@ function FlowEditor({ flow, aiModels = [], onChange }) {
         <StepEditor
           key={index}
           step={step}
-          aiModels={aiModels}
+          postProcessorModels={postProcessorModels}
           onChange={(next) => setStep(index, next)}
           onRemove={() => removeStep(index)}
           onMoveUp={() => move(index, -1)}
@@ -3325,7 +3547,7 @@ function Hints() {
         key={editor.index === null ? "new" : editor.index}
         index={editor.index}
         initial={editingHint}
-        aiModels={state.aiModels || []}
+        postProcessorModels={state.postProcessorModels || []}
         onClose={() => closeEditor(false)}
         onSaved={async ({ index: savedIndex } = {}) => {
           await load();
@@ -3430,15 +3652,8 @@ function Hints() {
   );
 }
 
-function HintEditorPane({ index, initial, aiModels = [], onClose, onSaved }) {
-  const aiModelIds = (aiModels || []).map((entry) => entry.id).filter(Boolean);
-  const formatOptions = [
-    ...DEFAULT_FORMATS.map((format) => ({ value: format, label: formatLabel(format) })),
-    ...(aiModels || []).map((entry) => ({
-      value: entry.id,
-      label: aiModelOptionLabel(entry),
-    })),
-  ];
+function HintEditorPane({ index, initial, postProcessorModels = [], onClose, onSaved }) {
+  const formatOptions = DEFAULT_FORMATS.map((format) => ({ value: format, label: formatLabel(format) }));
   const [tab, setTab] = useState("form");
   const [mode, setMode] = useState(() => modeFromHint(initial));
   const [hint, setHint] = useState(initial);
@@ -3694,7 +3909,7 @@ function HintEditorPane({ index, initial, aiModels = [], onClose, onSaved }) {
                         <select
                           value={hint.default?.format || "readability_to_markdown"}
                           onChange={(event) => patchDefault({ format: event.target.value })}
-                          title="How the page content is rendered. readability_to_markdown strips nav/ads/sidebar; html_to_markdown keeps everything; html keeps raw HTML; text is a flat dump; table formats emit only tables; AI entries (when configured) extract with a reader-lm or MinerU-HTML model."
+                          title="How the page content is rendered."
                         >
                           {formatOptions.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -3706,25 +3921,32 @@ function HintEditorPane({ index, initial, aiModels = [], onClose, onSaved }) {
                           readability_to_markdown = Readability (strips nav, ads, sidebar) ·
                           html_to_markdown = raw HTML-to-markdown · html = raw HTML in a code
                           fence · text = flat dump · table / table_json / table_csv = tables
-                          only. AI extractors (if configured) pass the page HTML to a reader-lm
-                          (/chat/completions) or MinerU-HTML (/extract) model.
+                          only · screenshot = full-page JPEG (for post-processors).
                         </span>
-                        {aiModelIds.includes(hint.default?.format) && (
-                          <span className="hint-option-hint hint-warn">
-                            ⚠ {hint.default.format} sends page HTML to the{" "}
-                            {aiModelKindLabel(aiModels.find((entry) => entry.id === hint.default?.format))} model and
-                            falls back to html_to_markdown if the model fails or is not
-                            configured.
-                          </span>
-                        )}
                       </div>
+                      {postProcessorModels.length > 0 && (
+                        <div className="hint-option">
+                          <span className="hint-option-name">Post-processor</span>
+                          <select
+                            value={hint.default?.postProcessor || ""}
+                            onChange={(event) => patchDefault({ postProcessor: event.target.value || undefined })}
+                          >
+                            <option value="">None</option>
+                            {postProcessorModels.map((entry) => (
+                              <option key={entry.id} value={entry.id}>
+                                {postProcessorOptionLabel(entry)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : (
                   <>
                     <FlowEditor
                       flow={hint.flow || []}
-                      aiModels={aiModels}
+                      postProcessorModels={postProcessorModels}
                       onChange={(flow) => patch({ flow })}
                     />
                     <FlowOptionsEditor
