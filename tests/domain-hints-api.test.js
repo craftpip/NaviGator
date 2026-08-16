@@ -151,8 +151,9 @@ describe("domain hints API", () => {
       expect(status).toBe(200);
       expect(body.ok).toBe(true);
       expect(body.hintsPath).toBe(hintsPath);
-      expect(body.count).toBe(2);
-      expect(body.hints.map((h) => h.pageType)).toEqual(["profile", "repo"]);
+      expect(body.count).toBe(3);
+      expect(body.hints[0].domain).toBe("*");
+      expect(body.hints.map((h) => h.pageType)).toEqual(["default", "profile", "repo"]);
     });
   });
 

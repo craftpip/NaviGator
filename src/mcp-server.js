@@ -28,7 +28,7 @@ import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
 import { SUPPORTED_ENGINES, getEngineMetadata } from "./engines/index.js";
 import { getAuthorizedMcpKey, getMcpApiKey, isAuthorizedMcpRequest } from "./mcp-api-auth.js";
-import { findDomainHint, getDomainHints, loadRawDomainHints, saveDomainHints, validateHintRule } from "./domain-hints.js";
+import { findDomainHint, getDomainHints, loadRawDomainHints, saveDomainHints, validateHintRule, WILDCARD_DOMAIN, ensureWildcardHint } from "./domain-hints.js";
 import { getPostProcessorModels } from "./post-processor.js";
 
 const require = createRequire(import.meta.url);
@@ -412,9 +412,7 @@ async function getConsoleConfigPayload(manager) {
           ? (process.env.POST_PROCESSOR_MODELS ?? JSON.stringify(manager.config.postProcessorModels ?? []))
           : entry.key === "DOMAIN_HINTS_PATH"
             ? (process.env.DOMAIN_HINTS_PATH ?? entry.fallback)
-            : entry.key === "DEFAULT_EXTRACT_STABILIZE_STRATEGY"
-              ? (manager.config.defaultExtractStabilizeStrategy || entry.fallback)
-              : manager.config[envKeyToConfigKey(entry.key)]
+            : manager.config[envKeyToConfigKey(entry.key)]
       ])
     ),
     envFile: { path: envPath, changedOnDisk: envFileState.changed, backup: backupPath },
@@ -766,6 +764,9 @@ async function createHint(hintsPath, rawHint, aiModelIds) {
     return { ok: false, error: "hint must be an object" };
   }
   const hint = { ...rawHint };
+  if (hint.domain === WILDCARD_DOMAIN) {
+    return { ok: false, error: "wildcard hints cannot be created manually — they are auto-managed" };
+  }
   if (hint.pathPattern === undefined || hint.pathPattern === null || hint.pathPattern === "") {
     hint.pathPattern = "/**";
   }
@@ -825,6 +826,9 @@ async function deleteHint(hintsPath, index) {
     const hints = await loadRawDomainHints(hintsPath);
     if (index >= hints.length) {
       return { ok: false, error: `index ${index} out of range (${hints.length} hints)` };
+    }
+    if (hints[index]?.domain === WILDCARD_DOMAIN) {
+      return { ok: false, error: "cannot delete the wildcard default hint" };
     }
     const [removed] = hints.splice(index, 1);
     const save = await saveDomainHints(hints, hintsPath);
@@ -2906,6 +2910,7 @@ async function maybeStartHttpServer(managerOverride) {
         try {
           if (method === "GET" && url.pathname === "/console/api/hints") {
             const hints = await loadRawDomainHints(hintsPath);
+            ensureWildcardHint(hints);
             logEvent("http.request", { method, path: url.pathname });
             sendJson(res, 200, { ok: true, hintsPath, count: hints.length, hints, postProcessorModels });
             return;

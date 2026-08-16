@@ -1,5 +1,5 @@
 import { getBrowserManager } from "./browser.js";
-import { DEFAULT_MAX_CHARS, DEFAULT_SEARCH_ENABLED_ENGINES, DEFAULT_EXTRACT_SKIP_SELECTORS } from "./config.js";
+import { DEFAULT_MAX_CHARS, DEFAULT_SEARCH_ENABLED_ENGINES } from "./config.js";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { performance } from "node:perf_hooks";
@@ -12,7 +12,7 @@ import {
   recordSearchStart,
   searchContext
 } from "./activity.js";
-import { findMatchingHints, getDomainHints, FLOW_TOTAL_TIMEOUT_MAX } from "./domain-hints.js";
+import { findMatchingHints, getDomainHints, getWildcardHint, FLOW_TOTAL_TIMEOUT_MAX } from "./domain-hints.js";
 import { htmlToMarkdown } from "./markdown.js";
 import { getEngineDriver, getEngineMetadata, SUPPORTED_ENGINES } from "./engines/index.js";
 import { fetchDuckDuckGoInstantAnswers } from "./engines/instant-answers.js";
@@ -932,8 +932,8 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
 
     markdown = markdown.trim();
 
-    // Post-processor: block-level override > page-level default > global default
-    const blockPostProcessor = block.postProcessor ?? hint?.default?.postProcessor ?? config.defaultExtractPostProcessor;
+    // Post-processor: block-level override > hint default
+    const blockPostProcessor = block.postProcessor ?? hint?.default?.postProcessor;
     if (blockPostProcessor && markdown) {
       try {
         const ppResult = await runPostProcessor({ text: markdown, model: blockPostProcessor, config });
@@ -965,7 +965,7 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
   };
 }
 
-async function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, screenshot, debug = false, strict = false, defaultExtractSkipSelectors = DEFAULT_EXTRACT_SKIP_SELECTORS, config }) {
+async function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, screenshot, debug = false, strict = false, defaultExtractSkipSelectors = [], config }) {
   const tFunc = performance.now();
   if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml called`);
   const rawHtml = typeof html === "string" ? html : "";
@@ -1008,7 +1008,7 @@ if (strict && hint?.content?.blocks?.length) {
     /* ==================== Default extraction (hint method: default) ==================== */
     const defaultBlock = hint?.default || {};
     const pageFormat = defaultBlock.format || "readability_to_markdown";
-    const postProcessorModel = defaultBlock.postProcessor ?? config.defaultExtractPostProcessor;
+    const postProcessorModel = defaultBlock.postProcessor;
     if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: default extraction (format=${pageFormat})`);
 
     // The extractor renders tables now — no table nodes are stripped from the DOM in the
@@ -2086,16 +2086,6 @@ async function firstMatchingHint(page, candidates) {
   return null;
 }
 
-function defaultExtractHint(config) {
-  const d = {};
-  if (config?.defaultExtractFormat) d.format = config.defaultExtractFormat;
-  if (config?.defaultExtractStabilizeStrategy) d.stabilizeStrategy = config.defaultExtractStabilizeStrategy;
-  if (config?.defaultExtractWaitForSelector?.length) d.waitForSelector = config.defaultExtractWaitForSelector;
-  if (config?.defaultExtractWaitForContent?.length) d.waitForContent = config.defaultExtractWaitForContent;
-  if (!Object.keys(d).length) return null;
-  return { default: d };
-}
-
 const FLOW_STAGE_CAPTURE_LIMIT = 60000;
 const FLOW_STEP_DEFAULT_TIMEOUT_MS = 10000;
 
@@ -2103,7 +2093,6 @@ async function stabilizePage(page, hint, config, strategyOverride, contentTarget
   const stabilizeStrategy =
     strategyOverride ||
     hint?.default?.stabilizeStrategy ||
-    config?.defaultExtractStabilizeStrategy ||
     "network_idle";
   if (stabilizeStrategy === "network_idle") {
     try {
@@ -2560,7 +2549,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
   const manager = await getBrowserManager();
   const maxChars = requestedMaxChars ?? manager.config.maxChars ?? DEFAULT_MAX_CHARS;
   const debug = manager.config.debug === true;
-  const defaultExtractSkipSelectors = manager.config.defaultExtractSkipSelectors ?? DEFAULT_EXTRACT_SKIP_SELECTORS;
+  const defaultExtractSkipSelectors = [];
   const debugLog = (label, t) => {
     if (debug) console.log(`[web_fetch] [${url}] ${label}: ${Math.round(performance.now() - t)}ms`);
   };
@@ -2568,18 +2557,25 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
   let hint = null;
   let hintCandidates = [];
   let hintNote = "";
+  let hints = [];
   if (hintOverride) {
     hint = hintOverride;
     if (debug) console.log(`[web_fetch] [${url}] hint=override (test-before-save)`);
   } else {
-    const hints = await getDomainHints(manager.config);
+    hints = await getDomainHints(manager.config);
     hintCandidates = findMatchingHints(url, hints);
   }
   debugLog("load_domain_hints", t);
 
   if (!hint) {
-    hint = defaultExtractHint(manager.config);
-    if (hint && debug) console.log(`[web_fetch] [${url}] hint=default_extract (no domain hint matched)`);
+    const wildcard = getWildcardHint(hints);
+    if (wildcard) {
+      hint = wildcard;
+      if (wildcard.default?.skipSelectors?.length) {
+        defaultExtractSkipSelectors.push(...wildcard.default.skipSelectors);
+      }
+      if (debug) console.log(`[web_fetch] [${url}] hint=wildcard_default (no domain hint matched)`);
+    }
   }
 
   try {
@@ -2712,8 +2708,8 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       debugLog("resolve_hint_dom_final", t);
 
       if (!hint) {
-        hint = defaultExtractHint(manager.config);
-        if (hint && debug) console.log(`[web_fetch] [${url}] hint=default_extract (candidates matched nothing)`);
+        hint = getWildcardHint(hints);
+        if (hint && debug) console.log(`[web_fetch] [${url}] hint=wildcard_default (candidates matched nothing)`);
       }
 
       if (hint?.flow?.length) {

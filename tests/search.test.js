@@ -411,36 +411,44 @@ describe("browserOpenAndExtract", () => {
     }
   });
 
-  it("honors the configured DEFAULT_EXTRACT_SKIP_SELECTORS list (empty = keep everything)", async () => {
+  it("honors the wildcard hint's default.skipSelectors list (empty = keep everything)", async () => {
     const html = `<!doctype html><html><head><title>Nav page</title></head><body>
       <nav><a href="/home">Home</a></nav>
       <main><p>Main content.</p></main>
     </body></html>`;
-    const hint = {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-nav-"));
+
+    const wildcardHint = { domain: "*", pathPattern: "/**", default: { skipSelectors: ["nav"] } };
+    const specificHint = {
       domain: "example.com",
       pathPattern: "/**",
       content: { blocks: [{ selector: "body", label: "", priority: "high", format: "text" }] }
     };
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-nav-"));
-    const hintsPath = path.join(tempDir, "domain-hints.json");
-    await fs.writeFile(hintsPath, JSON.stringify([hint]));
+    const hintsPath1 = path.join(tempDir, "hints-skip-nav.json");
+    await fs.writeFile(hintsPath1, JSON.stringify([wildcardHint, specificHint]));
 
-    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({ hintsPath, html }));
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({ hintsPath: hintsPath1, html }));
     const { browserOpenAndExtract } = await import("../src/search.js");
     const stripped = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
     expect(stripped.text).not.toContain("Home");
     expect(stripped.text).toContain("Main content.");
 
-    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({ hintsPath, html, configOverrides: { defaultExtractSkipSelectors: [] } }));
+    const hintsPath2 = path.join(tempDir, "hints-no-skip.json");
+    await fs.writeFile(hintsPath2, JSON.stringify([{ ...wildcardHint, default: { skipSelectors: [] } }, specificHint]));
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({ hintsPath: hintsPath2, html }));
     const kept = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
     expect(kept.text).toContain("Home");
     expect(kept.text).toContain("Main content.");
+
+    await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("applies DEFAULT_EXTRACT (no-hint defaults) when no hint matches", async () => {
+  it("applies wildcard hint defaults when no domain hint matches", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "browser-search-defaults-"));
     const hintsPath = path.join(tempDir, "domain-hints.json");
-    await fs.writeFile(hintsPath, "[]");
+    await fs.writeFile(hintsPath, JSON.stringify([
+      { domain: "*", pathPattern: "/**", default: { format: "table", skipSelectors: [".advert"] } }
+    ]));
 
     const html = `<!doctype html><html><head><title>Default extract page</title></head><body>
       <div class="advert">Sponsor noise to strip</div>
@@ -451,10 +459,6 @@ describe("browserOpenAndExtract", () => {
     mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
       hintsPath,
       html,
-      configOverrides: {
-        defaultExtractFormat: "table",
-        defaultExtractSkipSelectors: [".advert"]
-      }
     }));
 
     try {

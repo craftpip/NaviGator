@@ -12,8 +12,7 @@ const MANAGE_GROUPS = [
   { label: "Search Route Availability", detail: "Eligible engines, startup warming, route cooldowns, and browser-window capacity.", keys: ["SEARCH_ENABLED_ENGINES", "SEARCH_ROUTE_WARMUP_ENGINES", "SEARCH_ROUTE_CIRCUIT_OPEN_MS", "SEARCH_KEEP_MIN_WORKING_WINDOWS", "SEARCH_MAX_WORKING_WINDOWS"] },
   { label: "Search Scheduler", detail: "How select_best scores, backs off, and recovers eligible engines.", keys: ["SEARCH_QUEUE_MIN_INTERVAL_MS", "SEARCH_QUEUE_MAX_INTERVAL_MS", "SEARCH_QUEUE_ESCALATION_FACTOR", "SEARCH_QUEUE_ERROR_GAP_PERCENTILE", "SEARCH_QUEUE_ERROR_GAP_SAFETY", "SEARCH_QUEUE_DECAY_PER_SUCCESS", "SEARCH_QUEUE_W_SUCCESS", "SEARCH_QUEUE_W_RESULTS", "SEARCH_QUEUE_W_STABILITY", "SEARCH_QUEUE_W_RECENCY", "SEARCH_QUEUE_W_RECOVERY"] },
   { label: "Web Fetch Options", detail: "web_fetch tool options: parallel page opening, navigation wait, and response size.", keys: ["OPEN_PAGE_MAX_PARALLEL", "MAX_CONCURRENT_PAGE_OPS", "NAV_WAIT_UNTIL", "WEB_FETCH_MAX_CHARS"] },
-  { label: "Web Fetch Extraction", detail: "How web_fetch renders page content: stabilization, DOM stripping, extraction hints, and no-hint defaults.", keys: ["DEFAULT_EXTRACT_SKIP_SELECTORS", "DOMAIN_HINTS_PATH", "DEFAULT_EXTRACT_FORMAT", "DEFAULT_EXTRACT_STABILIZE_STRATEGY", "DEFAULT_EXTRACT_WAIT_FOR_SELECTOR", "DEFAULT_EXTRACT_WAIT_FOR_CONTENT"] },
-  { label: "Web Fetch Post-Processors", detail: "Post-processor models served to web_fetch — OvisOCR2 (vision), MinerU-HTML (sidecar /extract), or custom API endpoints.", keys: ["POST_PROCESSOR_MODELS", "DEFAULT_EXTRACT_POST_PROCESSOR"] },
+  { label: "Web Fetch Extraction", detail: "How web_fetch renders page content: extraction hints, post-processors, and defaults. Default settings live in the wildcard hint (domain *) in the Domain hints panel.", keys: ["DOMAIN_HINTS_PATH", "POST_PROCESSOR_MODELS"] },
   { label: "MCP Transports And Tool Access", detail: "MCP transports, DevTools exposure, tool filtering, and HTTP authentication.", keys: ["ENABLE_HTTP_MCP", "ENABLE_STDIO_MCP", "ENABLE_DEVTOOLS_MCP", "HUMAN_TYPING_DELAY", "DISABLE_TOOLS", "MCP_ALLOW_UNAUTHENTICATED"] },
   { label: "HTTP Server And Console", detail: "HTTP listener, health/status endpoints, and the Navigator console.", keys: ["ENABLE_HTTP_HEALTH", "ENABLE_WEB_CONSOLE", "MCP_API_PORT", "MCP_API_HOST"] },
   { label: "Screenshot Storage And Downloads", detail: "Persist screenshots to enable file and download URL outputs.", keys: ["ENABLE_SCREENSHOT_PATH", "ENABLE_SCREENSHOT_DOWNLOAD_LINK"] },
@@ -1624,23 +1623,6 @@ function ValueControl({ entry, value, changed, engines, tools, postProcessorMode
       />
     );
   }
-  if (entry.key === "DEFAULT_EXTRACT_POST_PROCESSOR") {
-    const models = postProcessorModels || [];
-    const options = [
-      { value: "", label: "None (no post-processor)" },
-      ...models.map((m) => ({ value: m.id, label: m.label || m.id })),
-    ];
-    return (
-      <>
-        <select {...shared}>
-          {options.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-        {!ok && <div className="field-error">{message}</div>}
-      </>
-    );
-  }
   if (type === "engines") {
     return (
       <MultiSelect
@@ -2577,7 +2559,7 @@ function postProcessorKindLabel(entry) {
   return entry?.kind === "mineru" ? "MinerU-HTML" : "reader-lm";
 }
 function postProcessorOptionLabel(entry) {
-  return `${entry?.label || entry?.id} (${postProcessorKindLabel(entry)} post-processor)`;
+  return entry?.label || entry?.id;
 }
 function postProcessorIdLabel(postProcessorModels, id) {
   const entry = (postProcessorModels || []).find((item) => item.id === id);
@@ -2600,7 +2582,7 @@ function emptyHint() {
     testUrls: [],
     default: {
       waitForSelector: [],
-      stabilizeStrategy: "",
+      stabilizeStrategy: "network_idle",
       waitForContent: [],
       skipSelectors: [],
       format: "readability_to_markdown",
@@ -2856,28 +2838,32 @@ function BlockRowEditor({ block, postProcessorModels = [], onChange, onRemove })
         </button>
       </div>
       {isLeaf ? (
-        <div className="hint-option hint-block-format">
-          <span className="hint-option-name">Extractor</span>
-          <select value={block.format || "text"} onChange={(event) => set("format", event.target.value)}>
-            {HINT_BLOCK_FORMATS.map((format) => (
-              <option key={format} value={format}>
-                {formatLabel(format)}
-              </option>
-            ))}
-          </select>
-          <span className="hint-option-name">Post-processor</span>
-          <select value={block.postProcessor || ""} onChange={(event) => set("postProcessor", event.target.value || undefined)}>
-            <option value="">None</option>
-            {postProcessorModels.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {postProcessorOptionLabel(entry)}
-              </option>
-            ))}
-          </select>
-          {block.postProcessor && (
-            <span className="hint-option-hint hint-warn">
-              Post-processor output replaces the extractor output.
-            </span>
+        <div className="hint-options-grid">
+          <div className="hint-option">
+            <span className="hint-option-name">Extractor</span>
+            <select value={block.format || "text"} onChange={(event) => set("format", event.target.value)}>
+              {HINT_BLOCK_FORMATS.map((format) => (
+                <option key={format} value={format}>
+                  {formatLabel(format)}
+                </option>
+              ))}
+            </select>
+          </div>
+          {postProcessorModels.length > 0 && (
+            <>
+              <span className="hint-options-grid-arrow">→</span>
+              <div className="hint-option">
+                <span className="hint-option-name">Post-processor</span>
+                <select value={block.postProcessor || ""} onChange={(event) => set("postProcessor", event.target.value || undefined)}>
+                  <option value="">None</option>
+                  {postProcessorModels.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {postProcessorOptionLabel(entry)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
           )}
         </div>
       ) : (
@@ -3600,10 +3586,15 @@ function Hints() {
             <span />
           </div>
           {rows.length ? (
-            rows.map(({ index, hint }) => (
-              <div className="hints-row" key={index}>
+            rows.map(({ index, hint }) => {
+              const isWildcard = hint.domain === "*";
+              return (
+              <div className={`hints-row${isWildcard ? " hints-row-wildcard" : ""}`} key={index}>
                 <span className="mono">{index}</span>
-                <b className="mono">{hint.domain || "—"}</b>
+                <b className="mono">
+                  {hint.domain || "—"}
+                  {isWildcard ? <em className="hint-meta-badge" title="Default hint — applies to all URLs">default</em> : null}
+                </b>
                 <span>
                   {hint.pageType || "—"}
                   {hint.requireSelector ? (
@@ -3632,6 +3623,7 @@ function Hints() {
                   >
                     Edit
                   </button>
+                  {!isWildcard ? (
                   <button
                     className="button tiny danger"
                     title="Delete this hint"
@@ -3640,9 +3632,11 @@ function Hints() {
                   >
                     {deleting === index ? "Deleting…" : "Delete"}
                   </button>
+                  ) : null}
                 </span>
               </div>
-            ))
+              );
+            })
           ) : (
             <Empty>No hints match your search.</Empty>
           )}
@@ -3663,6 +3657,7 @@ function HintEditorPane({ index, initial, postProcessorModels = [], onClose, onS
   const [validating, setValidating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ kind: "", text: "" });
+  const isWildcard = hint.domain === "*";
   const patch = (updates) => {
     const next = { ...hint, ...updates };
     setHint(next);
@@ -3781,18 +3776,21 @@ function HintEditorPane({ index, initial, postProcessorModels = [], onClose, onS
             </label>
           ) : (
             <div className="hint-form">
-              <HintFieldGroup title="Target — which page this rule applies to">
+              <HintFieldGroup title={isWildcard ? "Target — default hint (applies to all URLs)" : "Target — which page this rule applies to"}>
                 <HintField
                   label="Domain"
-                  help="Site hostname, e.g. github.com. Matches subdomains too — github.com also covers gist.github.com."
+                  help={isWildcard ? "Wildcard domain — this hint applies to all URLs." : "Site hostname, e.g. github.com. Matches subdomains too — github.com also covers gist.github.com."}
                 >
                   <input
                     className="mono"
                     placeholder="example.com"
                     value={hint.domain || ""}
+                    disabled={isWildcard}
                     onChange={(event) => patch({ domain: event.target.value.trim() })}
                   />
                 </HintField>
+                {!isWildcard ? (
+                <>
                 <HintField
                   label="Path pattern"
                   help="URL path glob, NOT a regex. /* = one segment, /** = everything, /foo/** = everything under /foo. Lowercase only. Full reference in the guide on the list page."
@@ -3816,8 +3814,11 @@ function HintEditorPane({ index, initial, postProcessorModels = [], onClose, onS
                     onChange={(event) => patch({ requireSelector: event.target.value.trim() || undefined })}
                   />
                 </HintField>
+                </>
+                ) : null}
               </HintFieldGroup>
               <HintFieldGroup title="What gets extracted" accent>
+                {!isWildcard ? (
                 <div className="hint-mode-switch" role="tablist">
                   <button
                     type="button"
@@ -3840,6 +3841,11 @@ function HintEditorPane({ index, initial, postProcessorModels = [], onClose, onS
                     <em>scripted extract / click / type steps</em>
                   </button>
                 </div>
+                ) : (
+                  <p className="hint hint-default">
+                    <strong>Default extraction for all URLs.</strong> This hint applies to every page that doesn't match a specific domain hint. Edit the settings below to tune how all pages are extracted.
+                  </p>
+                )}
                 {mode === "default" ? (
                   <>
                     <p className="hint hint-default">
@@ -3865,12 +3871,11 @@ function HintEditorPane({ index, initial, postProcessorModels = [], onClose, onS
                     <div className="hint-option">
                       <span className="hint-option-name">Stabilize strategy</span>
                       <select
-                        value={hint.default?.stabilizeStrategy || ""}
-                        onChange={(event) => patchDefault({ stabilizeStrategy: event.target.value || undefined })}
+                        value={hint.default?.stabilizeStrategy || "network_idle"}
+                        onChange={(event) => patchDefault({ stabilizeStrategy: event.target.value })}
                       >
-                        <option value="">Default (network_idle — 500ms no network traffic)</option>
-                        <option value="none">none (skip stabilization — extract right after load)</option>
                         <option value="network_idle">network_idle (500ms no network traffic)</option>
+                        <option value="none">none (skip stabilization — extract right after load)</option>
                         <option value="content_idle">content_idle (waits for rendered text)</option>
                         <option value="mutation">mutation (waits for DOM to stop changing)</option>
                       </select>
@@ -3890,14 +3895,7 @@ function HintEditorPane({ index, initial, postProcessorModels = [], onClose, onS
                     />
                     <LineListEditor
                       label="Skip selectors (one per line)"
-                      help={
-                        <>
-                          Elements to strip before extraction — one CSS selector per line. e.g. .navbox, .sidebar{" "}
-                          <a href="/console/manage?focus=DEFAULT_EXTRACT_SKIP_SELECTORS">
-                            View / edit the built-in default skip selectors →
-                          </a>
-                        </>
-                      }
+                      help="Elements to strip before extraction — one CSS selector per line. e.g. .navbox, .sidebar. These apply globally to all pages."
                       values={hint.default?.skipSelectors || []}
                       onChange={(skipSelectors) => patchDefault({ skipSelectors })}
                       placeholder={".navbox\n.sidebar"}
@@ -3917,29 +3915,32 @@ function HintEditorPane({ index, initial, postProcessorModels = [], onClose, onS
                             </option>
                           ))}
                         </select>
-                        <span className="hint-option-hint">
-                          readability_to_markdown = Readability (strips nav, ads, sidebar) ·
-                          html_to_markdown = raw HTML-to-markdown · html = raw HTML in a code
-                          fence · text = flat dump · table / table_json / table_csv = tables
-                          only · screenshot = full-page JPEG (for post-processors).
-                        </span>
                       </div>
                       {postProcessorModels.length > 0 && (
-                        <div className="hint-option">
-                          <span className="hint-option-name">Post-processor</span>
-                          <select
-                            value={hint.default?.postProcessor || ""}
-                            onChange={(event) => patchDefault({ postProcessor: event.target.value || undefined })}
-                          >
-                            <option value="">None</option>
-                            {postProcessorModels.map((entry) => (
-                              <option key={entry.id} value={entry.id}>
-                                {postProcessorOptionLabel(entry)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        <>
+                          <span className="hint-options-grid-arrow">→</span>
+                          <div className="hint-option">
+                            <span className="hint-option-name">Post-processor</span>
+                            <select
+                              value={hint.default?.postProcessor || ""}
+                              onChange={(event) => patchDefault({ postProcessor: event.target.value || undefined })}
+                            >
+                              <option value="">None</option>
+                              {postProcessorModels.map((entry) => (
+                                <option key={entry.id} value={entry.id}>
+                                  {postProcessorOptionLabel(entry)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </>
                       )}
+                      <span className="hint-option-hint hint-options-grid-full">
+                        readability_to_markdown = Readability (strips nav, ads, sidebar) ·
+                        html_to_markdown = raw HTML-to-markdown · html = raw HTML in a code
+                        fence · text = flat dump · table / table_json / table_csv = tables
+                        only · screenshot = full-page JPEG (for post-processors).
+                      </span>
                     </div>
                   </>
                 ) : (
@@ -3956,6 +3957,7 @@ function HintEditorPane({ index, initial, postProcessorModels = [], onClose, onS
                   </>
                 )}
               </HintFieldGroup>
+              {!isWildcard && (
               <HintFieldGroup title="Testing">
                 <UrlListEditor
                   label="Test URLs"
@@ -3965,6 +3967,7 @@ function HintEditorPane({ index, initial, postProcessorModels = [], onClose, onS
                   onChange={(testUrls) => patch({ testUrls })}
                 />
               </HintFieldGroup>
+              )}
               <HintFieldGroup title="Notes — display only, no effect on extraction">
                 <HintField
                   label="Comment"
@@ -4046,7 +4049,7 @@ function hintUrlMismatch(hint, url) {
   }
   const hostname = parsed.hostname.toLowerCase();
   const domain = (hint.domain || "").toLowerCase();
-  const domainOk = !domain || hostname === domain || hostname.endsWith(`.${domain}`);
+  const domainOk = domain === "*" || !domain || hostname === domain || hostname.endsWith(`.${domain}`);
   let path = parsed.pathname.toLowerCase();
   if (path !== "/" && path.endsWith("/")) path = path.slice(0, -1);
   const pathOk = compileGlobLike(hint.pathPattern || "/**")(path);
@@ -4199,7 +4202,7 @@ function HintTestPanel({ hint }) {
           Use cached page HTML
         </label>
       </div>
-      {!testUrl && <p className="hint">Add a test URL to run the hint against a real page.</p>}
+      {!testUrl && hint?.domain !== "*" && <p className="hint">Add a test URL to run the hint against a real page.</p>}
       {result && (
         <div className="hint-test-result">
           <div className={`hint-test-status ${result.ok ? "ok" : "error"}`}>

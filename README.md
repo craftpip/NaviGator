@@ -288,16 +288,13 @@ The `comment` field is for maintainers and appears in the console editor, not fe
 
 ### Default extraction when no hint matches
 
-Pages that match **no** hint are extracted with the built-in defaults (Readability → markdown, `network_idle` stabilization). You can override those defaults globally so unmatched pages are extracted the way you want:
+Pages that match **no** domain hint get default extraction from the wildcard hint (`domain: "*"`). The wildcard hint is always present in `domain-hints.json` — the console auto-creates it with sensible defaults if missing. It cannot be deleted and appears with a "default" badge in the Domain hints editor.
 
-```json
-# .env
-DEFAULT_EXTRACT_FORMAT=html_to_markdown
-DEFAULT_EXTRACT_STABILIZE_STRATEGY=content_idle
-DEFAULT_EXTRACT_SKIP_SELECTORS=script,style,nav,aside,.advert
-```
+Default settings: `readability_to_markdown` extractor, `network_idle` stabilization, no skip selectors, no wait gates.
 
-The `DEFAULT_EXTRACT_*` vars mirror the fields of a hint's `default` block: `DEFAULT_EXTRACT_FORMAT` (extractor), `DEFAULT_EXTRACT_STABILIZE_STRATEGY` (stabilization), `DEFAULT_EXTRACT_WAIT_FOR_SELECTOR` and `DEFAULT_EXTRACT_WAIT_FOR_CONTENT` (pre-extraction gates), and `DEFAULT_EXTRACT_SKIP_SELECTORS` (the global default skip list stripped before extraction on every page; empty = keep everything). An empty `DEFAULT_EXTRACT_STABILIZE_STRATEGY` falls back to `network_idle`; hint/step strategies win over it. The old global `STABILIZE_STRATEGY` was removed 2026-08-16. All are hot-applied — edit them in the web console under **Manage → Web Fetch Extraction** (or the Domain hints panel), and they take effect immediately, no restart.
+You can edit the wildcard hint directly in the web console under **Domain hints** — it works the same as any other hint (format, stabilization, skip selectors, wait gates), but the domain/path/requireSelector fields are hidden. Both the wildcard hint and domain-specific hints can have `skipSelectors` (stacking model — both are stripped during extraction).
+
+The 5 `DEFAULT_EXTRACT_*` env vars were removed on 2026-08-17 and replaced by the wildcard hint.
 
 ### Currently shipped hints
 
@@ -305,7 +302,7 @@ The shipped rules are maintained in `domain-hints.json`. Add a rule only after i
 
 ### Disable hints
 
-To run without any hints, point `DOMAIN_HINTS_PATH` at a JSON file containing an empty array:
+To run without any domain hints, point `DOMAIN_HINTS_PATH` at a JSON file containing an empty array. The wildcard hint (`domain: "*"`) is always auto-created as the fallback — it cannot be disabled:
 
 ```bash
 DOMAIN_HINTS_PATH=/path/to/empty-domain-hints.json
@@ -419,7 +416,6 @@ The most important environment variables are:
 - `SEARCH_ROUTE_WARMUP_ENGINES`: browser routes to open and keep warm at startup
 - `SEARCH_ENABLED_ENGINES`: routes eligible for automatic `select_best` scheduling
 - `POST_PROCESSOR_MODELS`: JSON array to configure post-processor models, e.g. `[{"id":"reader_lm","label":"reader-lm-0.5b","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]`. Each entry accepts an optional `"kind"`: `"chat"` (default — OpenAI-compatible `/chat/completions`), `"mineru"` (POST `{html}` to `<baseUrl>/extract`), or `"api"` (custom endpoint with `body`/`outputField`/`outputType`). Per-entry `timeoutMs`/`maxInputChars`/`maxTokens` override defaults. Per-entry `inputs` (`["html"]`, `["html","text"]`, etc.) declares which payloads the model accepts (for post-processor dropdown labeling). (Legacy names: `AI_EXTRACTOR_MODELS`, `READER_LM_MODELS`)
-- `DEFAULT_EXTRACT_POST_PROCESSOR`: post-processor model id applied to every unmatched page (empty = no post-processor). Must be an id from `POST_PROCESSOR_MODELS`. (Legacy names: `AI_EXTRACTOR_BASE_URL` + `AI_EXTRACTOR_MODEL` single-model path, now removed)
 - `ENABLE_VNC`: enable VNC and noVNC in Docker
 
 See `.env.example` for the full list (the pre-cleanup reference copy is kept at `.env.example.full`).

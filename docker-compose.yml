@@ -86,16 +86,7 @@ services:
       # model (e.g. jinaai/reader-lm-0.5b). Each POST_PROCESSOR_MODELS entry becomes
       # an "(AI Model)" option in the console's Extractor/Post-processor dropdowns.
       POST_PROCESSOR_MODELS: ${POST_PROCESSOR_MODELS:-}
-      DEFAULT_EXTRACT_POST_PROCESSOR: ${DEFAULT_EXTRACT_POST_PROCESSOR:-}
 
-      # Default extraction settings for pages with no matching domain hint.
-      # Each is editable in the console: Manage → Web Fetch Extraction.
-      # Empty stabilize strategy falls back to network_idle.
-      DEFAULT_EXTRACT_FORMAT: ${DEFAULT_EXTRACT_FORMAT:-}
-      DEFAULT_EXTRACT_STABILIZE_STRATEGY: ${DEFAULT_EXTRACT_STABILIZE_STRATEGY:-}
-      DEFAULT_EXTRACT_SKIP_SELECTORS: ${DEFAULT_EXTRACT_SKIP_SELECTORS:-}
-      DEFAULT_EXTRACT_WAIT_FOR_SELECTOR: ${DEFAULT_EXTRACT_WAIT_FOR_SELECTOR:-}
-      DEFAULT_EXTRACT_WAIT_FOR_CONTENT: ${DEFAULT_EXTRACT_WAIT_FOR_CONTENT:-}
     volumes:
       - .:/app
       - /tmp/screenshots:/app/screenshots

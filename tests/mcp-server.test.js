@@ -413,26 +413,6 @@ describe("mcp-server HTTP endpoints", () => {
       expect(fs.readFileSync(envFile, "utf8")).toContain("SEARCH_QUEUE_ESCALATION_FACTOR=3");
     });
 
-    it("hot-applies flattened DEFAULT_EXTRACT_* vars and exposes configValues", async () => {
-      const res = await fetch(`${MCP_BASE}/console/config`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ updates: { DEFAULT_EXTRACT_FORMAT: "html_to_markdown", DEFAULT_EXTRACT_STABILIZE_STRATEGY: "content_idle" } }),
-      });
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.ok).toBe(true);
-      expect(body.hotApplied).toContain("DEFAULT_EXTRACT_FORMAT");
-      expect(body.hotApplied).toContain("DEFAULT_EXTRACT_STABILIZE_STRATEGY");
-      expect(fs.readFileSync(envFile, "utf8")).toContain("DEFAULT_EXTRACT_FORMAT=html_to_markdown");
-      expect(fs.readFileSync(envFile, "utf8")).toContain("DEFAULT_EXTRACT_STABILIZE_STRATEGY=content_idle");
-
-      const get = await fetch(`${MCP_BASE}/console/config`);
-      const payload = await get.json();
-      expect(payload.configValues.DEFAULT_EXTRACT_FORMAT).toBe("html_to_markdown");
-      expect(payload.configValues.DEFAULT_EXTRACT_STABILIZE_STRATEGY).toBe("content_idle");
-    });
-
     it("returns restartRequired for recreate-apply keys", async () => {
       const res = await fetch(`${MCP_BASE}/console/config`, {
         method: "PUT",

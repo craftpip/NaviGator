@@ -1,4 +1,4 @@
-import { parseApiKeys, parseBoolean, parseDefaultExtractFormat, parseDefaultExtractPostProcessor, parseEngines, parsePostProcessorModels, parseSelectorList, parseToolList, parseStabilizeStrategy } from "./config.js";
+import { parseApiKeys, parseBoolean, parseEngines, parsePostProcessorModels, parseToolList } from "./config.js";
 
 const WAIT_UNTIL_VALUES = new Set(["load", "domcontentloaded", "networkidle0", "networkidle2"]);
 
@@ -80,11 +80,6 @@ const HOT_APPLYERS = {
   DEBUG: (config, value) => { config.debug = value; },
   LOG_TOOL_ERRORS: (config, value) => { config.logToolErrors = value; },
   DISABLE_TOOLS: (config, value) => { config.disableTools = value; },
-  DEFAULT_EXTRACT_SKIP_SELECTORS: (config, value) => { config.defaultExtractSkipSelectors = parseSelectorList(value, []); },
-  DEFAULT_EXTRACT_FORMAT: (config, value) => { config.defaultExtractFormat = parseDefaultExtractFormat(value); },
-  DEFAULT_EXTRACT_STABILIZE_STRATEGY: (config, value) => { config.defaultExtractStabilizeStrategy = parseStabilizeStrategy(value, ""); },
-  DEFAULT_EXTRACT_WAIT_FOR_SELECTOR: (config, value) => { config.defaultExtractWaitForSelector = parseSelectorList(value, []); },
-  DEFAULT_EXTRACT_WAIT_FOR_CONTENT: (config, value) => { config.defaultExtractWaitForContent = parseSelectorList(value, []); },
   ENABLE_HANG_RESTART: (config, value) => { config.enableHangRestart = value; },
   HANG_RESTART_TIMEOUT_MS: (config, value) => { config.hangRestartTimeoutMs = value; },
   ENABLE_VNC: (config, value) => { config.vncEnabled = value; },
@@ -92,8 +87,7 @@ const HOT_APPLYERS = {
   MCP_ALLOW_UNAUTHENTICATED: (config, value) => { config.mcpAllowUnauthenticated = value; },
   POST_PROCESSOR_MODELS: (config, value) => {
     config.postProcessorModels = parsePostProcessorModels(value) || [];
-  },
-  DEFAULT_EXTRACT_POST_PROCESSOR: (config, value) => { config.defaultExtractPostProcessor = parseDefaultExtractPostProcessor(value); }
+  }
 };
 
 export function hotApplyConfig(config, key, value) {

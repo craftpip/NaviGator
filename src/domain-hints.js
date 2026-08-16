@@ -56,6 +56,7 @@ function getHostname(urlStr) {
 }
 
 function isMatch(entry, urlStr) {
+  if (entry.domain === "*") return false;
   const hostname = getHostname(urlStr);
   const domain = entry.domain.toLowerCase();
   if (hostname !== domain && !hostname.endsWith("." + domain)) return false;
@@ -65,16 +66,86 @@ function isMatch(entry, urlStr) {
   return pathMatcher(pathname);
 }
 
+export const WILDCARD_DOMAIN = "*";
+
+export function getWildcardHint(hints) {
+  if (!Array.isArray(hints)) return null;
+  return hints.find((h) => h?.domain === WILDCARD_DOMAIN) || null;
+}
+
+const WILDCARD_DEFAULT_HINT = Object.freeze({
+  domain: WILDCARD_DOMAIN,
+  pathPattern: "/**",
+  pageType: "default",
+  comment: "Default extraction for all URLs. Edit in the Domain hints panel.",
+  default: Object.freeze({
+    format: "readability_to_markdown",
+    stabilizeStrategy: "network_idle",
+    waitForSelector: [],
+    waitForContent: [],
+    skipSelectors: []
+  })
+});
+
+function buildWildcardHintFromEnv() {
+  const d = {
+    format: "readability_to_markdown",
+    stabilizeStrategy: "network_idle",
+    waitForSelector: [],
+    waitForContent: [],
+    skipSelectors: []
+  };
+  const envFormat = process.env.DEFAULT_EXTRACT_FORMAT;
+  if (envFormat && typeof envFormat === "string" && envFormat.trim()) {
+    const known = ["readability_to_markdown", "html_to_markdown", "html", "text", "table", "table_json", "table_csv", "screenshot"];
+    const val = envFormat.trim();
+    if (known.includes(val)) d.format = val;
+  }
+  const envStrategy = process.env.DEFAULT_EXTRACT_STABILIZE_STRATEGY;
+  if (envStrategy && ["network_idle", "content_idle", "mutation", "none"].includes(envStrategy)) {
+    d.stabilizeStrategy = envStrategy;
+  }
+  const envWaitSel = process.env.DEFAULT_EXTRACT_WAIT_FOR_SELECTOR;
+  if (envWaitSel && typeof envWaitSel === "string" && envWaitSel.trim()) {
+    d.waitForSelector = envWaitSel.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  const envWaitContent = process.env.DEFAULT_EXTRACT_WAIT_FOR_CONTENT;
+  if (envWaitContent && typeof envWaitContent === "string" && envWaitContent.trim()) {
+    d.waitForContent = envWaitContent.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  const envSkip = process.env.DEFAULT_EXTRACT_SKIP_SELECTORS;
+  if (envSkip && typeof envSkip === "string" && envSkip.trim()) {
+    d.skipSelectors = envSkip.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  const envPostProcessor = process.env.DEFAULT_EXTRACT_POST_PROCESSOR;
+  if (envPostProcessor && typeof envPostProcessor === "string" && envPostProcessor.trim()) {
+    d.postProcessor = envPostProcessor.trim();
+  }
+  return {
+    ...WILDCARD_DEFAULT_HINT,
+    default: d
+  };
+}
+
+export function ensureWildcardHint(hints) {
+  if (!Array.isArray(hints)) return hints;
+  if (hints.some((h) => h?.domain === WILDCARD_DOMAIN)) return hints;
+  const fromEnv = buildWildcardHintFromEnv();
+  hints.unshift(fromEnv);
+  console.log("[domain-hints] created wildcard default hint");
+  return hints;
+}
+
 export async function loadDomainHints(hintsPath) {
   const resolvedPath = path.resolve(hintsPath);
   try {
     await fs.access(resolvedPath);
   } catch {
-    return [];
+    return ensureWildcardHint([]);
   }
   const raw = await fs.readFile(resolvedPath, "utf8");
   const entries = JSON.parse(raw);
-  if (!Array.isArray(entries)) return [];
+  if (!Array.isArray(entries)) return ensureWildcardHint([]);
   const migrated = [];
   for (const entry of entries) {
     if (!entry || typeof entry.domain !== "string") continue;
@@ -84,7 +155,7 @@ export async function loadDomainHints(hintsPath) {
     }
     migrated.push(hint);
   }
-  return migrated;
+  return ensureWildcardHint(migrated);
 }
 
 export function findMatchingHints(urlStr, hints) {
@@ -696,15 +767,20 @@ export function validateHintRule(hint, { scope = "static", aiModelIds = [] } = {
     return { errors: [{ field: "", message: "hint must be an object" }], warnings: [] };
   }
   const isTest = scope === "test";
+  const isWildcard = hint.domain === WILDCARD_DOMAIN;
 
   if (!isTest && (typeof hint.domain !== "string" || !hint.domain)) {
     errors.push({ field: "domain", message: "required" });
-  } else if (hint.domain !== undefined && !/^[a-z0-9.-]+$/.test(hint.domain)) {
+  } else if (hint.domain !== undefined && !isWildcard && !/^[a-z0-9.-]+$/.test(hint.domain)) {
     errors.push({ field: "domain", message: "must match /^[a-z0-9.-]+$/ (lowercase letters, digits, dots, dashes)" });
+  } else if (isWildcard && hint.domain !== WILDCARD_DOMAIN) {
+    errors.push({ field: "domain", message: `must be "${WILDCARD_DOMAIN}" for wildcard hints` });
   }
 
-  if (!isTest && (typeof hint.pathPattern !== "string" || !hint.pathPattern)) {
+  if (!isTest && !isWildcard && (typeof hint.pathPattern !== "string" || !hint.pathPattern)) {
     errors.push({ field: "pathPattern", message: 'required (default "/**")' });
+  } else if (isWildcard) {
+    // wildcard hint always uses /** — pathPattern is ignored
   } else if (hint.pathPattern !== undefined && !hint.pathPattern.startsWith("/")) {
     errors.push({ field: "pathPattern", message: "must start with \"/\"" });
   }
@@ -728,13 +804,15 @@ export function validateHintRule(hint, { scope = "static", aiModelIds = [] } = {
     }
   }
 
-  if (hint.requireSelector !== undefined) {
+  if (!isWildcard && hint.requireSelector !== undefined) {
     if (typeof hint.requireSelector !== "string") {
       errors.push({ field: "requireSelector", message: "must be a string" });
     } else if (hint.requireSelector.trim()) {
       const selectorError = validateSelector(hint.requireSelector);
       if (selectorError) errors.push({ field: "requireSelector", message: `invalid CSS selector: ${selectorError}` });
     }
+  } else if (isWildcard && hint.requireSelector !== undefined) {
+    errors.push({ field: "requireSelector", message: "not allowed on wildcard hints" });
   }
 
   for (const [key, message] of Object.entries(LEGACY_TOP_LEVEL_KEYS)) {
@@ -744,7 +822,9 @@ export function validateHintRule(hint, { scope = "static", aiModelIds = [] } = {
   }
 
   const methodKeys = ["default", "flow"].filter((key) => hint[key] !== undefined);
-  if (methodKeys.length > 1) {
+  if (isWildcard && hint.flow !== undefined) {
+    errors.push({ field: "flow", message: "wildcard hints only support default extraction (no flow)" });
+  } else if (methodKeys.length > 1) {
     for (const key of methodKeys) {
       errors.push({ field: key, message: 'choose exactly one extraction method: "default" or "flow"' });
     }
@@ -753,7 +833,7 @@ export function validateHintRule(hint, { scope = "static", aiModelIds = [] } = {
   if (hint.default !== undefined) {
     validateDefault(hint.default, errors, warnings, aiModelIds);
   }
-  if (hint.flow !== undefined) {
+  if (!isWildcard && hint.flow !== undefined) {
     validateFlow(hint.flow, errors, warnings, "flow", aiModelIds);
   }
   validateFlowOptions(hint, errors, warnings);

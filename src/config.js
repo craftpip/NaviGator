@@ -89,25 +89,6 @@ export function parseSelectorList(value, fallback) {
   return [...new Set(parsed)];
 }
 
-const DEFAULT_EXTRACT_FORMAT_DEFAULT = "readability_to_markdown";
-
-export function parseDefaultExtractFormat(value) {
-  const raw = typeof value === "string" ? value.trim() : "";
-  if (!raw) return DEFAULT_EXTRACT_FORMAT_DEFAULT;
-  const known = ["readability_to_markdown", "html_to_markdown", "html", "text", "table", "table_json", "table_csv", "screenshot", "markdown"];
-  if (!known.includes(raw)) {
-    console.warn(`[config] DEFAULT_EXTRACT_FORMAT "${raw}" is a legacy model id — coercing to readability_to_markdown`);
-    return DEFAULT_EXTRACT_FORMAT_DEFAULT;
-  }
-  return raw === "markdown" ? DEFAULT_EXTRACT_FORMAT_DEFAULT : raw;
-}
-
-export function parseDefaultExtractPostProcessor(value) {
-  const raw = typeof value === "string" ? value.trim() : "";
-  if (!raw) return "";
-  return raw;
-}
-
 export function parseApiKeys(value) {
   if (!value || typeof value !== "string") return [];
   return [...new Set(value
@@ -324,30 +305,6 @@ export async function findLightpandaPath() {
 
 const headlessDefault = !process.env.DISPLAY;
 export const DEFAULT_MAX_CHARS = parseInteger(process.env.WEB_FETCH_MAX_CHARS, 90000);
-export const DEFAULT_EXTRACT_SKIP_SELECTORS = Object.freeze([
-  "script",
-  "style",
-  "noscript",
-  "template",
-  "svg",
-  "canvas",
-  "iframe",
-  "nav",
-  "aside",
-  "select",
-  "option",
-  ".cookie",
-  ".cookies",
-  "[class*='cookie']",
-  "[id*='cookie']",
-  "[class*='consent']",
-  "[id*='consent']",
-  "[class*='subscribe']",
-  "[id*='subscribe']",
-  "[class*='banner']",
-  "[id*='banner']",
-  "[role='dialog']"
-]);
 export const DEFAULT_SEARCH_ENABLED_ENGINES = Object.freeze([
   "duckduckgo_api",
   "brave_cb",
@@ -476,11 +433,6 @@ export async function loadConfig() {
     enableInstantAnswers: parseBoolean(process.env.ENABLE_INSTANT_ANSWERS, true),
     disableTools: parseToolList(process.env.DISABLE_TOOLS),
     domainHintsPath,
-    defaultExtractSkipSelectors: parseSelectorList(process.env.DEFAULT_EXTRACT_SKIP_SELECTORS, DEFAULT_EXTRACT_SKIP_SELECTORS),
-    defaultExtractFormat: parseDefaultExtractFormat(process.env.DEFAULT_EXTRACT_FORMAT),
-    defaultExtractStabilizeStrategy: parseStabilizeStrategy(process.env.DEFAULT_EXTRACT_STABILIZE_STRATEGY, ""),
-    defaultExtractWaitForSelector: parseSelectorList(process.env.DEFAULT_EXTRACT_WAIT_FOR_SELECTOR, []),
-    defaultExtractWaitForContent: parseSelectorList(process.env.DEFAULT_EXTRACT_WAIT_FOR_CONTENT, []),
     searchRouteWarmupEngines: process.env.SEARCH_ROUTE_WARMUP_ENGINES === undefined
       ? ["brave_cb", "duckduckgo_api", "duckduckgo_cb"]
       : parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, []),
@@ -488,10 +440,7 @@ export async function loadConfig() {
       process.env.SEARCH_ENABLED_ENGINES,
       DEFAULT_SEARCH_ENABLED_ENGINES
     ),
-    postProcessorModels: resolvePostProcessorModels(),
-    defaultExtractPostProcessor: parseDefaultExtractPostProcessor(
-      readConfigEnv("DEFAULT_EXTRACT_POST_PROCESSOR")
-    )
+    postProcessorModels: resolvePostProcessorModels()
   };
 }
 

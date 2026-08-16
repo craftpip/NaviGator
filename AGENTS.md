@@ -224,12 +224,6 @@ For visual verification, call `web_page_screenshot` with the same `ref_ids`.
 | `ENABLE_INSTANT_ANSWERS` | `1` | Make the independent DuckDuckGo Instant Answer API call on every `web_search` (rendered as the `**Instant Answer:**` section). Set to `0` to disable |
 | `DISABLE_TOOLS` | `` | Comma-separated MCP tool names to hide from `tools/list` and reject on call. Matched case-insensitively. Example: `web_page_ascii,web_page_links`. Empty enables all tools, including in Compose. |
 | `POST_PROCESSOR_MODELS` | `` | JSON array of post-processor model entries: `[{"id":"reader_lm","label":"reader-lm-0.5b","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]`. Each `id` becomes an "AI Model" option in the extractor/post-processor dropdowns. Each entry may carry `"kind"`: `"chat"` (default — OpenAI-compatible `<baseUrl>/chat/completions`), `"mineru"` (POST `{html}` to `<baseUrl>/extract`), or `"api"` (custom endpoint with `body`/`outputField`/`outputType`). Per-entry `timeoutMs`/`maxInputChars`/`maxTokens` override defaults. `applies: "recreate"` — change requires a container restart. (Legacy names: `AI_EXTRACTOR_MODELS`, `READER_LM_MODELS`) |
-| `DEFAULT_EXTRACT_POST_PROCESSOR` | `` | Default post-processor model id applied to every unmatched page (empty = no post-processor). Must be a model id from `POST_PROCESSOR_MODELS`. Hot-applied. Also settable per-hint as `default.postProcessor` or per-block as `postProcessor`. |
-| `DEFAULT_EXTRACT_FORMAT` | `readability_to_markdown` | Extractor format for pages with **no** matching domain hint. Accepts any `default.format` value (see Extractor formats above), including `screenshot`. Hot-applied |
-| `DEFAULT_EXTRACT_STABILIZE_STRATEGY` | `network_idle` | Default page stabilization strategy: `network_idle` · `content_idle` · `mutation` · `none` (empty = `network_idle`). Hint/step `stabilizeStrategy` wins over it. Hot-applied. (The old global `STABILIZE_STRATEGY` was removed 2026-08-16) |
-| `DEFAULT_EXTRACT_SKIP_SELECTORS` | *(built-in list)* | DOM elements stripped before extraction (comma-separated CSS selectors) — the global default skip list applied to every page. Leave empty to keep everything. Hot-applied |
-| `DEFAULT_EXTRACT_WAIT_FOR_SELECTOR` | `` | CSS selectors (comma-separated) that must appear before extracting unmatched pages. Empty = no wait. Hot-applied |
-| `DEFAULT_EXTRACT_WAIT_FOR_CONTENT` | `` | CSS selectors (comma-separated) to wait for content in before extracting unmatched pages. Empty = no wait. Hot-applied |
 
 ### Key Notes
 
@@ -455,7 +449,7 @@ container the same way.
 **Per-step `stabilizeStrategy`:** stabilization tuning lives on the step, not on
 `flowOptions`. Every gated step (`wait`, `click`, `type` with submit, `navigate`) carries
 a `stabilizeStrategy` (`network_idle` | `content_idle` | `mutation`, default `network_idle`
-falls back to `default.stabilizeStrategy` / config `DEFAULT_EXTRACT_STABILIZE_STRATEGY`). The engine
+falls back to `default.stabilizeStrategy` / wildcard hint's `default.stabilizeStrategy`). The engine
 stabilizes immediately after that step's selector gate succeeds. `none` opts out — the
 step gates on its selector and moves on without stabilizing. A `wait` step acts as
 "wait for selector, then stabilize" — its `selector` is optional: blank = skip the
@@ -498,7 +492,7 @@ field is rejected as unknown.
 ## Fix Patterns
 
 - When debugging extraction issues, use the browser devtools (`browser_Target_createTarget`, `browser_Runtime_evaluate`, `browser_DOM_getDocument`, `browser_web_fetch`) to inspect the live page and test Readability's output directly in the browser. Do NOT guess by reading code — the browser tools are faster and show the actual runtime state.
-- Before modifying `DEFAULT_EXTRACT_SKIP_SELECTORS`, check whether removing semantic elements like `header`/`footer` could strip page content. These elements commonly hold real content on portfolio and personal sites. Let Readability handle them naturally instead of pre-removing them.
+- Before modifying skip selectors in the wildcard hint (`domain: "*"`, `default.skipSelectors`), check whether removing semantic elements like `header`/`footer` could strip page content. These elements commonly hold real content on portfolio and personal sites. Let Readability handle them naturally instead of pre-removing them.
 
 - When adding SSE keepalive to MCP transports, write SSE comment frames (`: keepalive\n\n`) directly to each stream controller via `transport._webStandardTransport._streamMapping` — do NOT use `notifications/message` through `transport.send()` as that creates real JSON-RPC traffic the client must process. Dead controllers throw on `enqueue()` and get cleaned up from the mapping.
 - Always copy Map entries to an array before iterating if you plan to delete during the loop (`[...map.entries()]`).
@@ -964,16 +958,31 @@ For each site:
 
 **Plans convention:** Every plan is numbered by creation date, oldest first. New feature plans go in `plans/<NN>_<topic>.md` with the next sequential number (e.g., `17_<topic>.md` after `16_domain-hint-flows.md`) — always prepend the number when creating a plan. When a plan is fully implemented, absorb its durable knowledge into this file (or `docs/`) and move the plan file to `plans/archive/`.
 
-### DEFAULT_EXTRACT — No-Hint Default Extraction
+### Wildcard Hint — No-Hint Default Extraction
 
 **Created:** 2026-08-16
+**Superseded:** 2026-08-17 — replaced the 5 `DEFAULT_EXTRACT_*` env vars with a wildcard hint (`domain: "*"`) in `domain-hints.json`.
 
-**What:** Pages that match **no** domain hint now get configurable default extraction via the flattened `DEFAULT_EXTRACT_FORMAT` / `DEFAULT_EXTRACT_STABILIZE_STRATEGY` / `DEFAULT_EXTRACT_SKIP_SELECTORS` / `DEFAULT_EXTRACT_WAIT_FOR_SELECTOR` / `DEFAULT_EXTRACT_WAIT_FOR_CONTENT` env vars (hot-applied). The defaults behave exactly like a hint's `default` block — applied as a synthetic `{ default: ... }` hint. **Skip selectors are NOT part of it** — they live in `DEFAULT_EXTRACT_SKIP_SELECTORS`, which is the global default skip list stripped before extraction for every page. Originally shipped as a single `DEFAULT_EXTRACT` JSON var; flattened 2026-08-16 because one JSON blob could not be edited field-by-field in the Manage panel (each var now has its own row/dropdown). The old global `STABILIZE_STRATEGY` page-level var was removed the same day — `DEFAULT_EXTRACT_STABILIZE_STRATEGY` is now the only stabilization env var (hint/step strategies win over it; it defaults to `network_idle`).
+**What:** Pages that match **no** domain hint get default extraction from the wildcard hint (`domain: "*"`). The wildcard hint is always present — `ensureWildcardHint()` auto-creates it with sensible defaults if missing. It cannot be deleted and is always at index 0 in the hints list.
+
+**Wildcard hint defaults:**
+- `format: "readability_to_markdown"`
+- `stabilizeStrategy: "network_idle"`
+- `postProcessor: ""` (none)
+- `waitForSelector: []`, `waitForContent: []`, `skipSelectors: []`
+
+**Key behaviors:**
+- Wildcard hint excluded from `findMatchingHints()` — loaded separately via `getWildcardHint()` as final fallback.
+- `isMatch()` returns `false` for `domain: "*"` — it never matches by domain.
+- Both wildcard and domain hints can have `skipSelectors` (stacking model).
+- No hidden inheritance — `stabilizeStrategy` is always explicit on the wildcard hint.
+- Migration: `ensureWildcardHint()` reads `DEFAULT_EXTRACT_*` env vars on first load, populates the wildcard hint, saves to file. After migration, the env vars are no longer read.
 
 **Implementation notes:**
-- `parseDefaultExtractFormat()` (src/config.js) returns `readability_to_markdown` for missing/blank values and keeps any real value (including a configured AI model id). `parseStabilizeStrategy(value, "")` gives the empty-inherit default for the stabilize strategy (empty = fall back to `network_idle` at the call site); the selector vars are `parseSelectorList(value, [])`. `config.defaultExtractStabilizeStrategy` defaults to `""` (inherit).
-- `defaultExtractHint(config)` (src/search.js, near `firstMatchingHint`) returns `null` when nothing is configured — cheap no-op. It is applied at **two** points in `browserOpenAndExtract()`: once right after hint resolution for the cached-HTML replay path (no page available), and again after the final `requireSelector` retry, because that retry **overwrites** `hint` to `null` when candidates exist but none match — the early application alone would be lost.
-- Config plumbing: the four `DEFAULT_EXTRACT_*` keys are `type: "string"` / `"enum"` in config-schema.js with `applies: "hot"` and individual appliers in config-manager.js. In `getConsoleConfigPayload()` `DEFAULT_EXTRACT_STABILIZE_STRATEGY` returns the schema fallback when the runtime value is empty (so the Manage dropdown auto-selects `network_idle`); the enum's `values` are `["network_idle","content_idle","mutation","none"]` — empty is not a selectable option (picking `network_idle` pins it explicitly, which matches the global default shown on the left).
-- Console UI: Manage tab's "Web Fetch Extraction" group lists the five vars (extractor dropdown, stabilize dropdown, skip-selector + two selector line editors).
-- The default hint must NOT carry a `flow` — `defaultExtractHint` never sets one, so `runFlowExtraction` is never triggered for unmatched pages.
+- `getWildcardHint(hints)` returns the wildcard hint from a loaded hints array, or `null`.
+- `ensureWildcardHint(hintsPath)` ensures the wildcard hint exists, migrating from env vars if needed.
+- `browserOpenAndExtract()` uses `getWildcardHint(hints)` as the fallback hint when no domain hint matches.
+- `stabilizePage()` uses wildcard hint's `default.stabilizeStrategy` as fallback.
+- Console UI: wildcard hint has a "default" badge, hidden pathPattern/requireSelector fields, hidden flow toggle, and a test panel that works with any URL.
+- The default hint must NOT carry a `flow` — it is never set, so `runFlowExtraction` is never triggered for unmatched pages.
 - Test gotcha: single-row key/value tables (`columnCount === 2 && rows.length === 1`) are filtered out by `extractTablesFromDocument`, so a "tables-only" default-extract test needs a table with ≥2 body rows.

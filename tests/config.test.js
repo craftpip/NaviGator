@@ -128,26 +128,6 @@ describe("findCloakbrowserPath", () => {
 });
 
 describe("parseDefaultExtract", () => {
-  it("defaults the format when missing or empty", async () => {
-    const { parseDefaultExtractFormat } = await import("../src/config.js");
-    expect(parseDefaultExtractFormat(undefined)).toBe("readability_to_markdown");
-    expect(parseDefaultExtractFormat("")).toBe("readability_to_markdown");
-    expect(parseDefaultExtractFormat("   ")).toBe("readability_to_markdown");
-  });
-
-  it("keeps a real format value", async () => {
-    const { parseDefaultExtractFormat } = await import("../src/config.js");
-    expect(parseDefaultExtractFormat("html_to_markdown")).toBe("html_to_markdown");
-    expect(parseDefaultExtractFormat("table_csv")).toBe("table_csv");
-  });
-
-  it("coerces legacy model-id format to readability_to_markdown", async () => {
-    const { parseDefaultExtractFormat } = await import("../src/config.js");
-    expect(parseDefaultExtractFormat("reader_lm")).toBe("readability_to_markdown");
-    expect(parseDefaultExtractFormat("mineru")).toBe("readability_to_markdown");
-    expect(parseDefaultExtractFormat("unknown_model")).toBe("readability_to_markdown");
-  });
-
   it("parses the stabilize strategy with an empty-string inherit default", async () => {
     const { parseStabilizeStrategy } = await import("../src/config.js");
     expect(parseStabilizeStrategy("", "")).toBe("");
@@ -159,56 +139,6 @@ describe("parseDefaultExtract", () => {
     const { parseSelectorList } = await import("../src/config.js");
     expect(parseSelectorList("#app", [])).toEqual(["#app"]);
     expect(parseSelectorList(["article", "", null, "  "], [])).toEqual(["article"]);
-  });
-});
-
-describe("loadConfig (parse engine behavior)", () => {
-  it("defaults the flattened DEFAULT_EXTRACT_* vars", async () => {
-    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
-    vi.stubEnv("DEFAULT_EXTRACT_FORMAT", undefined);
-    vi.stubEnv("DEFAULT_EXTRACT_STABILIZE_STRATEGY", undefined);
-    vi.stubEnv("DEFAULT_EXTRACT_WAIT_FOR_SELECTOR", undefined);
-    vi.stubEnv("DEFAULT_EXTRACT_WAIT_FOR_CONTENT", undefined);
-    const { loadConfig } = await import("../src/config.js");
-    const config = await loadConfig();
-    expect(config.defaultExtractFormat).toBe("readability_to_markdown");
-    expect(config.defaultExtractStabilizeStrategy).toBe("");
-    expect(config.defaultExtractWaitForSelector).toEqual([]);
-    expect(config.defaultExtractWaitForContent).toEqual([]);
-  });
-
-  it("parses explicit flattened DEFAULT_EXTRACT_* values", async () => {
-    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
-    vi.stubEnv("DEFAULT_EXTRACT_FORMAT", "html_to_markdown");
-    vi.stubEnv("DEFAULT_EXTRACT_STABILIZE_STRATEGY", "content_idle");
-    vi.stubEnv("DEFAULT_EXTRACT_WAIT_FOR_SELECTOR", "#app");
-    vi.stubEnv("DEFAULT_EXTRACT_WAIT_FOR_CONTENT", "article,main");
-    const { loadConfig } = await import("../src/config.js");
-    const config = await loadConfig();
-    expect(config.defaultExtractFormat).toBe("html_to_markdown");
-    expect(config.defaultExtractStabilizeStrategy).toBe("content_idle");
-    expect(config.defaultExtractWaitForSelector).toEqual(["#app"]);
-    expect(config.defaultExtractWaitForContent).toEqual(["article", "main"]);
-  });
-});
-
-describe("loadConfig (DEFAULT_EXTRACT_SKIP_SELECTORS)", () => {
-  it("loadConfig parses DEFAULT_EXTRACT_SKIP_SELECTORS into defaultExtractSkipSelectors", async () => {
-    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
-    vi.stubEnv("DEFAULT_EXTRACT_SKIP_SELECTORS", "script,style,nav,.advert");
-    const { loadConfig } = await import("../src/config.js");
-    const config = await loadConfig();
-    expect(config.defaultExtractSkipSelectors).toEqual(["script", "style", "nav", ".advert"]);
-  });
-
-  it("loadConfig defaults defaultExtractSkipSelectors to the built-in list", async () => {
-    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
-    vi.stubEnv("DEFAULT_EXTRACT_SKIP_SELECTORS", undefined);
-    const { loadConfig } = await import("../src/config.js");
-    const config = await loadConfig();
-    expect(config.defaultExtractSkipSelectors).toContain("script");
-    expect(config.defaultExtractSkipSelectors).toContain("nav");
-    expect(config.defaultExtractSkipSelectors).toContain("[role='dialog']");
   });
 });
 

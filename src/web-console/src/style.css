@@ -2575,9 +2575,17 @@ select.config-input option {
 }
 .hint-options-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px 16px;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 10px 12px;
   align-items: start;
+}
+.hint-options-grid-arrow {
+  margin-top: 22px;
+  color: var(--muted);
+  font-size: 18px;
+}
+.hint-options-grid-full {
+  grid-column: 1 / -1;
 }
 .hint-option {
   display: flex;
@@ -2591,8 +2599,7 @@ select.config-input option {
   text-transform: uppercase;
 }
 .hint-option select {
-  width: fit-content;
-  max-width: 100%;
+  width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 4px;

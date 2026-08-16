@@ -51,8 +51,9 @@ function validateSelector(selector) {
 describe("domain hints", () => {
   it("loads every configured hint", async () => {
     const loaded = await loadDomainHints(hintsPath);
-    expect(loaded).toHaveLength(rawHints.length);
-    expect(loaded).toEqual(rawHints.map((hint) => migrateHintShape(hint).hint));
+    expect(loaded).toHaveLength(rawHints.length + 1);
+    expect(loaded[0].domain).toBe("*");
+    expect(loaded.slice(1)).toEqual(rawHints.map((hint) => migrateHintShape(hint).hint));
   });
 
   it.each(rawHints.map((hint, index) => [index + 1, hint]))(
@@ -673,7 +674,7 @@ describe("saveDomainHints and loadRawDomainHints", () => {
     const config = { domainHintsPath: hintsPath };
 
     const before = await getDomainHints(config);
-    expect(before).toHaveLength(1);
+    expect(before).toHaveLength(2);
 
     const next = [
       { domain: "a.com", pathPattern: "/**", pageType: "p", comment: "one" },
@@ -687,8 +688,8 @@ describe("saveDomainHints and loadRawDomainHints", () => {
     expect(backup).toHaveLength(1);
 
     const after = await getDomainHints(config);
-    expect(after).toHaveLength(2);
-    expect(after[1].domain).toBe("b.com");
+    expect(after).toHaveLength(3);
+    expect(after[2].domain).toBe("b.com");
   });
 
   it("refuses to write to /dev/null", async () => {
@@ -707,7 +708,7 @@ describe("saveDomainHints and loadRawDomainHints", () => {
     const raw = await loadRawDomainHints(hintsPath);
     expect(raw).toHaveLength(2);
     const filtered = await loadDomainHints(hintsPath);
-    expect(filtered).toHaveLength(1);
+    expect(filtered).toHaveLength(2);
   });
 });
 
