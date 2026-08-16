@@ -294,10 +294,10 @@ Pages that match **no** hint are extracted with the built-in defaults (Readabili
 # .env
 DEFAULT_EXTRACT_FORMAT=html_to_markdown
 DEFAULT_EXTRACT_STABILIZE_STRATEGY=content_idle
-NON_CONTENT_SELECTORS=script,style,nav,aside,.advert
+DEFAULT_EXTRACT_SKIP_SELECTORS=script,style,nav,aside,.advert
 ```
 
-The four `DEFAULT_EXTRACT_*` vars mirror the fields of a hint's `default` block: `DEFAULT_EXTRACT_FORMAT` (extractor), `DEFAULT_EXTRACT_STABILIZE_STRATEGY` (stabilization), `DEFAULT_EXTRACT_WAIT_FOR_SELECTOR` and `DEFAULT_EXTRACT_WAIT_FOR_CONTENT` (pre-extraction gates). An empty `DEFAULT_EXTRACT_STABILIZE_STRATEGY` inherits the global `STABILIZE_STRATEGY`. Skip selectors are **not** part of it — they live in `NON_CONTENT_SELECTORS`, which is the global default skip list stripped before extraction on every page. All are hot-applied — edit them in the web console under **Manage → Web Fetch Extraction** (or the Domain hints panel), and they take effect immediately, no restart.
+The `DEFAULT_EXTRACT_*` vars mirror the fields of a hint's `default` block: `DEFAULT_EXTRACT_FORMAT` (extractor), `DEFAULT_EXTRACT_STABILIZE_STRATEGY` (stabilization), `DEFAULT_EXTRACT_WAIT_FOR_SELECTOR` and `DEFAULT_EXTRACT_WAIT_FOR_CONTENT` (pre-extraction gates), and `DEFAULT_EXTRACT_SKIP_SELECTORS` (the global default skip list stripped before extraction on every page; empty = keep everything). An empty `DEFAULT_EXTRACT_STABILIZE_STRATEGY` falls back to `network_idle`; hint/step strategies win over it. The old global `STABILIZE_STRATEGY` was removed 2026-08-16. All are hot-applied — edit them in the web console under **Manage → Web Fetch Extraction** (or the Domain hints panel), and they take effect immediately, no restart.
 
 ### Currently shipped hints
 
@@ -418,12 +418,12 @@ The most important environment variables are:
 - `DEVTOOLS_BROWSER_BACKEND`: backend for the browser-testing tools; defaults to `BROWSER_BACKEND`
 - `SEARCH_ROUTE_WARMUP_ENGINES`: browser routes to open and keep warm at startup
 - `SEARCH_ENABLED_ENGINES`: routes eligible for automatic `select_best` scheduling
-- `READER_LM_BASE_URL`: base URL of an OpenAI-compatible endpoint for the AI Model extractor (e.g. `http://host.docker.internal:8000/v1`); when unset, the model id defaults to the configured model name
-- `READER_LM_MODEL`: model name sent to that endpoint (e.g. `jinaai/reader-lm-0.5b`)
-- `READER_LM_MODELS`: JSON array to configure multiple AI models, e.g. `[{"id":"reader_lm","label":"reader-lm-0.5b","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]`; overrides `READER_LM_BASE_URL` + `READER_LM_MODEL`. Each entry may carry `"kind"`: `"chat"` (default — OpenAI-compatible `/chat/completions` on `baseUrl`, `model` is the model name) or `"mineru"` (POST the page HTML to `<baseUrl>/extract`, `model` is informational). Example MinerU entry: `{"id":"mineru","label":"MinerU-HTML","model":"mineru","kind":"mineru","baseUrl":"http://mineru-html:8000"}`. The compose file ships a `mineru-html` sidecar service (see `docker/mineru-html/`).
-- `READER_LM_TIMEOUT_MS`: per-request timeout for the AI extractor, default `60000`
-- `READER_LM_MAX_INPUT_CHARS`: max HTML chars sent to the model (tail-cut when longer), default `60000`
-- `READER_LM_MAX_TOKENS`: max completion tokens requested, default `8192`
+- `AI_EXTRACTOR_BASE_URL`: base URL of an OpenAI-compatible endpoint for the AI Model extractor (e.g. `http://host.docker.internal:8000/v1`); when unset, the model id defaults to the configured model name. (Legacy name: `READER_LM_BASE_URL`)
+- `AI_EXTRACTOR_MODEL`: model name sent to that endpoint (e.g. `jinaai/reader-lm-0.5b`). (Legacy name: `READER_LM_MODEL`)
+- `AI_EXTRACTOR_MODELS`: JSON array to configure multiple AI models, e.g. `[{"id":"reader_lm","label":"reader-lm-0.5b","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]`; overrides `AI_EXTRACTOR_BASE_URL` + `AI_EXTRACTOR_MODEL`. Each entry may carry `"kind"`: `"chat"` (default — OpenAI-compatible `/chat/completions` on `baseUrl`, `model` is the model name) or `"mineru"` (POST the page HTML to `<baseUrl>/extract`, `model` is informational). Example MinerU entry: `{"id":"mineru","label":"MinerU-HTML","model":"mineru","kind":"mineru","baseUrl":"http://navigator-mineru:8000"}`. The compose file ships a `navigator-mineru` sidecar service (see `docker/navigator-mineru/`). (Legacy name: `READER_LM_MODELS`)
+- `AI_EXTRACTOR_TIMEOUT_MS`: per-request timeout for the AI extractor, default `60000`. (Legacy name: `READER_LM_TIMEOUT_MS`)
+- `AI_EXTRACTOR_MAX_INPUT_CHARS`: max HTML chars sent to the model (tail-cut when longer), default `60000`. (Legacy name: `READER_LM_MAX_INPUT_CHARS`)
+- `AI_EXTRACTOR_MAX_TOKENS`: max completion tokens requested, default `8192`. (Legacy name: `READER_LM_MAX_TOKENS`)
 - `ENABLE_VNC`: enable VNC and noVNC in Docker
 
 See `.env.example` for the full list (the pre-cleanup reference copy is kept at `.env.example.full`).

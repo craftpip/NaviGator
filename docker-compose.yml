@@ -83,20 +83,21 @@ services:
       DISABLE_TOOLS: ${DISABLE_TOOLS:-}
 
       # AI Model extractor — an OpenAI-compatible endpoint serving a reader-lm
-      # model (e.g. jinaai/reader-lm-0.5b). Each READER_LM_MODELS entry becomes
+      # model (e.g. jinaai/reader-lm-0.5b). Each AI_EXTRACTOR_MODELS entry becomes
       # an "(AI extractor)" option in the console's Extractor dropdowns.
-      READER_LM_MODELS: ${READER_LM_MODELS:-}
-      READER_LM_BASE_URL: ${READER_LM_BASE_URL:-}
-      READER_LM_MODEL: ${READER_LM_MODEL:-}
-      READER_LM_TIMEOUT_MS: ${READER_LM_TIMEOUT_MS:-60000}
-      READER_LM_MAX_INPUT_CHARS: ${READER_LM_MAX_INPUT_CHARS:-60000}
-      READER_LM_MAX_TOKENS: ${READER_LM_MAX_TOKENS:-8192}
+      AI_EXTRACTOR_MODELS: ${AI_EXTRACTOR_MODELS:-}
+      AI_EXTRACTOR_BASE_URL: ${AI_EXTRACTOR_BASE_URL:-}
+      AI_EXTRACTOR_MODEL: ${AI_EXTRACTOR_MODEL:-}
+      AI_EXTRACTOR_TIMEOUT_MS: ${AI_EXTRACTOR_TIMEOUT_MS:-60000}
+      AI_EXTRACTOR_MAX_INPUT_CHARS: ${AI_EXTRACTOR_MAX_INPUT_CHARS:-60000}
+      AI_EXTRACTOR_MAX_TOKENS: ${AI_EXTRACTOR_MAX_TOKENS:-8192}
 
       # Default extraction settings for pages with no matching domain hint.
       # Each is editable in the console: Manage → Web Fetch Extraction.
-      # Empty stabilize strategy inherits the global STABILIZE_STRATEGY.
+      # Empty stabilize strategy falls back to network_idle.
       DEFAULT_EXTRACT_FORMAT: ${DEFAULT_EXTRACT_FORMAT:-}
       DEFAULT_EXTRACT_STABILIZE_STRATEGY: ${DEFAULT_EXTRACT_STABILIZE_STRATEGY:-}
+      DEFAULT_EXTRACT_SKIP_SELECTORS: ${DEFAULT_EXTRACT_SKIP_SELECTORS:-}
       DEFAULT_EXTRACT_WAIT_FOR_SELECTOR: ${DEFAULT_EXTRACT_WAIT_FOR_SELECTOR:-}
       DEFAULT_EXTRACT_WAIT_FOR_CONTENT: ${DEFAULT_EXTRACT_WAIT_FOR_CONTENT:-}
     volumes:
@@ -113,27 +114,71 @@ services:
   # Serves POST /extract {html} -> {text} (markdown) on port 8001. Independent
   # of navigator: if this container is down, navigator's AI extractor falls
   # back to html_to_markdown (existing fallback semantics). See
-  # docker/mineru-html/sidecar.py and plans/23_mineru-html-extractor.md.
-  mineru-html:
-    container_name: mineru-html
-    image: mineru-html:latest
+  # docker/navigator-mineru/sidecar.py and plans/23_mineru-html-extractor.md.
+  #
+  # Every runtime knob is settable from .env (see .env.example). The knob you
+  # most likely want on a bigger GPU is MINERU_CONTEXT_WINDOW — KV cache is
+  # ~96 KiB/token (13312 ~= 1.2 GiB / 32768 ~= 3.0 GiB / 65536 ~= 6.0 GiB).
+  navigator-mineru:
+    container_name: navigator-mineru
+    image: navigator-mineru:latest
     restart: unless-stopped
     build:
-      context: ./docker/mineru-html
+      context: ./docker/navigator-mineru
       dockerfile: Dockerfile
     runtime: nvidia
     shm_size: "2gb"
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      # "vllm" (default) or "transformers". vLLM auto-falls back to
+      # GPU(s) to expose. "all" = every GPU; a UUID or index selects one.
+      NVIDIA_VISIBLE_DEVICES: ${MINERU_GPU:-all}
+      # Backend: "vllm" (default) or "transformers". vLLM auto-falls back to
       # transformers on init failure (e.g. low-VRAM GPUs like the GTX 1650).
-      - MINERU_BACKEND=vllm
+      MINERU_BACKEND: ${MINERU_BACKEND:-vllm}
+      # Model weights are baked into the image at this path.
+      MINERU_MODEL_PATH: ${MINERU_MODEL_PATH:-/app/model}
+      # Context window (tokens) for the classification prompt. Bigger GPU ->
+      # bigger window (see sizing above). Pages whose prompt overflows the
+      # window fall back to trafilatura instead of the model.
+      MINERU_CONTEXT_WINDOW: ${MINERU_CONTEXT_WINDOW:-13312}
+      # Fraction of VRAM given to vLLM (KV cache + activations). Keep high.
+      MINERU_GPU_MEM_UTIL: ${MINERU_GPU_MEM_UTIL:-0.95}
+      # Incoming HTML is tail-cut at this many chars before extraction
+      # (tables/footnotes live at the end; keep generous on big GPUs).
+      MINERU_MAX_INPUT_CHARS: ${MINERU_MAX_INPUT_CHARS:-400000}
+      # Multi-GPU tensor parallelism. 1 = single GPU.
+      MINERU_TENSOR_PARALLEL_SIZE: ${MINERU_TENSOR_PARALLEL_SIZE:-1}
+      # true = no CUDA graphs (lower VRAM, slower). Set false on CC >= 8.0
+      # cards for CUDA-graph speedups.
+      MINERU_ENFORCE_EAGER: ${MINERU_ENFORCE_EAGER:-true}
+      # Model dtype. "" = auto (vLLM picks). bfloat16 needs CC >= 8.0.
+      MINERU_DTYPE: ${MINERU_DTYPE:-}
+      # Sampling. The model only emits a tiny main/other classification, so
+      # defaults are near-greedy and fine as-is.
+      MINERU_MAX_TOKENS: ${MINERU_MAX_TOKENS:-16384}
+      MINERU_TOP_K: ${MINERU_TOP_K:-1}
+      MINERU_TOP_P: ${MINERU_TOP_P:-0.95}
+      MINERU_TEMPERATURE: ${MINERU_TEMPERATURE:-0}
+      # Concurrent /extract requests allowed. 0 = auto (2 for vllm, 1 for
+      # transformers — the transformers pipeline is not concurrency-safe).
+      MINERU_GATE_CONCURRENCY: ${MINERU_GATE_CONCURRENCY:-0}
+      # Fallback when the LLM path fails or the page overflows the window:
+      # "trafilatura" (default) | "bypass" | "empty".
+      MINERU_USE_FALLBACK: ${MINERU_USE_FALLBACK:-trafilatura}
+      # Converter output format: plain_md (default) | mm_md | md | json | txt.
+      MINERU_OUTPUT_FORMAT: ${MINERU_OUTPUT_FORMAT:-plain_md}
+      # vLLM attention backend: TRITON_ATTN works on CC 7.5 (GTX 1650);
+      # FLASH_ATTN is faster on CC >= 8.0. Translated to VLLM_ATTENTION_BACKEND
+      # inside sidecar.py before vLLM imports.
+      MINERU_VLLM_ATTENTION_BACKEND: ${MINERU_VLLM_ATTENTION_BACKEND:-TRITON_ATTN}
+      # PyTorch allocator for fragmented-VRAM GPUs. Translated to
+      # PYTORCH_CUDA_ALLOC_CONF inside sidecar.py before torch imports.
+      MINERU_PYTORCH_CUDA_ALLOC_CONF: ${MINERU_PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
     deploy:
       resources:
         limits:
-          memory: 8g
+          memory: ${MINERU_MEM_LIMIT:-8g}
     ports:
-      - "8001:8001"
+      - "${MINERU_PORT:-8001}:8001"
 
 volumes:
   chrome_profile_data:

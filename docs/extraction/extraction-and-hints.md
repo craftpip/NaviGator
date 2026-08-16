@@ -1,5 +1,10 @@
 # Extraction, Markdown, and Domain Hints
 
+> **AI-model extractors** (reader-lm, MinerU-HTML) are a separate extraction path that
+> replaces the pipeline below for matched pages — see
+> [MinerU-HTML GPU Sidecar](navigator-mineru-sidecar.md) for the GPU-backed AI extractor's
+> pipeline, KV-cache limits, and silent fallback behavior.
+
 ## Fetch Pipeline
 
 `browserOpenAndExtract()` in `src/search.js` is the page-extraction entry point used by `web_fetch` and HTTP `/extract`.

@@ -17,7 +17,7 @@ Important routing rules:
 - `HEADLESS=false` without `ENABLE_VNC=1` is forced back to headless mode so the server does not start a browser without a display.
 - `SEARCH_ROUTE_WARMUP_ENGINES` defaults to a small set only when unset. An explicitly empty value disables warmup. `SEARCH_ENABLED_ENGINES` controls automatic route selection.
 
-`DEFAULT_NON_CONTENT_SELECTORS` is the baseline for page cleanup. Changes here can silently remove real page content, especially semantic `header` and `footer` elements; prefer a domain hint or a targeted selector before broadening this list.
+`DEFAULT_EXTRACT_SKIP_SELECTORS` is the baseline for page cleanup. Changes here can silently remove real page content, especially semantic `header` and `footer` elements; prefer a domain hint or a targeted selector before broadening this list.
 
 ### `config-schema.js` and `config-manager.js`
 

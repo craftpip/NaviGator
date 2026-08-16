@@ -2,12 +2,12 @@
 
 ## Plan Status
 
-**Status: DRAFT** — server + console integration implemented and tested; GPU container not yet built. The `mineru-html` service is designed to run on a **separate GPU host** (this app VM has no GPU — no `libcuda*`/`/dev/nvidia*`), so items 1–2 happen there.
+**Status: DRAFT** — server + console integration implemented and tested; GPU container built and smoke-tested on this box's GTX 1650. Remaining: point `READER_LM_MODELS` at the sidecar.
 
 ### Checklist
 
-- [ ] 1. Build the standalone **GPU container** (`mineru-html` service): vLLM backend + FastAPI wrapper, NVIDIA runtime, model weights baked into the image, port `8001`. (`docker/mineru-html/Dockerfile` + `sidecar.py` written, compose service defined — **image not built**; do this on a host with the `nvidia` runtime, e.g. `docker compose build mineru-html`)
-- [ ] 2. Verify container on the GPU host: `curl localhost:8001/extract` with a nav-heavy HTML → clean markdown, GPU used (`nvidia-smi` shows process). Then point this VM's `READER_LM_MODELS` mineru entry at the GPU host's `baseUrl` (`http://<gpu-host>:8000`; the `http://mineru-html:8000` compose-DNS name only works when both are on the same compose network).
+- [x] 1. Build the standalone **GPU container** (`navigator-mineru` service): vLLM backend + FastAPI wrapper, NVIDIA runtime, model weights baked into the image, port `8001`. Image `navigator-mineru:latest` built and running (`docker run --gpus all -p 8001:8001`); `POST /extract` returns clean markdown (nav/footer stripped), `/health` shows `backend=vllm`, KV cache 13,424 tokens.
+- [ ] 2. Verify container on the GPU host: `curl localhost:8001/extract` with a nav-heavy HTML → clean markdown, GPU used (`nvidia-smi` shows process). Then point this VM's `READER_LM_MODELS` mineru entry at the GPU host's `baseUrl` (`http://<gpu-host>:8000`; the `http://navigator-mineru:8000` compose-DNS name only works when both are on the same compose network).
 - [x] 3. Add `kind` field to `READER_LM_MODELS` entries in `src/config.js` (`parseAiModelKind`, `AI_MODEL_KINDS`) + `src/config-schema.js` (enum + license note). `config-manager.js` unchanged (`applies: "recreate"`).
 - [x] 4. Extended `src/reader-lm.js` — `extractWithMineru` POSTs `{html}` to `<baseUrl>/extract`, `MINERU_MAX_INPUT_CHARS` safety cap, concurrency gate reused.
 - [x] 5. `src/search.js`: dispatch centralized in `extractHtmlWithAiModel` (`entry.kind === "mineru" ? mineru : chat`); `search.js` calls it unchanged.
@@ -75,7 +75,7 @@ Result object: `result[0].main_html` (HF card v1.1) / `result[0].output_data.mai
 The pipeline (simplify → prompt → inference → parse → extract → convert) is tuned Python with model-specific prompts. Reimplementing in JS duplicates fragile logic and the model's prompt contract. Rejected: full JS reimplementation.
 
 **D2 — Standalone GPU container, HTTP in/out (RECOMMENDED, user-directed).**
-- A **separate Docker container** (`mineru-html`), NOT part of the navigator container, runs the whole `mineru_html` pipeline (vLLM backend on the NVIDIA GPU) wrapped in a tiny FastAPI server.
+- A **separate Docker container** (`navigator-mineru`), NOT part of the navigator container, runs the whole `mineru_html` pipeline (vLLM backend on the NVIDIA GPU) wrapped in a tiny FastAPI server.
 - Exposed on port `8001` (host network). Contract: `POST /extract` `{html}` → `{text}` (markdown via `convert2content`).
 - Navigator (unchanged container) calls it over HTTP at `http://10.69.1.164:8001/extract` — Node stays pure, Python owns the pipeline. GPU makes vLLM fast, so concurrency >1 is fine.
 - Navigator gets a **`kind` field** on `READER_LM_MODELS` entries: default `"chat"` (existing reader-lm path) vs `"mineru"` (POST to the container). No new env var shape needed — one model list, two client flavors.
@@ -97,40 +97,44 @@ The pipeline (simplify → prompt → inference → parse → extract → conver
 | `src/mcp-server.js` | Cache bypass for AI models already handles both; verify `getAiModels` (line 32) passthrough of `kind` |
 | `src/web-console/src/main.jsx` | AI-model dropdown options unchanged (ids come from config); optionally label kind |
 | `.env` | Example entry: `{"id":"mineru_lm","label":"MinerU-HTML v1.1","model":"MinerU-HTML-v1.1-hunyuan0.5B-compact","kind":"mineru","baseUrl":"http://10.69.1.164:8001"}` |
-| `docker-compose.yml` | No new vars needed for navigator (kind rides inside `READER_LM_MODELS` JSON); the `mineru-html` container is a **separate compose service** (see below) |
+| `docker-compose.yml` | No new vars needed for navigator (kind rides inside `READER_LM_MODELS` JSON); the `navigator-mineru` container is a **separate compose service** (see below) |
 
-## Standalone GPU Container (`mineru-html`)
+## Standalone GPU Container (`navigator-mineru`)
 
 Deliberately separate from the navigator container: GPU runtime, its own image, its own lifecycle. If it's down,
 navigator's AI extractor falls back to `html_to_markdown` (existing fallback semantics) — navigator is never blocked.
 
-**Dockerfile sketch** (lives in its own dir, e.g. `/www1/navigator/docker/mineru-html/`):
+**Dockerfile** (lives in its own dir, `/www1/navigator/docker/navigator-mineru/`):
 
 ```dockerfile
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04        # or python:3.11-slim + nvidia runtime
+FROM python:3.11-slim + nvidia runtime
 WORKDIR /app
-COPY . .
-RUN pip install -e '.[vllm]'                       # installs mineru_html + vllm==0.11.1 + webkit
-# Model weights baked into the image (decision: BAKE IN). ~1GB BF16, fast cold start.
-RUN pip install huggingface_hub && huggingface-cli download opendatalab/MinerU-HTML-v1.1-hunyuan0.5B-compact
+RUN pip install "mineru_html[vllm]==1.1.2"          # installs mineru_html + vllm==0.11.1 + webkit
+# Model weights baked into the image (decision: BAKE IN). ~1.1GB BF16, fast cold start.
+RUN huggingface-cli download opendatalab/MinerU-HTML-v1.1-hunyuan0.5B-compact
+COPY sidecar.py /app/sidecar.py
 EXPOSE 8001
-CMD ["uvicorn", "mineru_sidecar:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "sidecar:app", "--host", "0.0.0.0", "--port", "8001"]
 ```
 
-**compose addition** (same `docker-compose.yml`, new top-level service):
+**compose addition** (same `docker-compose.yml`, new top-level service — all runtime knobs exposed as
+`MINERU_*` env vars, see the compose file and `.env.example`):
 
 ```yaml
-  mineru-html:
-    build: ./docker/mineru-html
+  navigator-mineru:
+    build: ./docker/navigator-mineru
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - MINERU_BACKEND=vllm
+      - MINERU_CONTEXT_WINDOW=13312
+      - MINERU_GPU_MEM_UTIL=0.95
     ports:
       - "8001:8001"
     restart: unless-stopped
 ```
 
-**Sidecar** (`mineru_sidecar.py`) — **verified against v1.1 source** (api.py, base.py, implementations/vllm_api.py, process/convert2content.py):
+**Sidecar** (`docker/navigator-mineru/sidecar.py`) — **verified against v1.1 source** (api.py, base.py, implementations/vllm_api.py, process/convert2content.py). The shipped version is fully env-configurable (every knob from the compose service block); this sketch shows the core wiring:
 
 ```python
 # thin FastAPI wrapper around mineru_html v1.1 (vLLM backend, GPU)
@@ -166,7 +170,7 @@ async def extract(req: Request):
 
 ## Testing / Verification
 
-1. Container smoke test: `docker compose up -d mineru-html`, then `curl -X POST localhost:8001/extract -d '{"html":"<html>…"}'` → clean markdown, no nav/footer noise; `nvidia-smi` shows the process using the GPU.
+1. Container smoke test: `docker compose up -d navigator-mineru`, then `curl -X POST localhost:8001/extract -d '{"html":"<html>…"}'` → clean markdown, no nav/footer noise; `nvidia-smi` shows the process using the GPU.
 2. NSE India option chain (the page that motivated reader-lm) — tables must survive the main-HTML extraction + MinerU-Webkit conversion.
 3. MCP `web_fetch` with `format: "mineru_lm"` — success path, error fallback (container down → `html_to_markdown` + console warning), no cache reuse.
 4. Console: extractor dropdown shows the new model; both default-extraction and flow-block paths work.
