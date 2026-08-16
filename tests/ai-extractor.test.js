@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
-  getAiModels,
-  isReaderLmConfigured,
-  getAiModelKind,
+  getAiExtractorModels,
+  isAiExtractorConfigured,
+  getAiExtractorKind,
   extractHtmlWithAiModel,
-} from "../src/reader-lm.js";
+} from "../src/ai-extractor.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -12,13 +12,13 @@ afterEach(() => {
 
 function makeConfig(overrides = {}) {
   return {
-    readerLmModels: [
+    aiExtractorModels: [
       { id: "reader_lm", label: "reader-lm-0.5b", model: "jinaai/reader-lm-0.5b", baseUrl: "http://chat:8000/v1", kind: "chat" },
       { id: "mineru", label: "MinerU-HTML", model: "mineru", kind: "mineru", baseUrl: "http://mineru:8000" },
     ],
-    readerLmTimeoutMs: 5000,
-    readerLmMaxInputChars: 60000,
-    readerLmMaxTokens: 8192,
+    aiExtractorTimeoutMs: 5000,
+    aiExtractorMaxInputChars: 60000,
+    aiExtractorMaxTokens: 8192,
     ...overrides,
   };
 }
@@ -27,10 +27,10 @@ function okResponse(body) {
   return { ok: true, status: 200, statusText: "OK", json: async () => body };
 }
 
-describe("getAiModels / getAiModelKind / isReaderLmConfigured", () => {
+describe("getAiExtractorModels / getAiExtractorKind / isAiExtractorConfigured", () => {
   it("filters entries to those with id + model + baseUrl", () => {
     const config = {
-      readerLmModels: [
+      aiExtractorModels: [
         { id: "a", model: "m", baseUrl: "u" },
         { id: "b", model: "m" },
         { id: "c", baseUrl: "u" },
@@ -38,29 +38,29 @@ describe("getAiModels / getAiModelKind / isReaderLmConfigured", () => {
         null,
       ],
     };
-    const models = getAiModels(config);
+    const models = getAiExtractorModels(config);
     expect(models.map((entry) => entry.id)).toEqual(["a"]);
   });
 
   it("handles missing/empty config", () => {
-    expect(getAiModels({})).toEqual([]);
-    expect(getAiModels(null)).toEqual([]);
-    expect(getAiModels({ readerLmModels: [] })).toEqual([]);
+    expect(getAiExtractorModels({})).toEqual([]);
+    expect(getAiExtractorModels(null)).toEqual([]);
+    expect(getAiExtractorModels({ aiExtractorModels: [] })).toEqual([]);
   });
 
-  it("isReaderLmConfigured matches by id", () => {
+  it("isAiExtractorConfigured matches by id", () => {
     const config = makeConfig();
-    expect(isReaderLmConfigured(config, "mineru")).toBe(true);
-    expect(isReaderLmConfigured(config, "reader_lm")).toBe(true);
-    expect(isReaderLmConfigured(config, "nope")).toBe(false);
-    expect(isReaderLmConfigured(config, "")).toBe(false);
+    expect(isAiExtractorConfigured(config, "mineru")).toBe(true);
+    expect(isAiExtractorConfigured(config, "reader_lm")).toBe(true);
+    expect(isAiExtractorConfigured(config, "nope")).toBe(false);
+    expect(isAiExtractorConfigured(config, "")).toBe(false);
   });
 
-  it("getAiModelKind distinguishes chat vs mineru", () => {
+  it("getAiExtractorKind distinguishes chat vs mineru", () => {
     const config = makeConfig();
-    expect(getAiModelKind(config, "mineru")).toBe("mineru");
-    expect(getAiModelKind(config, "reader_lm")).toBe("chat");
-    expect(getAiModelKind(config, "unknown")).toBe("chat");
+    expect(getAiExtractorKind(config, "mineru")).toBe("mineru");
+    expect(getAiExtractorKind(config, "reader_lm")).toBe("chat");
+    expect(getAiExtractorKind(config, "unknown")).toBe("chat");
   });
 });
 

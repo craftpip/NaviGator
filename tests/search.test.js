@@ -11,7 +11,7 @@ vi.mock("../src/browser.js", () => ({
   getBrowserManager: (...args) => mockGetBrowserManager(...args),
 }));
 
-vi.mock("../src/reader-lm.js", async (importOriginal) => {
+vi.mock("../src/ai-extractor.js", async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, extractHtmlWithAiModel: mockExtractHtmlWithAiModel };
 });
@@ -411,7 +411,7 @@ describe("browserOpenAndExtract", () => {
     }
   });
 
-  it("honors the configured NON_CONTENT_SELECTORS list (empty = keep everything)", async () => {
+  it("honors the configured DEFAULT_EXTRACT_SKIP_SELECTORS list (empty = keep everything)", async () => {
     const html = `<!doctype html><html><head><title>Nav page</title></head><body>
       <nav><a href="/home">Home</a></nav>
       <main><p>Main content.</p></main>
@@ -431,7 +431,7 @@ describe("browserOpenAndExtract", () => {
     expect(stripped.text).not.toContain("Home");
     expect(stripped.text).toContain("Main content.");
 
-    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({ hintsPath, html, configOverrides: { nonContentSelectors: [] } }));
+    mockGetBrowserManager.mockResolvedValue(makeExtractionManager({ hintsPath, html, configOverrides: { defaultExtractSkipSelectors: [] } }));
     const kept = await browserOpenAndExtract({ url: "https://example.com/page", includeSeoAnalysis: false });
     expect(kept.text).toContain("Home");
     expect(kept.text).toContain("Main content.");
@@ -453,7 +453,7 @@ describe("browserOpenAndExtract", () => {
       html,
       configOverrides: {
         defaultExtractFormat: "table",
-        nonContentSelectors: [".advert"]
+        defaultExtractSkipSelectors: [".advert"]
       }
     }));
 
@@ -840,7 +840,7 @@ describe("browserOpenAndExtract", () => {
     mockExtractHtmlWithAiModel.mockResolvedValue("# Model output\n\nSummary paragraph.");
     mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
       hintsPath,
-      configOverrides: { readerLmModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
+      configOverrides: { aiExtractorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
       html: `<!doctype html><html><head><title>AI page</title></head><body><main><p>Source content.</p></main></body></html>`
     }));
 
@@ -869,7 +869,7 @@ describe("browserOpenAndExtract", () => {
     mockExtractHtmlWithAiModel.mockRejectedValue(new Error("HTTP 500"));
     mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
       hintsPath,
-      configOverrides: { readerLmModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
+      configOverrides: { aiExtractorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
       html: `<!doctype html><html><head><title>AI fallback</title></head><body><main><h1>Fallback heading</h1><p>Fallback content here.</p></main></body></html>`
     }));
 
@@ -902,7 +902,7 @@ describe("browserOpenAndExtract", () => {
     mockExtractHtmlWithAiModel.mockResolvedValue("Block AI output");
     mockGetBrowserManager.mockResolvedValue(makeExtractionManager({
       hintsPath,
-      configOverrides: { readerLmModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
+      configOverrides: { aiExtractorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }] },
       html: `<!doctype html><html><head><title>AI block</title></head><body><article><p>Article body.</p></article></body></html>`
     }));
 

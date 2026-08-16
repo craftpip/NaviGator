@@ -112,7 +112,23 @@ export function parseAiModelKind(value, fallback = "chat") {
   return AI_MODEL_KINDS.has(normalized) ? normalized : fallback;
 }
 
-export function parseReaderLmModels(value) {
+const deprecatedWarned = new Set();
+
+// Read a config env var with a deprecated READER_LM_* fallback. New names win;
+// using an old name logs a one-time warning so the migration is visible but not noisy.
+export function readConfigEnv(newKey, legacyKey) {
+  if (process.env[newKey] !== undefined) return process.env[newKey];
+  if (process.env[legacyKey] !== undefined) {
+    if (!deprecatedWarned.has(legacyKey)) {
+      deprecatedWarned.add(legacyKey);
+      console.warn(`[config] ${legacyKey} is deprecated — use ${newKey} instead. It still works but will be removed in a future release.`);
+    }
+    return process.env[legacyKey];
+  }
+  return undefined;
+}
+
+export function parseAiExtractorModels(value) {
   if (!value || typeof value !== "string") return null;
   try {
     const parsed = JSON.parse(value);
@@ -276,7 +292,7 @@ export async function findLightpandaPath() {
 
 const headlessDefault = !process.env.DISPLAY;
 export const DEFAULT_MAX_CHARS = parseInteger(process.env.WEB_FETCH_MAX_CHARS, 90000);
-export const DEFAULT_NON_CONTENT_SELECTORS = Object.freeze([
+export const DEFAULT_EXTRACT_SKIP_SELECTORS = Object.freeze([
   "script",
   "style",
   "noscript",
@@ -428,8 +444,7 @@ export async function loadConfig() {
     enableInstantAnswers: parseBoolean(process.env.ENABLE_INSTANT_ANSWERS, true),
     disableTools: parseToolList(process.env.DISABLE_TOOLS),
     domainHintsPath,
-    nonContentSelectors: parseSelectorList(process.env.NON_CONTENT_SELECTORS, DEFAULT_NON_CONTENT_SELECTORS),
-    stabilizeStrategy: parseStabilizeStrategy(process.env.STABILIZE_STRATEGY, "network_idle"),
+    defaultExtractSkipSelectors: parseSelectorList(process.env.DEFAULT_EXTRACT_SKIP_SELECTORS, DEFAULT_EXTRACT_SKIP_SELECTORS),
     defaultExtractFormat: parseDefaultExtractFormat(process.env.DEFAULT_EXTRACT_FORMAT),
     defaultExtractStabilizeStrategy: parseStabilizeStrategy(process.env.DEFAULT_EXTRACT_STABILIZE_STRATEGY, ""),
     defaultExtractWaitForSelector: parseSelectorList(process.env.DEFAULT_EXTRACT_WAIT_FOR_SELECTOR, []),
@@ -441,18 +456,18 @@ export async function loadConfig() {
       process.env.SEARCH_ENABLED_ENGINES,
       DEFAULT_SEARCH_ENABLED_ENGINES
     ),
-    readerLmModels: resolveReaderLmModels(),
-    readerLmTimeoutMs: parseNumber(process.env.READER_LM_TIMEOUT_MS, 60000),
-    readerLmMaxInputChars: parseInteger(process.env.READER_LM_MAX_INPUT_CHARS, 60000),
-    readerLmMaxTokens: parseInteger(process.env.READER_LM_MAX_TOKENS, 8192)
+    aiExtractorModels: resolveAiExtractorModels(),
+    aiExtractorTimeoutMs: parseNumber(readConfigEnv("AI_EXTRACTOR_TIMEOUT_MS", "READER_LM_TIMEOUT_MS"), 60000),
+    aiExtractorMaxInputChars: parseInteger(readConfigEnv("AI_EXTRACTOR_MAX_INPUT_CHARS", "READER_LM_MAX_INPUT_CHARS"), 60000),
+    aiExtractorMaxTokens: parseInteger(readConfigEnv("AI_EXTRACTOR_MAX_TOKENS", "READER_LM_MAX_TOKENS"), 8192)
   };
 }
 
-function resolveReaderLmModels() {
-  const configured = parseReaderLmModels(process.env.READER_LM_MODELS);
+function resolveAiExtractorModels() {
+  const configured = parseAiExtractorModels(readConfigEnv("AI_EXTRACTOR_MODELS", "READER_LM_MODELS"));
   if (configured) return configured;
-  const baseUrl = (process.env.READER_LM_BASE_URL || "").trim().replace(/\/+$/, "");
+  const baseUrl = (readConfigEnv("AI_EXTRACTOR_BASE_URL", "READER_LM_BASE_URL") || "").trim().replace(/\/+$/, "");
   if (!baseUrl) return [];
-  const model = (process.env.READER_LM_MODEL || "reader-lm:0.5b").trim();
+  const model = (readConfigEnv("AI_EXTRACTOR_MODEL", "READER_LM_MODEL") || "reader-lm:0.5b").trim();
   return [{ id: "reader_lm", label: model, model, baseUrl, kind: "chat" }];
 }

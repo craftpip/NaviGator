@@ -1685,7 +1685,7 @@ describe("mcp-server HTTP endpoints", () => {
       const browserMod = await import("../src/browser.js");
       browserMod.getBrowserManager.mockResolvedValue(makeMockManager({
         domainHintsPath: hintsPath,
-        readerLmModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }]
+        aiExtractorModels: [{ id: "reader_lm", label: "Reader LM", model: "reader-lm:0.5b", baseUrl: "http://localhost:9999" }]
       }));
 
       const searchMod = await import("../src/search.js");

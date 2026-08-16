@@ -4,22 +4,22 @@ const DEFAULT_MAX_CONCURRENCY = 2;
 
 // Absolute safety cap for MinerU-HTML inputs. The sidecar's LLM classifies the
 // whole page (vLLM KV cache on the GPU bounds the effective context), so we
-// send the full HTML — no reader-lm-style tail-cut at READER_LM_MAX_INPUT_CHARS.
+// send the full HTML — no reader-lm-style tail-cut at AI_EXTRACTOR_MAX_INPUT_CHARS.
 // This cap only guards the HTTP body against pathological pages.
 const MINERU_MAX_INPUT_CHARS = 400000;
 
-export function getAiModels(config) {
-  if (!Array.isArray(config?.readerLmModels) || !config.readerLmModels.length) return [];
-  return config.readerLmModels.filter((entry) => entry?.id && entry?.model && entry?.baseUrl);
+export function getAiExtractorModels(config) {
+  if (!Array.isArray(config?.aiExtractorModels) || !config.aiExtractorModels.length) return [];
+  return config.aiExtractorModels.filter((entry) => entry?.id && entry?.model && entry?.baseUrl);
 }
 
-export function isReaderLmConfigured(config, modelId) {
+export function isAiExtractorConfigured(config, modelId) {
   if (!modelId || typeof modelId !== "string") return false;
-  return getAiModels(config).some((entry) => entry.id === modelId);
+  return getAiExtractorModels(config).some((entry) => entry.id === modelId);
 }
 
-export function getAiModelKind(config, modelId) {
-  const entry = getAiModels(config).find((item) => item.id === modelId);
+export function getAiExtractorKind(config, modelId) {
+  const entry = getAiExtractorModels(config).find((item) => item.id === modelId);
   return entry?.kind === "mineru" ? "mineru" : "chat";
 }
 
@@ -57,15 +57,15 @@ function timeoutFetch(url, options, timeoutMs) {
 
 async function extractWithChat({ entry, html, config, maxChars, timeoutMs, debug }) {
   const maxInputChars = Math.min(
-    Number(config?.readerLmMaxInputChars) || 60000,
+    Number(config?.aiExtractorMaxInputChars) || 60000,
     Number.isFinite(maxChars) && maxChars > 0 ? Math.max(maxChars * 2, 60000) : Infinity
   );
-  const maxTokens = Number(config?.readerLmMaxTokens) || 8192;
+  const maxTokens = Number(config?.aiExtractorMaxTokens) || 8192;
 
   let prepared = typeof html === "string" ? html : "";
   if (prepared.length > maxInputChars) {
     // Tail-cut: the interesting content (tables, footnotes) tends to live at the end;
-    // a head-cut would drop it. READER_LM_MAX_INPUT_CHARS keeps us under the model's
+    // a head-cut would drop it. AI_EXTRACTOR_MAX_INPUT_CHARS keeps us under the model's
     // context window (~32K tokens ≈ 60K chars of HTML).
     prepared = truncateTail(prepared, maxInputChars);
   }
@@ -126,14 +126,14 @@ async function extractWithMineru({ entry, html, config, timeoutMs, debug }) {
 }
 
 export async function extractHtmlWithAiModel({ html, model, config, maxChars, debug = false }) {
-  const entries = getAiModels(config);
+  const entries = getAiExtractorModels(config);
   const entry = entries.find((item) => item.id === model);
   if (!entry) {
-    throw new Error(`AI extractor "${model}" is not configured — set READER_LM_MODELS or READER_LM_BASE_URL`);
+    throw new Error(`AI extractor "${model}" is not configured — set AI_EXTRACTOR_MODELS or AI_EXTRACTOR_BASE_URL`);
   }
 
   const tStart = performance.now();
-  const timeoutMs = Number(config?.readerLmTimeoutMs) || 60000;
+  const timeoutMs = Number(config?.aiExtractorTimeoutMs) || 60000;
 
   await acquireSlot();
   try {

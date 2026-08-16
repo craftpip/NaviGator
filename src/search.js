@@ -1,5 +1,5 @@
 import { getBrowserManager } from "./browser.js";
-import { DEFAULT_MAX_CHARS, DEFAULT_SEARCH_ENABLED_ENGINES, DEFAULT_NON_CONTENT_SELECTORS } from "./config.js";
+import { DEFAULT_MAX_CHARS, DEFAULT_SEARCH_ENABLED_ENGINES, DEFAULT_EXTRACT_SKIP_SELECTORS } from "./config.js";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { performance } from "node:perf_hooks";
@@ -18,7 +18,7 @@ import { getEngineDriver, getEngineMetadata, SUPPORTED_ENGINES } from "./engines
 import { fetchDuckDuckGoInstantAnswers } from "./engines/instant-answers.js";
 import { EngineScheduler } from "./engine-scheduler.js";
 import { incrementUsageTotal } from "./db.js";
-import { extractHtmlWithAiModel, getAiModels } from "./reader-lm.js";
+import { extractHtmlWithAiModel, getAiExtractorModels } from "./ai-extractor.js";
 import {
   buildLlmText,
   cleanAndTruncateText,
@@ -807,7 +807,7 @@ async function renderLeafContent(element, format, url, config) {
     return element.matches?.("table") ? renderTableAsText(element) : cleanWhitespace(element.textContent || "");
   }
   const innerHtml = element.innerHTML || "";
-  if (isAiModelFormat(format, getAiModels(config).map((entry) => entry.id))) {
+  if (isAiModelFormat(format, getAiExtractorModels(config).map((entry) => entry.id))) {
     try {
       const markdown = await extractHtmlWithAiModel({ html: element.outerHTML || "", model: format, config, debug: false });
       if (markdown) return markdown;
@@ -962,7 +962,7 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
   };
 }
 
-async function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, debug = false, strict = false, nonContentSelectors = DEFAULT_NON_CONTENT_SELECTORS, config }) {
+async function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, debug = false, strict = false, defaultExtractSkipSelectors = DEFAULT_EXTRACT_SKIP_SELECTORS, config }) {
   const tFunc = performance.now();
   if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml called`);
   const rawHtml = typeof html === "string" ? html : "";
@@ -976,8 +976,8 @@ async function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, b
 
   try {
     const doc = dom.window.document;
-    if (nonContentSelectors.length) {
-      doc.querySelectorAll(nonContentSelectors.join(",")).forEach((node) => node.remove());
+    if (defaultExtractSkipSelectors.length) {
+      doc.querySelectorAll(defaultExtractSkipSelectors.join(",")).forEach((node) => node.remove());
     }
 
     if (hint?.default?.skipSelectors?.length) {
@@ -1005,7 +1005,7 @@ if (strict && hint?.content?.blocks?.length) {
     /* ==================== Default extraction (hint method: default) ==================== */
     const defaultBlock = hint?.default || {};
     const pageFormat = defaultBlock.format || "readability_to_markdown";
-    const aiModelIds = getAiModels(config).map((entry) => entry.id);
+    const aiModelIds = getAiExtractorModels(config).map((entry) => entry.id);
     if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: default extraction (format=${pageFormat})`);
 
     // The extractor renders tables now — no table nodes are stripped from the DOM in the
@@ -2081,7 +2081,7 @@ async function stabilizePage(page, hint, config, strategyOverride, contentTarget
   const stabilizeStrategy =
     strategyOverride ||
     hint?.default?.stabilizeStrategy ||
-    config.stabilizeStrategy ||
+    config?.defaultExtractStabilizeStrategy ||
     "network_idle";
   if (stabilizeStrategy === "network_idle") {
     try {
@@ -2162,7 +2162,7 @@ async function capturePageState(page) {
   return { html, url, title, browserText };
 }
 
-async function extractHintStage(pageState, hint, step, maxChars, debug, nonContentSelectors, config) {
+async function extractHintStage(pageState, hint, step, maxChars, debug, defaultExtractSkipSelectors, config) {
   return extractTextFromHtml({
     html: pageState.html,
     url: pageState.url,
@@ -2172,7 +2172,7 @@ async function extractHintStage(pageState, hint, step, maxChars, debug, nonConte
     browserText: pageState.browserText,
     debug,
     strict: true,
-    nonContentSelectors,
+    defaultExtractSkipSelectors,
     config
   });
 }
@@ -2235,7 +2235,7 @@ function isInteractionFreeFlow(flow) {
   );
 }
 
-async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNote, nonContentSelectors, config }) {
+async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNote, defaultExtractSkipSelectors, config }) {
   const flow = hint.flow;
   const flowOptions = hint.flowOptions || {};
   const continueOnEmptyExtract = flowOptions.continueOnEmptyExtract === true;
@@ -2250,7 +2250,7 @@ async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNo
     for (const link of stageLinks) {
       if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
     }
-    const extracted = await extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, nonContentSelectors, config);
+    const extracted = await extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, defaultExtractSkipSelectors, config);
     if (extracted.tables?.length && !(extracted.text || "").trim()) {
       extracted.text = insertTablesInline("", extracted.tables);
       extracted.tables = [];
@@ -2296,7 +2296,7 @@ async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNo
   };
 }
 
-async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, debugLog, withPageTimeout, operationTimeoutMs, nonContentSelectors }) {
+async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, debugLog, withPageTimeout, operationTimeoutMs, defaultExtractSkipSelectors }) {
   const flow = hint.flow;
   const flowOptions = hint.flowOptions || {};
   const totalTimeoutMs = Math.min(
@@ -2339,7 +2339,7 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
         for (const link of stageLinks) {
           if (!linksByHref.has(link.href)) linksByHref.set(link.href, link);
         }
-    const extracted = await extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, nonContentSelectors, config);
+    const extracted = await extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, defaultExtractSkipSelectors, config);
         if (extracted.tables?.length && !(extracted.text || "").trim()) {
           extracted.text = insertTablesInline("", extracted.tables);
           extracted.tables = [];
@@ -2451,7 +2451,7 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
   return { stages, links: [...linksByHref.values()], warnings };
 }
 
-async function runFlowExtraction({ page, hint, config, maxChars, debug, debugLog, withPageTimeout, operationTimeoutMs, includeSeoAnalysis, hintNote, startTime, nonContentSelectors }) {
+async function runFlowExtraction({ page, hint, config, maxChars, debug, debugLog, withPageTimeout, operationTimeoutMs, includeSeoAnalysis, hintNote, startTime, defaultExtractSkipSelectors }) {
   const botChallenge = await withPageTimeout("check_bot", () => detectBotChallenge(page));
   if (botChallenge) {
     const pageTitle = await page.title().catch(() => "");
@@ -2467,7 +2467,7 @@ async function runFlowExtraction({ page, hint, config, maxChars, debug, debugLog
     debugLog,
     withPageTimeout,
     operationTimeoutMs,
-    nonContentSelectors
+    defaultExtractSkipSelectors
   });
 
   const finalState = await withPageTimeout("flow_final_state", () => capturePageState(page));
@@ -2534,7 +2534,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
   const manager = await getBrowserManager();
   const maxChars = requestedMaxChars ?? manager.config.maxChars ?? DEFAULT_MAX_CHARS;
   const debug = manager.config.debug === true;
-  const nonContentSelectors = manager.config.nonContentSelectors ?? DEFAULT_NON_CONTENT_SELECTORS;
+  const defaultExtractSkipSelectors = manager.config.defaultExtractSkipSelectors ?? DEFAULT_EXTRACT_SKIP_SELECTORS;
   const debugLog = (label, t) => {
     if (debug) console.log(`[web_fetch] [${url}] ${label}: ${Math.round(performance.now() - t)}ms`);
   };
@@ -2567,7 +2567,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         maxChars,
         debug,
         hintNote,
-        nonContentSelectors,
+        defaultExtractSkipSelectors,
         config: manager.config
       });
       if (debug) console.log(`[web_fetch] [${url}] cached flow replay: ${Math.round(performance.now() - tCache)}ms (browser skipped)`);
@@ -2583,7 +2583,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         hint,
         browserText: "",
         debug,
-        nonContentSelectors,
+        defaultExtractSkipSelectors,
         config: manager.config
       });
       const links = extractLinksFromHtml({ html: cached, url });
@@ -2707,7 +2707,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
           includeSeoAnalysis,
           hintNote,
           startTime: tOverall,
-          nonContentSelectors
+          defaultExtractSkipSelectors
         });
         if (flowHtml && !flowResult.error) {
           return { ...flowResult, html: flowHtml };
@@ -2766,7 +2766,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         hint,
         browserText,
         debug,
-        nonContentSelectors,
+        defaultExtractSkipSelectors,
         config: manager.config
       });
       debugLog("extract_text_from_html", t);

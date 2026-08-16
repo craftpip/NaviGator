@@ -12,8 +12,8 @@ const MANAGE_GROUPS = [
   { label: "Search Route Availability", detail: "Eligible engines, startup warming, route cooldowns, and browser-window capacity.", keys: ["SEARCH_ENABLED_ENGINES", "SEARCH_ROUTE_WARMUP_ENGINES", "SEARCH_ROUTE_CIRCUIT_OPEN_MS", "SEARCH_KEEP_MIN_WORKING_WINDOWS", "SEARCH_MAX_WORKING_WINDOWS"] },
   { label: "Search Scheduler", detail: "How select_best scores, backs off, and recovers eligible engines.", keys: ["SEARCH_QUEUE_MIN_INTERVAL_MS", "SEARCH_QUEUE_MAX_INTERVAL_MS", "SEARCH_QUEUE_ESCALATION_FACTOR", "SEARCH_QUEUE_ERROR_GAP_PERCENTILE", "SEARCH_QUEUE_ERROR_GAP_SAFETY", "SEARCH_QUEUE_DECAY_PER_SUCCESS", "SEARCH_QUEUE_W_SUCCESS", "SEARCH_QUEUE_W_RESULTS", "SEARCH_QUEUE_W_STABILITY", "SEARCH_QUEUE_W_RECENCY", "SEARCH_QUEUE_W_RECOVERY"] },
   { label: "Web Fetch Options", detail: "web_fetch tool options: parallel page opening, navigation wait, and response size.", keys: ["OPEN_PAGE_MAX_PARALLEL", "MAX_CONCURRENT_PAGE_OPS", "NAV_WAIT_UNTIL", "WEB_FETCH_MAX_CHARS"] },
-  { label: "Web Fetch Extraction", detail: "How web_fetch renders page content: stabilization, DOM stripping, extraction hints, and no-hint defaults.", keys: ["STABILIZE_STRATEGY", "NON_CONTENT_SELECTORS", "DOMAIN_HINTS_PATH", "DEFAULT_EXTRACT_FORMAT", "DEFAULT_EXTRACT_STABILIZE_STRATEGY", "DEFAULT_EXTRACT_WAIT_FOR_SELECTOR", "DEFAULT_EXTRACT_WAIT_FOR_CONTENT"] },
-  { label: "Web Fetch AI Extractors", detail: "AI extractor models served to web_fetch when an AI extractor is selected — reader-lm (chat/completions) or MinerU-HTML (sidecar /extract).", keys: ["READER_LM_MODELS", "READER_LM_BASE_URL", "READER_LM_MODEL", "READER_LM_TIMEOUT_MS", "READER_LM_MAX_INPUT_CHARS", "READER_LM_MAX_TOKENS"] },
+  { label: "Web Fetch Extraction", detail: "How web_fetch renders page content: stabilization, DOM stripping, extraction hints, and no-hint defaults.", keys: ["DEFAULT_EXTRACT_SKIP_SELECTORS", "DOMAIN_HINTS_PATH", "DEFAULT_EXTRACT_FORMAT", "DEFAULT_EXTRACT_STABILIZE_STRATEGY", "DEFAULT_EXTRACT_WAIT_FOR_SELECTOR", "DEFAULT_EXTRACT_WAIT_FOR_CONTENT"] },
+  { label: "Web Fetch AI Extractors", detail: "AI extractor models served to web_fetch when an AI extractor is selected — reader-lm (chat/completions) or MinerU-HTML (sidecar /extract).", keys: ["AI_EXTRACTOR_MODELS", "AI_EXTRACTOR_BASE_URL", "AI_EXTRACTOR_MODEL", "AI_EXTRACTOR_TIMEOUT_MS", "AI_EXTRACTOR_MAX_INPUT_CHARS", "AI_EXTRACTOR_MAX_TOKENS"] },
   { label: "MCP Transports And Tool Access", detail: "MCP transports, DevTools exposure, tool filtering, and HTTP authentication.", keys: ["ENABLE_HTTP_MCP", "ENABLE_STDIO_MCP", "ENABLE_DEVTOOLS_MCP", "HUMAN_TYPING_DELAY", "DISABLE_TOOLS", "MCP_ALLOW_UNAUTHENTICATED"] },
   { label: "HTTP Server And Console", detail: "HTTP listener, health/status endpoints, and the Navigator console.", keys: ["ENABLE_HTTP_HEALTH", "ENABLE_WEB_CONSOLE", "MCP_API_PORT", "MCP_API_HOST"] },
   { label: "Screenshot Storage And Downloads", detail: "Persist screenshots to enable file and download URL outputs.", keys: ["ENABLE_SCREENSHOT_PATH", "ENABLE_SCREENSHOT_DOWNLOAD_LINK"] },
@@ -3678,7 +3678,7 @@ function HintEditorPane({ index, initial, aiModels = [], onClose, onSaved }) {
                       help={
                         <>
                           Elements to strip before extraction — one CSS selector per line. e.g. .navbox, .sidebar{" "}
-                          <a href="/console/manage?focus=NON_CONTENT_SELECTORS">
+                          <a href="/console/manage?focus=DEFAULT_EXTRACT_SKIP_SELECTORS">
                             View / edit the built-in default skip selectors →
                           </a>
                         </>

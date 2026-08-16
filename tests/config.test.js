@@ -186,6 +186,88 @@ describe("loadConfig (parse engine behavior)", () => {
   });
 });
 
+describe("loadConfig (DEFAULT_EXTRACT_SKIP_SELECTORS)", () => {
+  it("loadConfig parses DEFAULT_EXTRACT_SKIP_SELECTORS into defaultExtractSkipSelectors", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("DEFAULT_EXTRACT_SKIP_SELECTORS", "script,style,nav,.advert");
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.defaultExtractSkipSelectors).toEqual(["script", "style", "nav", ".advert"]);
+  });
+
+  it("loadConfig defaults defaultExtractSkipSelectors to the built-in list", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("DEFAULT_EXTRACT_SKIP_SELECTORS", undefined);
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.defaultExtractSkipSelectors).toContain("script");
+    expect(config.defaultExtractSkipSelectors).toContain("nav");
+    expect(config.defaultExtractSkipSelectors).toContain("[role='dialog']");
+  });
+});
+
+describe("parseAiExtractorModels / readConfigEnv (READER_LM_* → AI_EXTRACTOR_* rename)", () => {
+  it("parses AI_EXTRACTOR_MODELS entries with id/model/baseUrl/kind", async () => {
+    const { parseAiExtractorModels } = await import("../src/config.js");
+    const models = parseAiExtractorModels(
+      JSON.stringify([
+        { id: "reader_lm", label: "reader-lm-0.5b", model: "reader-lm:0.5b", baseUrl: "http://o:11434/v1" },
+        { id: "mineru", label: "MinerU-HTML", model: "mineru", kind: "mineru", baseUrl: "http://mineru:8000" }
+      ])
+    );
+    expect(models).toEqual([
+      { id: "reader_lm", label: "reader-lm-0.5b", model: "reader-lm:0.5b", baseUrl: "http://o:11434/v1", kind: "chat" },
+      { id: "mineru", label: "MinerU-HTML", model: "mineru", baseUrl: "http://mineru:8000", kind: "mineru" }
+    ]);
+  });
+
+  it("readConfigEnv prefers the new name and falls back to the deprecated one", async () => {
+    const { readConfigEnv } = await import("../src/config.js");
+    vi.stubEnv("AI_EXTRACTOR_TIMEOUT_MS", "111");
+    vi.stubEnv("READER_LM_TIMEOUT_MS", "222");
+    expect(readConfigEnv("AI_EXTRACTOR_TIMEOUT_MS", "READER_LM_TIMEOUT_MS")).toBe("111");
+
+    vi.stubEnv("AI_EXTRACTOR_TIMEOUT_MS", undefined);
+    vi.stubEnv("READER_LM_TIMEOUT_MS", "222");
+    expect(readConfigEnv("AI_EXTRACTOR_TIMEOUT_MS", "READER_LM_TIMEOUT_MS")).toBe("222");
+
+    vi.stubEnv("AI_EXTRACTOR_TIMEOUT_MS", undefined);
+    vi.stubEnv("READER_LM_TIMEOUT_MS", undefined);
+    expect(readConfigEnv("AI_EXTRACTOR_TIMEOUT_MS", "READER_LM_TIMEOUT_MS")).toBeUndefined();
+  });
+
+  it("loadConfig maps AI_EXTRACTOR_* env vars into aiExtractor* config keys", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("AI_EXTRACTOR_MODELS", JSON.stringify([{ id: "reader_lm", label: "reader-lm-0.5b", model: "reader-lm:0.5b", baseUrl: "http://o:11434/v1" }]));
+    vi.stubEnv("AI_EXTRACTOR_TIMEOUT_MS", "12345");
+    vi.stubEnv("AI_EXTRACTOR_MAX_INPUT_CHARS", "54321");
+    vi.stubEnv("AI_EXTRACTOR_MAX_TOKENS", "4096");
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.aiExtractorModels).toEqual([
+      { id: "reader_lm", label: "reader-lm-0.5b", model: "reader-lm:0.5b", baseUrl: "http://o:11434/v1", kind: "chat" }
+    ]);
+    expect(config.aiExtractorTimeoutMs).toBe(12345);
+    expect(config.aiExtractorMaxInputChars).toBe(54321);
+    expect(config.aiExtractorMaxTokens).toBe(4096);
+  });
+
+  it("loadConfig falls back to deprecated READER_LM_* env vars", async () => {
+    vi.stubEnv("CHROME_PATH", "/usr/bin/env");
+    vi.stubEnv("AI_EXTRACTOR_MODELS", undefined);
+    vi.stubEnv("READER_LM_MODELS", undefined);
+    vi.stubEnv("READER_LM_BASE_URL", "http://legacy:11434/v1");
+    vi.stubEnv("READER_LM_MODEL", "reader-lm:0.5b");
+    vi.stubEnv("READER_LM_TIMEOUT_MS", "777");
+    const { loadConfig } = await import("../src/config.js");
+    const config = await loadConfig();
+    expect(config.aiExtractorModels).toEqual([
+      { id: "reader_lm", label: "reader-lm:0.5b", model: "reader-lm:0.5b", baseUrl: "http://legacy:11434/v1", kind: "chat" }
+    ]);
+    expect(config.aiExtractorTimeoutMs).toBe(777);
+  });
+});
+
 describe("loadConfig (parse engine behavior)", () => {
   it("defaults SEARCH_ROUTE_WARMUP_ENGINES to the primary routes", async () => {
     vi.stubEnv("CHROME_PATH", "/usr/bin/env");

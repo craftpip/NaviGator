@@ -29,7 +29,7 @@ import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord 
 import { SUPPORTED_ENGINES, getEngineMetadata } from "./engines/index.js";
 import { getAuthorizedMcpKey, getMcpApiKey, isAuthorizedMcpRequest } from "./mcp-api-auth.js";
 import { findDomainHint, getDomainHints, isAiModelFormat, loadRawDomainHints, saveDomainHints, validateHintRule } from "./domain-hints.js";
-import { getAiModels } from "./reader-lm.js";
+import { getAiExtractorModels } from "./ai-extractor.js";
 
 const require = createRequire(import.meta.url);
 const PACKAGE_JSON = require("../package.json");
@@ -408,8 +408,8 @@ async function getConsoleConfigPayload(manager) {
     configValues: Object.fromEntries(
       CONFIG_SCHEMA.map((entry) => [
         entry.key,
-        entry.key === "READER_LM_MODELS"
-          ? (process.env.READER_LM_MODELS ?? JSON.stringify(manager.config.readerLmModels ?? []))
+        entry.key === "AI_EXTRACTOR_MODELS"
+          ? (process.env.AI_EXTRACTOR_MODELS ?? process.env.READER_LM_MODELS ?? JSON.stringify(manager.config.aiExtractorModels ?? []))
           : entry.key === "DOMAIN_HINTS_PATH"
             ? (process.env.DOMAIN_HINTS_PATH ?? entry.fallback)
             : entry.key === "DEFAULT_EXTRACT_STABILIZE_STRATEGY"
@@ -418,7 +418,7 @@ async function getConsoleConfigPayload(manager) {
       ])
     ),
     envFile: { path: envPath, changedOnDisk: envFileState.changed, backup: backupPath },
-    aiModels: getAiModels(manager.config),
+    aiModels: getAiExtractorModels(manager.config),
     engines: enabledEngines.map((id) => CONSOLE_ENGINE_BY_ID.get(id)).filter(Boolean),
     availableEngines: CONSOLE_ENGINE_REGISTRY,
     tools: [...new Set([...WEB_TOOL_NAMES, ...devtoolsToolDefinitions.map((tool) => tool.name)])].sort(),
@@ -1928,7 +1928,7 @@ async function handleToolCallInner(name, args = {}) {
     // AI-model extractors are expensive + non-deterministic (model output, context-window
     // limits) and the cache key can't see the hint's extractor — skip the cache read AND
     // write when any target matches a hint whose effective extractor is an AI model.
-    const aiModelIds = getAiModels(manager.config).map((entry) => entry.id);
+    const aiModelIds = getAiExtractorModels(manager.config).map((entry) => entry.id);
     let usesAiExtractor = false;
     if (aiModelIds.length) {
       // DEFAULT_EXTRACT_FORMAT can be an AI model id for pages with no matching
@@ -2769,7 +2769,7 @@ async function maybeStartHttpServer(managerOverride) {
           requests: getRequestStats(),
           engineAttempts: getEngineAttemptStats(),
           engineProfiles: getEngineProfiles(),
-          aiModels: getAiModels(manager.config),
+          aiModels: getAiExtractorModels(manager.config),
           activity: getRecentActivity({ sinceId: 0, limit: 20, includePageOps: true })
         };
         logEvent("http.request", { method, path: url.pathname });
@@ -2919,7 +2919,7 @@ async function maybeStartHttpServer(managerOverride) {
           return;
         }
         const hintsPath = manager.config.domainHintsPath;
-        const aiModels = getAiModels(manager.config);
+        const aiModels = getAiExtractorModels(manager.config);
         const aiModelIds = aiModels.map((entry) => entry.id);
         try {
           if (method === "GET" && url.pathname === "/console/api/hints") {
@@ -3088,7 +3088,7 @@ async function maybeStartHttpServer(managerOverride) {
             sendJson(res, 400, { ok: false, error: "hint param must be URL-encoded JSON" });
             return;
           }
-          const validation = validateHintRule(candidate, { scope: "test", aiModelIds: getAiModels(manager.config).map((entry) => entry.id) });
+          const validation = validateHintRule(candidate, { scope: "test", aiModelIds: getAiExtractorModels(manager.config).map((entry) => entry.id) });
           if (validation.errors.length) {
             recordActivityRequest("http:/extract", false, "invalid hint param");
             sendJson(res, 400, { ok: false, error: "invalid hint", validation });

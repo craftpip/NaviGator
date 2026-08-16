@@ -72,7 +72,6 @@ const HOT_APPLYERS = {
   OPEN_PAGE_MAX_PARALLEL: (config, value) => { config.openPageMaxParallel = clamp(value, 1, 20); },
   MAX_CONCURRENT_PAGE_OPS: (config, value) => { config.maxConcurrentPageOps = clamp(value, 1, 30); },
   HUMAN_TYPING_DELAY: (config, value) => { config.humanTypingDelay = clamp(value, 0, 500); },
-  STABILIZE_STRATEGY: (config, value) => { config.stabilizeStrategy = parseStabilizeStrategy(value, config.stabilizeStrategy); },
   BROWSER_OP_TIMEOUT_MS: (config, value) => { config.browserOpTimeoutMs = value; },
   NAV_WAIT_UNTIL: (config, value) => {
     if (WAIT_UNTIL_VALUES.has(String(value).toLowerCase())) config.navWaitUntil = String(value).toLowerCase();
@@ -81,7 +80,7 @@ const HOT_APPLYERS = {
   DEBUG: (config, value) => { config.debug = value; },
   LOG_TOOL_ERRORS: (config, value) => { config.logToolErrors = value; },
   DISABLE_TOOLS: (config, value) => { config.disableTools = value; },
-  NON_CONTENT_SELECTORS: (config, value) => { config.nonContentSelectors = parseSelectorList(value, []); },
+  DEFAULT_EXTRACT_SKIP_SELECTORS: (config, value) => { config.defaultExtractSkipSelectors = parseSelectorList(value, []); },
   DEFAULT_EXTRACT_FORMAT: (config, value) => { config.defaultExtractFormat = parseDefaultExtractFormat(value); },
   DEFAULT_EXTRACT_STABILIZE_STRATEGY: (config, value) => { config.defaultExtractStabilizeStrategy = parseStabilizeStrategy(value, ""); },
   DEFAULT_EXTRACT_WAIT_FOR_SELECTOR: (config, value) => { config.defaultExtractWaitForSelector = parseSelectorList(value, []); },
@@ -91,9 +90,12 @@ const HOT_APPLYERS = {
   ENABLE_VNC: (config, value) => { config.vncEnabled = value; },
   MCP_API_KEYS: (config, value) => { config.mcpApiKeys = value; },
   MCP_ALLOW_UNAUTHENTICATED: (config, value) => { config.mcpAllowUnauthenticated = value; },
-  READER_LM_TIMEOUT_MS: (config, value) => { config.readerLmTimeoutMs = value; },
-  READER_LM_MAX_INPUT_CHARS: (config, value) => { config.readerLmMaxInputChars = value; },
-  READER_LM_MAX_TOKENS: (config, value) => { config.readerLmMaxTokens = value; }
+  AI_EXTRACTOR_TIMEOUT_MS: (config, value) => { config.aiExtractorTimeoutMs = value; },
+  AI_EXTRACTOR_MAX_INPUT_CHARS: (config, value) => { config.aiExtractorMaxInputChars = value; },
+  AI_EXTRACTOR_MAX_TOKENS: (config, value) => { config.aiExtractorMaxTokens = value; },
+  READER_LM_TIMEOUT_MS: (config, value) => { config.aiExtractorTimeoutMs = value; },
+  READER_LM_MAX_INPUT_CHARS: (config, value) => { config.aiExtractorMaxInputChars = value; },
+  READER_LM_MAX_TOKENS: (config, value) => { config.aiExtractorMaxTokens = value; }
 };
 
 export function hotApplyConfig(config, key, value) {
