@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { JSDOM } from "jsdom";
+import { EXTRACTOR_FORMATS } from "./extractors/index.js";
 
 let loadedHints = null;
 let loadedPath = null;
@@ -97,7 +98,7 @@ function buildWildcardHintFromEnv() {
   };
   const envFormat = process.env.DEFAULT_EXTRACT_FORMAT;
   if (envFormat && typeof envFormat === "string" && envFormat.trim()) {
-    const known = ["readability_to_markdown", "html_to_markdown", "html", "text", "table", "table_json", "table_csv", "screenshot"];
+    const known = EXTRACTOR_FORMATS;
     const val = envFormat.trim();
     if (known.includes(val)) d.format = val;
   }
@@ -311,25 +312,10 @@ export function validateSelector(selector) {
 export const BLOCK_FORMATS = [
   "text",
   "list",
-  "html",
-  "html_to_markdown",
-  "readability_to_markdown",
-  "table",
-  "table_json",
-  "table_csv",
-  "screenshot"
+  ...EXTRACTOR_FORMATS.filter((f) => f !== "text")
 ];
 
-export const DEFAULT_FORMATS = [
-  "readability_to_markdown",
-  "html_to_markdown",
-  "html",
-  "text",
-  "table",
-  "table_json",
-  "table_csv",
-  "screenshot"
-];
+export const DEFAULT_FORMATS = EXTRACTOR_FORMATS;
 
 const LEGACY_MARKDOWN_FORMAT = "markdown";
 

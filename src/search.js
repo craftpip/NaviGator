@@ -19,6 +19,15 @@ import { fetchDuckDuckGoInstantAnswers } from "./engines/instant-answers.js";
 import { EngineScheduler } from "./engine-scheduler.js";
 import { incrementUsageTotal } from "./db.js";
 import { runPostProcessor, getPostProcessorModels } from "./post-processor.js";
+import { extractTextFromHtml } from "./extractors/index.js";
+import {
+  safeTruncateText,
+  extractTablesFromDocument,
+  renderTableAsMarkdown,
+  renderTablesAsJson,
+  renderTablesAsCsv,
+  SEMANTIC_CONTENT_SELECTORS
+} from "./extractors/helpers.js";
 import {
   buildLlmText,
   cleanAndTruncateText,
@@ -341,25 +350,6 @@ function normalizeEngines(engines, fallback) {
   return normalized.length ? [...new Set(normalized)] : fallback;
 }
 
-const SEMANTIC_CONTENT_SELECTORS = [
-  "main",
-  "article",
-  "[role='main']",
-  "section",
-  ".content",
-  "#content",
-  ".main",
-  "#main",
-  "#__next",
-  "#root",
-  "#app-root",
-  "[data-reactroot]",
-  ".article-body",
-  ".post-content",
-  ".entry-content",
-  "[itemprop='articleBody']"
-];
-
 const SEO_MAIN_NODE_SELECTORS = [
   ...new Set([
     ...SEMANTIC_CONTENT_SELECTORS,
@@ -381,107 +371,6 @@ const DEFAULT_HEADING_SELECTORS = ["h1", "h2", "h3", "h4"];
 const MAX_SEO_CANDIDATES = 5;
 const MAX_MAIN_TEXT_CHARS = 24000;
 const MAX_MAIN_HTML_CHARS = 60000;
-
-function uniqueLines(lines) {
-  const seen = new Set();
-  const output = [];
-  for (const line of lines) {
-    const normalized = cleanWhitespace(line).toLowerCase();
-    if (!normalized) continue;
-    if (normalized.length < 3) continue;
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-    output.push(cleanWhitespace(line));
-  }
-  return output;
-}
-
-const BLOCK_LEVEL_TAGS = new Set([
-  "address", "article", "aside", "blockquote", "dd", "div", "dl", "dt", "fieldset",
-  "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
-  "header", "hr", "li", "main", "nav", "ol", "p", "pre", "section", "table",
-  "tbody", "td", "tfoot", "th", "thead", "tr", "ul"
-]);
-
-// Flat text of an element with newlines inserted at block-level boundaries.
-// textContent glues adjacent block elements ("<div>foo</div><div>bar</div>" →
-// "foobar") when the markup has no whitespace between them; this walk splits
-// blocks so the text-mode dump lands on "foo\nbar" instead.
-function elementTextWithBreaks(element) {
-  if (!element) return "";
-  const parts = [];
-  const walk = (node) => {
-    if (node.nodeType === 3) {
-      parts.push(node.textContent);
-      return;
-    }
-    if (node.nodeType !== 1) return;
-    const tag = node.tagName.toLowerCase();
-    if (tag === "br") {
-      if (parts.length && !/\n$/.test(parts[parts.length - 1])) parts.push("\n");
-      return;
-    }
-    const block = BLOCK_LEVEL_TAGS.has(tag);
-    if (block && parts.length && !/\n$/.test(parts[parts.length - 1])) parts.push("\n");
-    for (const child of node.childNodes) walk(child);
-    if (block && parts.length && !/\n$/.test(parts[parts.length - 1])) parts.push("\n");
-  };
-  walk(element);
-  return parts.join("");
-}
-
-function toLines(text) {
-  return String(text || "")
-    .split(/\r?\n+/)
-    .map((line) => cleanWhitespace(line))
-    .filter(Boolean);
-}
-
-function isLikelyJunkLine(line) {
-  const lower = line.toLowerCase();
-  if (line.length < 20) return false;
-  if (/(read more|see all maps|privacy policy|all rights reserved)/i.test(lower)) return true;
-  if (/^[a-z]{2,4}\d{2}/i.test(lower)) return true;
-
-  return false;
-}
-
-function scoreTextBlock(text) {
-  const cleaned = cleanWhitespace(text);
-  if (!cleaned) return -Infinity;
-
-  const words = cleaned.split(/\s+/).length;
-  const links = (cleaned.match(/https?:\/\//g) || []).length;
-  const punctuation = (cleaned.match(/[.!?]/g) || []).length;
-
-  return words + punctuation * 2 - links * 5;
-}
-
-function collectCandidateBlocks(doc) {
-  const candidates = [];
-
-  for (const selector of SEMANTIC_CONTENT_SELECTORS) {
-    const nodes = doc.querySelectorAll(selector);
-    for (const node of nodes) {
-      const text = elementTextWithBreaks(node).trim();
-      if (!text) continue;
-      candidates.push({ element: node, text, score: scoreTextBlock(text) });
-    }
-  }
-
-  if (!candidates.length && doc.body?.textContent) {
-    const bodyText = elementTextWithBreaks(doc.body).trim();
-    candidates.push({ element: doc.body, text: bodyText, score: scoreTextBlock(bodyText) });
-  }
-
-  return candidates.sort((a, b) => b.score - a.score);
-}
-
-function buildCleanText(lines, maxChars) {
-  const filtered = lines.filter((line) => !isLikelyJunkLine(line));
-  const deduped = uniqueLines(filtered);
-  return cleanAndTruncateText(deduped.join("\n"), maxChars);
-}
 
 function normalizeParagraphText(input) {
   const segments = String(input || "")
@@ -507,16 +396,6 @@ function normalizeParagraphText(input) {
   return output.join("\n");
 }
 
-function safeTruncateText(input, maxChars) {
-  const text = String(input || "");
-  if (!Number.isFinite(maxChars) || maxChars <= 0) return "";
-  if (text.length <= maxChars) return text;
-  if (maxChars <= 3) {
-    return text.slice(0, maxChars);
-  }
-  return `${text.slice(0, maxChars - 3)}...`;
-}
-
 function truncateParagraphText(input, maxChars) {
   return safeTruncateText(normalizeParagraphText(input), maxChars);
 }
@@ -529,166 +408,6 @@ function sanitizeHtmlSnippet(input, maxChars = MAX_MAIN_HTML_CHARS) {
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "");
   return safeTruncateText(stripped, maxChars);
-}
-
-function normalizeTableCellText(input, maxChars = 120) {
-  return safeTruncateText(cleanWhitespace(input), maxChars);
-}
-
-function expandTableRows(rowNodes, maxCellChars) {
-  const grid = [];
-
-  for (let rowIndex = 0; rowIndex < rowNodes.length; rowIndex += 1) {
-    const row = rowNodes[rowIndex];
-    const cells = Array.from(row.children).filter((cell) => /^(TH|TD)$/i.test(cell.tagName));
-    grid[rowIndex] = grid[rowIndex] || [];
-
-    let columnIndex = 0;
-    for (const cell of cells) {
-      while (grid[rowIndex][columnIndex] !== undefined) {
-        columnIndex += 1;
-      }
-
-      const colspan = Math.max(1, Number(cell.colSpan) || 1);
-      const rowspan = Math.max(1, Number(cell.rowSpan) || 1);
-      const text = normalizeTableCellText(cell.textContent || "", maxCellChars);
-
-      for (let rowOffset = 0; rowOffset < rowspan; rowOffset += 1) {
-        const targetRowIndex = rowIndex + rowOffset;
-        grid[targetRowIndex] = grid[targetRowIndex] || [];
-        for (let colOffset = 0; colOffset < colspan; colOffset += 1) {
-          grid[targetRowIndex][columnIndex + colOffset] = text;
-        }
-      }
-
-      columnIndex += colspan;
-    }
-  }
-
-  return grid;
-}
-
-function extractTablesFromDocument(doc, {
-  maxTables = 8,
-  maxRowsPerTable,
-  maxCellChars = 120,
-  maxRenderChars,
-  container
-} = {}) {
-  const tables = [];
-  let renderedChars = 0;
-
-  const shouldSkipTable = (table) => {
-    if (!table) return true;
-    if (table.closest("header, footer, nav, aside")) return true;
-    if (table.getAttribute("role") === "presentation") return true;
-    if (table.hasAttribute("hidden")) return true;
-    return false;
-  };
-
-  // Build heading position map for context
-  const allHeadings = Array.from((container || doc).querySelectorAll("h1, h2, h3, h4, h5, h6"));
-  const headingMap = new Map();
-  for (const h of allHeadings) {
-    headingMap.set(h, (h.textContent || "").replace(/\s+/g, " ").trim().slice(0, 120));
-  }
-
-  const findNearestHeading = (el) => {
-    let node = el;
-    while (node && node !== doc.body) {
-      let prev = node.previousElementSibling;
-      while (prev) {
-        if (headingMap.has(prev)) return headingMap.get(prev);
-        const innerH = prev.querySelector("h1, h2, h3, h4, h5, h6");
-        if (innerH && headingMap.has(innerH)) return headingMap.get(innerH);
-        prev = prev.previousElementSibling;
-      }
-      node = node.parentElement;
-    }
-    return "";
-  };
-
-  const tableNodes = container?.matches?.("table")
-    ? [container]
-    : Array.from((container || doc).querySelectorAll("table"));
-
-  for (const table of tableNodes) {
-    if (tables.length >= maxTables || (Number.isFinite(maxRenderChars) && renderedChars >= maxRenderChars)) break;
-    if (shouldSkipTable(table)) continue;
-
-    const caption = normalizeTableCellText(table.querySelector("caption")?.textContent || "", 200);
-    const rowNodes = Array.from(table.querySelectorAll("tr"));
-    if (rowNodes.length < 2) continue;
-
-    const headerRowNodes = [];
-    for (const rowNode of rowNodes) {
-      const hasTd = rowNode.querySelector("td");
-      const hasTh = rowNode.querySelector("th");
-      if (!hasTd && hasTh) {
-        headerRowNodes.push(rowNode);
-        continue;
-      }
-      break;
-    }
-
-    const headerGrid = expandTableRows(headerRowNodes, maxCellChars);
-    const headerColumnCount = Math.max(0, ...headerGrid.map((row) => row.length));
-    let headers = Array.from({ length: headerColumnCount }, (_, columnIndex) => {
-      const parts = headerGrid
-        .map((row) => cleanWhitespace(row[columnIndex] || ""))
-        .filter(Boolean);
-      return [...new Set(parts)].join(" ");
-    });
-
-    let rows = [];
-    const bodyRowNodes = rowNodes.slice(headerRowNodes.length);
-    for (const rowNode of bodyRowNodes) {
-      const cells = expandTableRows([rowNode], maxCellChars)[0] || [];
-      if (!cells.some(Boolean)) continue;
-      rows.push(cells);
-      renderedChars += cells.join(" |").length;
-      if ((Number.isFinite(maxRowsPerTable) && rows.length >= maxRowsPerTable) || (Number.isFinite(maxRenderChars) && renderedChars >= maxRenderChars)) break;
-    }
-
-    if (!headers.length && rows.length) {
-      headers = rows.shift() || [];
-    }
-
-    const columnCount = Math.max(headers.length, ...rows.map((row) => row.length), 0);
-    if (columnCount < 2 || rows.length < 1) continue;
-    if (columnCount === 2 && rows.length === 1) continue;
-
-    // Trim leading/trailing columns where all body cells are empty (chart icons, spacers, etc.)
-    const isColumnEmpty = (colIdx) =>
-      rows.every((row) => !(row[colIdx] || "").replace(/\s+/g, ""));
-    let trimStart = 0;
-    while (trimStart < columnCount && isColumnEmpty(trimStart)) trimStart += 1;
-    let trimEnd = columnCount - 1;
-    while (trimEnd > trimStart && isColumnEmpty(trimEnd)) trimEnd -= 1;
-    if (trimStart > 0 || trimEnd < columnCount - 1) {
-      headers = headers.slice(trimStart, trimEnd + 1);
-      rows = rows.map((row) => row.slice(trimStart, trimEnd + 1));
-    }
-
-    // Skip tables with no meaningful data — all body cells (beyond first column) are empty
-    const hasDataContent = rows.some((row) =>
-      row.slice(1).some((cell) => (cell || "").replace(/\s+/g, "").length > 2)
-    );
-    if (!hasDataContent) continue;
-
-    const fingerprint = headers.join("|") + "::" + (rows[0] || []).join("|");
-    if (tables.some((t) => t.headers.join("|") + "::" + (t.rows[0] || []).join("|") === fingerprint)) continue;
-
-    tables.push({
-      caption,
-      headers,
-      rows,
-      context: findNearestHeading(table),
-      node: table
-    });
-  }
-
-  return tables;
 }
 
 function renderHintFields(element, fields, baseUrl) {
@@ -747,13 +466,6 @@ function renderTableAsText(element) {
   return rows.join("\n");
 }
 
-function renderTableAsMarkdown(table) {
-  const lines = [];
-  if (table.headers?.length) lines.push(table.headers.join(" | "));
-  for (const row of table.rows || []) lines.push(row.join(" | "));
-  return lines.join("\n");
-}
-
 async function renderLeafContent(element, format, url, config) {
   if (format === "text") {
     return element.matches?.("table") ? renderTableAsText(element) : cleanWhitespace(element.textContent || "");
@@ -775,42 +487,7 @@ async function renderLeafContent(element, format, url, config) {
   return "";
 }
 
-function csvEscape(value) {
-  const string = String(value ?? "");
-  return /[",\n]/.test(string) ? `"${string.replace(/"/g, '""')}"` : string;
-}
-
-function renderTablesAsJson(tables) {
-  const result = tables.map((table) => {
-    const keys = (table.headers || []).map((header, index) => header || `col${index + 1}`);
-    const rows = (table.rows || []).map((row) => {
-      const entry = {};
-      keys.forEach((key, index) => {
-        entry[key] = row[index] !== undefined ? row[index] : "";
-      });
-      return entry;
-    });
-    const out = {};
-    if (table.context) out.caption = table.context;
-    out.rows = rows;
-    return out;
-  });
-  return `\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
-}
-
-function renderTablesAsCsv(tables) {
-  const parts = [];
-  for (const table of tables) {
-    const lines = [];
-    if (table.headers?.length) lines.push(table.headers.map(csvEscape).join(","));
-    for (const row of table.rows || []) lines.push(row.map(csvEscape).join(","));
-    const heading = table.context ? `### ${table.context}\n\n` : "";
-    parts.push(`${heading}\`\`\`csv\n${lines.join("\n")}\n\`\`\``);
-  }
-  return parts.join("\n\n");
-}
-
-async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = "", config) {
+export async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = "", config) {
   const blocks = hint?.content?.blocks?.length ? hint.content.blocks : null;
   const sections = blocks ? null : (hint?.content?.sections?.length ? hint.content.sections : null);
   const content = blocks || sections;
@@ -902,7 +579,7 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
 
   if (!output.length) return null;
   const text = output.join("\n");
-  if (debug) console.log(`[web_fetch] [${url}] content_path: blocks: ${output.length}, tables: ${allTables.length}`);
+  if (debug) console.log(`[web_fetch] [${url}] content_path: blocks: ${output.length}`);
   return {
     title: cleanWhitespace(doc.title || fallbackTitle || ""),
     url,
@@ -910,226 +587,6 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
     textOriginalLength: text.length,
     ...(zeroMatch.length ? { warnings: zeroMatch.map((selector) => `section selector "${selector}" matched 0 elements`) } : {})
   };
-}
-
-async function extractTextFromHtml({ html, url, maxChars, fallbackTitle, hint, browserText, screenshot, debug = false, strict = false, defaultExtractSkipSelectors = [], config }) {
-  const tFunc = performance.now();
-  if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml called`);
-  const rawHtml = typeof html === "string" ? html : "";
-  const safeHtml = rawHtml.replace(/<style[\s\S]*?<\/style>/gi, "");
-  let dom;
-  try {
-    dom = new JSDOM(safeHtml || "<body></body>", { url });
-  } catch {
-    dom = new JSDOM("<body></body>", { url });
-  }
-
-  try {
-    const doc = dom.window.document;
-    if (defaultExtractSkipSelectors.length) {
-      doc.querySelectorAll(defaultExtractSkipSelectors.join(",")).forEach((node) => node.remove());
-    }
-
-    if (hint?.default?.skipSelectors?.length) {
-      for (const sel of hint.default.skipSelectors) {
-        try {
-          doc.querySelectorAll(sel).forEach((node) => node.remove());
-        } catch {
-          // skip invalid selectors
-        }
-      }
-    }
-
-    if (hint?.content?.blocks?.length) {
-      if (debug) console.log(">>> entering blocks path, blocks:", hint.content.blocks.length, "first selector:", hint.content.blocks[0].selector);
-      const blockResult = await renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle, config);
-      if (blockResult) return blockResult;
-      if (debug) console.log(">>> blocks produced no output");
-    }
-
-if (strict && hint?.content?.blocks?.length) {
-      if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: strict content produced no output`);
-      return { title: cleanWhitespace(doc.title || fallbackTitle || ""), url, text: "", textOriginalLength: 0 };
-    }
-
-    /* ==================== Default extraction (hint method: default) ==================== */
-    const defaultBlock = hint?.default || {};
-    const pageFormat = defaultBlock.format || "readability_to_markdown";
-    const postProcessorModel = defaultBlock.postProcessor;
-    if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: default extraction (format=${pageFormat})`);
-
-    // The extractor renders tables now — no table nodes are stripped from the DOM in the
-    // default path. The "table"-family extractors return tables-only output instead.
-
-    // Table-family formats: tables only, no DOM mutation.
-    if (pageFormat === "table" || pageFormat === "table_json" || pageFormat === "table_csv") {
-      const tables = extractTablesFromDocument(doc).map(({ node, ...rest }) => rest);
-      if (tables.length) {
-        const text = pageFormat === "table"
-          ? tables.map(renderTableAsMarkdown).join("\n\n")
-          : pageFormat === "table_json"
-            ? renderTablesAsJson(tables)
-            : renderTablesAsCsv(tables);
-        if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: tables-only (${pageFormat}): ${tables.length} tables`);
-        return {
-          title: cleanWhitespace(doc.title || fallbackTitle || ""),
-          url,
-          text: safeTruncateText(text, maxChars),
-          textOriginalLength: text.length
-        };
-      }
-    }
-
-    // Screenshot format: requires a live browser page (only works in flow extraction).
-    if (pageFormat === "screenshot") {
-      if (!screenshot) throw new Error("screenshot format requires a live browser page (use in flow steps only)");
-      if (postProcessorModel) {
-        try {
-          const processed = await runPostProcessor({ screenshot, model: postProcessorModel, config });
-          if (processed) {
-            return {
-              title: cleanWhitespace(doc.title || fallbackTitle || ""),
-              url,
-              text: safeTruncateText(processed, maxChars),
-              textOriginalLength: processed.length
-            };
-          }
-        } catch (err) {
-          console.warn(`[web_fetch] [${url}] post-processor "${postProcessorModel}" failed for screenshot — falling back to raw: ${err.message}`);
-        }
-      }
-      return {
-        title: cleanWhitespace(doc.title || fallbackTitle || ""),
-        url,
-        text: screenshot,
-        textOriginalLength: screenshot.length
-      };
-    }
-
-    // Post-processor: apply model to extracted text (default path only).
-    const applyPostProcessor = async (result) => {
-      if (!postProcessorModel || !result?.text) return result;
-      try {
-        const ppResult = await runPostProcessor({ text: result.text, model: postProcessorModel, config });
-        if (ppResult) return { ...result, text: ppResult, textOriginalLength: ppResult.length };
-      } catch (err) {
-        console.warn(`[web_fetch] [${url}] post-processor "${postProcessorModel}" failed — keeping original: ${err.message}`);
-      }
-      return result;
-    };
-
-    // Readability path (default format) — extracts a clean article from the whole doc.
-    // "html_to_markdown" skips Readability and keeps everything; "text" is a flat text dump.
-    if (pageFormat === "readability_to_markdown") {
-      let article = null;
-      try {
-        const reader = new Readability(dom.window.document);
-        article = reader.parse();
-      } catch {
-        article = null;
-      }
-
-      if (article?.textContent?.trim()) {
-        if (debug) console.log(">>> Readability SUCCEEDED, textContent length:", article.textContent.trim().length);
-        const articleLines = toLines(article.textContent);
-        if (debug) console.log(">>> articleLines count:", articleLines.length, "first 5 lines:", JSON.stringify(articleLines.slice(0,5)));
-        if (debug) console.log(">>> browserText exists:", !!browserText, "type:", typeof browserText, "length:", browserText?.length);
-
-        if (browserText) {
-          const articleLen = article.textContent.trim().length;
-          const browserLen = browserText.trim().length;
-          if (debug) console.log(">>> browserText check:", {articleLen, browserLen, condition: browserLen > articleLen * 1.5 && browserLen - articleLen > 200});
-          if (browserLen > articleLen * 1.5 && browserLen - articleLen > 200) {
-            const fullMarkdown = htmlToMarkdown(doc.body.innerHTML, { baseUrl: url });
-            if (debug) console.log(">>> Using htmlToMarkdown(doc.body.innerHTML), length:", fullMarkdown.length, "preview:", fullMarkdown.substring(0,200));
-            if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_htmlToMarkdown: ${Math.round(performance.now() - tFunc)}ms`);
-            return await applyPostProcessor({
-              title: cleanWhitespace(article.title || fallbackTitle || ""),
-              url,
-              text: safeTruncateText(fullMarkdown, maxChars),
-              textOriginalLength: fullMarkdown.length
-            });
-          }
-        }
-
-        let text;
-        let textOriginalLength;
-        if (article.content) {
-          const raw = htmlToMarkdown(article.content, { baseUrl: url });
-          if (debug) console.log(">>> article.content path, article.content length:", article.content.length, "raw length:", raw.length, "raw preview:", raw.substring(0,300));
-          text = safeTruncateText(raw, maxChars);
-          textOriginalLength = raw.length;
-          if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_content: ${Math.round(performance.now() - tFunc)}ms`);
-          return await applyPostProcessor({
-            title: cleanWhitespace(article.title || fallbackTitle || ""),
-            url,
-            text,
-            textOriginalLength
-          });
-        } else {
-          text = buildCleanText(articleLines, maxChars);
-          textOriginalLength = articleLines.join("\n").length;
-          if (debug) console.log(">>> Readability path: using buildCleanText, length:", text?.length, "preview:", text?.substring(0,200));
-        }
-        if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: readability_textContent: ${Math.round(performance.now() - tFunc)}ms`);
-        return await applyPostProcessor({
-          title: cleanWhitespace(article.title || fallbackTitle || ""),
-          url,
-          text,
-          textOriginalLength
-        });
-      }
-    }
-
-    // Raw HTML → markdown (Readability off, "html_to_markdown" format, or it produced nothing).
-    // Convert the best semantic container's innerHTML so headings/paragraphs survive;
-    // a textContent-only dump collapses div-based pages into a single glued line.
-    // "text" format skips markdown entirely and returns a clean flat text dump;
-    // "html" wraps the best container's innerHTML in a fenced code block.
-    let candidates, bestText, bestMarkdown = "";
-    let bestContainerHtml = "";
-    try {
-      candidates = collectCandidateBlocks(doc);
-      const best = candidates[0];
-      if (best?.element) {
-        bestContainerHtml = best.element.innerHTML || "";
-        bestMarkdown = htmlToMarkdown(best.element.innerHTML || "", { baseUrl: url }).trim();
-      }
-      bestText = best?.text || elementTextWithBreaks(doc.body).trim();
-      if (debug) console.log(">>> FALLBACK: collectCandidateBlocks, candidates:", candidates?.length, "bestText length:", bestText?.length, "bestMarkdown length:", bestMarkdown?.length, "bestText preview:", bestText?.substring(0,200));
-    } catch {
-      bestText = elementTextWithBreaks(doc.body).trim();
-    }
-    const lines = toLines(bestText);
-    let fullText;
-    if (pageFormat === "html") {
-      fullText = bestContainerHtml
-        ? safeTruncateText(`\`\`\`html\n${bestContainerHtml}\n\`\`\``, maxChars)
-        : buildCleanText(lines, maxChars);
-    } else if (pageFormat === "text") {
-      fullText = buildCleanText(lines, maxChars);
-    } else {
-      fullText = bestMarkdown ? safeTruncateText(bestMarkdown, maxChars) : buildCleanText(lines, maxChars);
-    }
-    if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: fallback: ${Math.round(performance.now() - tFunc)}ms`);
-    return await applyPostProcessor({
-      title: cleanWhitespace(doc.title || fallbackTitle || ""),
-      url,
-      text: fullText,
-      textOriginalLength: bestText.length
-    });
-  } catch {
-    if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: catch_all: ${Math.round(performance.now() - tFunc)}ms`);
-    const fallback = elementTextWithBreaks(dom?.window?.document?.body).trim();
-    return {
-      title: cleanWhitespace(dom?.window?.document?.title || fallbackTitle || ""),
-      url,
-      text: safeTruncateText(fallback, maxChars),
-      textOriginalLength: fallback.length,
-    };
-  } finally {
-    dom?.window?.close();
-  }
 }
 
 async function captureSeoSnapshot(
@@ -2692,12 +2149,15 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       if (includeSeoAnalysis !== false) debugLog("capture_seo_snapshot", t);
 
       t = performance.now();
-      const [html, resolvedUrl, pageTitle, browserText] = await withPageTimeout("serialize_html", () =>
+      const [html, resolvedUrl, pageTitle, browserText, screenshot] = await withPageTimeout("serialize_html", () =>
         Promise.all([
           page.content(),
           Promise.resolve(page.url()),
           page.title(),
-          page.evaluate(() => document.body?.innerText || "").catch(() => "")
+          page.evaluate(() => document.body?.innerText || "").catch(() => ""),
+          typeof page.screenshot === "function"
+            ? page.screenshot({ encoding: "base64", type: "jpeg", quality: 75 }).catch(() => null)
+            : Promise.resolve(null)
         ])
       );
       debugLog("serialize_page", t);
@@ -2727,6 +2187,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         fallbackTitle: pageTitle,
         hint,
         browserText,
+        screenshot,
         debug,
         defaultExtractSkipSelectors,
         config: manager.config

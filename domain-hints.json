@@ -149,7 +149,7 @@
   },
   {
     "domain": "10.69.1.164",
-    "pathPattern": "/table",
+    "pathPattern": "/**",
     "pageType": "chaos-article",
     "comment": "ChaosHub fake article — sections + comments list. Content randomized per visit; ignore fake bot-check/popup.",
     "testUrls": [
@@ -160,7 +160,8 @@
       "stabilizeStrategy": "",
       "waitForContent": [],
       "skipSelectors": [],
-      "format": "table_csv"
+      "format": "screenshot",
+      "postProcessor": "OvisOCR2"
     }
   },
   {

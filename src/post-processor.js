@@ -62,6 +62,9 @@ function timeoutFetch(url, options, timeoutMs) {
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Transport functions — each takes (entry, input, config, debug) → string.
+ */
 async function extractWithChat(entry, inputText, config, debug) {
   const url = `${entry.baseUrl}/chat/completions`;
   const payload = {
@@ -144,7 +147,7 @@ async function extractWithChatImage(entry, imageDataUrl, prompt, config, debug) 
   );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    console.error(`[post-processor] chat request failed: ${res.status} ${text.slice(0, 500)}`);
+    console.error(`[post-processor] chat image request failed: ${res.status} ${text.slice(0, 500)}`);
     throw new Error(`chat request failed: ${res.status} ${text.slice(0, 500)}`);
   }
   const data = await res.json();
@@ -199,8 +202,23 @@ async function extractWithApi(entry, input, config, debug) {
   return content;
 }
 
+// ── Transport Registry ───────────────────────────────────────────────────────
+const TRANSPORTS = {
+  chat: extractWithChat,
+  mineru: extractWithMineru,
+  api: extractWithApi,
+};
+
 /**
  * Run the post-processor model over exactly one extractor-output payload.
+ *
+ * @param {object} opts
+ * @param {string} [opts.text]      - Text content to process.
+ * @param {string} [opts.html]      - HTML content to process.
+ * @param {string} [opts.screenshot] - Base64 screenshot to process.
+ * @param {string} opts.model       - Model ID from POST_PROCESSOR_MODELS.
+ * @param {object} opts.config      - manager.config.
+ * @param {boolean} [opts.debug]    - Enable debug logging.
  */
 export async function runPostProcessor({ text, html, screenshot, model, config, debug }) {
   const entry = getPostProcessorModels(config).find((item) => item.id === model);
@@ -216,18 +234,20 @@ export async function runPostProcessor({ text, html, screenshot, model, config, 
       if (debug) {
         console.log(`[post-processor] runPostProcessor: model=${model} kind=${entry.kind} input=${html ? "html" : text ? "text" : "screenshot"}`);
       }
-      if (entry.kind === "mineru") {
-        const preparedHtml = String(html ?? text ?? "").slice(0, MINERU_MAX_INPUT_CHARS);
-        return await extractWithMineru(entry, preparedHtml, config, debug);
-      }
-      if (entry.kind === "api") {
-        return await extractWithApi(entry, html ?? text ?? screenshot, config, debug);
-      }
+
+      // Screenshot → image variant of chat transport (regardless of kind).
       if (screenshot) {
         return await extractWithChatImage(entry, screenshot, entry.prompt || DEFAULT_SCREENSHOT_PROMPT, config, debug);
       }
+
+      // Text/HTML → dispatch by kind.
+      const transport = TRANSPORTS[entry.kind] || TRANSPORTS.chat;
+      if (entry.kind === "mineru") {
+        const preparedHtml = String(html ?? text ?? "").slice(0, MINERU_MAX_INPUT_CHARS);
+        return await transport(entry, preparedHtml, config, debug);
+      }
       const prepared = truncateTail(html ?? text ?? "", entry.maxInputChars ?? DEFAULT_MAX_INPUT_CHARS);
-      return await extractWithChat(entry, prepared, config, debug);
+      return await transport(entry, prepared, config, debug);
     } finally {
       releaseSlot();
     }
