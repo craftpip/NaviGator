@@ -355,6 +355,8 @@ async function listTargets() {
   };
 }
 
+export { listTargets };
+
 async function closeTarget(args = {}) {
   assertString(args.targetId, "targetId");
   const manager = await getBrowserManager();
@@ -1824,6 +1826,17 @@ export const devtoolsToolDefinitions = [
     }
   }
 ];
+
+export { createTarget, closeTarget, navigatePage };
+
+export async function getPageContent(targetId) {
+  assertString(targetId, "targetId");
+  const manager = await getBrowserManager();
+  assertEnabled(manager);
+  const state = getTargetState(targetId);
+  const html = await state.page.content();
+  return html;
+}
 
 export async function handleDevtoolsToolCall(name, args = {}) {
   if (name === "Target.createTarget") return createTarget(args);

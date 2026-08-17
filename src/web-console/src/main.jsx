@@ -4057,10 +4057,12 @@ function hintUrlMismatch(hint, url) {
   return { domainOk, pathOk };
 }
 
+const KEEP_TEST_TARGET_ID = "hint-test-panel";
+
 function HintTestPanel({ hint }) {
   const [testUrl, setTestUrl] = useState(hint?.testUrls?.[0] || "");
   const [rerun, setRerun] = useState(false);
-  const [useCachedHtml, setUseCachedHtml] = useState(false);
+  const [keepTabOpen, setKeepTabOpen] = useState(false);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [showScreenshot, setShowScreenshot] = useState(false);
@@ -4074,15 +4076,26 @@ function HintTestPanel({ hint }) {
   useEffect(() => {
     if (!testUrl && hint?.testUrls?.[0]) setTestUrl(hint.testUrls[0]);
   }, [hint, testUrl]);
+  useEffect(() => {
+    return () => {
+      fetch(`/console/api/tabs/${encodeURIComponent(KEEP_TEST_TARGET_ID)}`, { method: "DELETE" }).catch(() => {});
+    };
+  }, []);
+  const toggleKeepTabOpen = useCallback(async (checked) => {
+    if (checked) {
+      setKeepTabOpen(true);
+    } else {
+      fetch(`/console/api/tabs/${encodeURIComponent(KEEP_TEST_TARGET_ID)}`, { method: "DELETE" }).catch(() => {});
+      setKeepTabOpen(false);
+    }
+  }, []);
   const runTest = useCallback(async () => {
     if (!testUrl || runningRef.current) return;
     runningRef.current = true;
     setRunning(true);
     try {
-      const cacheParam = useCachedHtml
-        ? "&cacheHtml=1"
-        : "&cacheHtml=0";
-      const url = `/extract?url=${encodeURIComponent(testUrl)}&maxChars=999999${cacheParam}&hint=${encodeURIComponent(JSON.stringify(hint))}`;
+      const targetParam = keepTabOpen ? `&targetId=${encodeURIComponent(KEEP_TEST_TARGET_ID)}` : "";
+      const url = `/extract?url=${encodeURIComponent(testUrl)}&maxChars=999999${targetParam}&hint=${encodeURIComponent(JSON.stringify(hint))}`;
       const response = await fetchHintText(url);
       if (response.ok) {
         const tables = (response.text.match(/^- Tables extracted: (\d+)$/gm) || []).reduce(
@@ -4098,7 +4111,6 @@ function HintTestPanel({ hint }) {
           chars: response.text.length,
           tables,
           warnings,
-          cacheState: response.cacheState,
         });
       } else {
         setResult({ ok: false, error: response.error, validation: response.validation, text: "" });
@@ -4110,7 +4122,7 @@ function HintTestPanel({ hint }) {
       runningRef.current = false;
       setRunning(false);
     }
-  }, [hint, testUrl, useCachedHtml]);
+  }, [hint, testUrl, keepTabOpen]);
   useEffect(() => {
     if (prevHintSigRef.current === hintSig) return undefined;
     prevHintSigRef.current = hintSig;
@@ -4125,7 +4137,9 @@ function HintTestPanel({ hint }) {
     const loadScreenshot = async () => {
       try {
         const response = await fetch(
-          `/screenshot?url=${encodeURIComponent(testUrl)}&format=jpeg&quality=low&fullPage=true`,
+          keepTabOpen
+            ? `/screenshot?targetId=${encodeURIComponent(KEEP_TEST_TARGET_ID)}&url=${encodeURIComponent(testUrl)}&format=jpeg&quality=low&fullPage=true`
+            : `/screenshot?url=${encodeURIComponent(testUrl)}&format=jpeg&quality=low&fullPage=true`,
           { cache: "no-store" },
         );
         const body = await response.text();
@@ -4193,13 +4207,13 @@ function HintTestPanel({ hint }) {
           <input type="checkbox" checked={rerun} onChange={(event) => setRerun(event.target.checked)} />
           Auto re-run on edit
         </label>
-        <label className="hint-check" title="Cache the page HTML on first fetch and re-extract from the snapshot — the site is not called again until you uncheck (refresh) it.">
+        <label className="hint-check" title="Keep the browser tab open between test runs — reuses the same window for faster tests.">
           <input
             type="checkbox"
-            checked={useCachedHtml}
-            onChange={(event) => setUseCachedHtml(event.target.checked)}
+            checked={keepTabOpen}
+            onChange={(event) => toggleKeepTabOpen(event.target.checked)}
           />
-          Use cached page HTML
+          Keep window open
         </label>
       </div>
       {!testUrl && hint?.domain !== "*" && <p className="hint">Add a test URL to run the hint against a real page.</p>}
@@ -4207,7 +4221,7 @@ function HintTestPanel({ hint }) {
         <div className="hint-test-result">
           <div className={`hint-test-status ${result.ok ? "ok" : "error"}`}>
             {result.ok
-              ? `✓ ${result.chars} chars · ${result.tables} table${result.tables === 1 ? "" : "s"} · source: override · cache: ${useCachedHtml ? (result.cacheState === "hit" ? "hit ✓" : "miss") : "off"}`
+              ? `✓ ${result.chars} chars · ${result.tables} table${result.tables === 1 ? "" : "s"}${keepTabOpen ? " · tab open" : ""}`
               : `✕ ${result.error}`}
           </div>
           {!result.ok && result.validation?.errors?.length > 0 && (

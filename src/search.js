@@ -691,54 +691,6 @@ function extractTablesFromDocument(doc, {
   return tables;
 }
 
-function insertTablesInline(text, tables) {
-  if (!tables.length) return text || "";
-  if (!text) text = "";
-
-  const lines = text.split("\n");
-  const headingRegex = /^#{1,6}\s+(.+)/;
-
-  // Build rendered table strings with their context
-  const renderedTables = tables.map((table, index) => {
-    const lines = [];
-    const heading = table.caption || `Table ${index + 1}`;
-    lines.push("", `### ${heading}`);
-    if (table.headers?.length) {
-      lines.push(table.headers.join(" | "));
-    }
-    for (const row of table.rows || []) {
-      lines.push(row.join(" | "));
-    }
-    return { context: table.context || "", rendered: lines.join("\n") };
-  });
-
-  const result = [];
-  let i = 0;
-  while (i < lines.length) {
-    result.push(lines[i]);
-    const mdMatch = lines[i].match(headingRegex);
-    const lineText = mdMatch ? mdMatch[1].trim() : lines[i].trim();
-    if (lineText && lineText.length < 150) {
-      for (const table of renderedTables) {
-        if (!table.inserted && table.context && (lineText.toLowerCase().includes(table.context.toLowerCase()) || table.context.toLowerCase().includes(lineText.toLowerCase()))) {
-          result.push(table.rendered);
-          table.inserted = true;
-        }
-      }
-    }
-    i++;
-  }
-
-  // Append any uninserted tables at the end
-  for (const table of renderedTables) {
-    if (!table.inserted) {
-      result.push(table.rendered);
-    }
-  }
-
-  return result.join("\n").trim();
-}
-
 function renderHintFields(element, fields, baseUrl) {
   const output = [];
   for (const field of fields) {
@@ -829,28 +781,33 @@ function csvEscape(value) {
 }
 
 function renderTablesAsJson(tables) {
-  const rows = [];
-  for (const table of tables) {
+  const result = tables.map((table) => {
     const keys = (table.headers || []).map((header, index) => header || `col${index + 1}`);
-    for (const row of table.rows || []) {
+    const rows = (table.rows || []).map((row) => {
       const entry = {};
       keys.forEach((key, index) => {
         entry[key] = row[index] !== undefined ? row[index] : "";
       });
-      rows.push(entry);
-    }
-  }
-  return `\`\`\`json\n${JSON.stringify(rows, null, 2)}\n\`\`\``;
+      return entry;
+    });
+    const out = {};
+    if (table.context) out.caption = table.context;
+    out.rows = rows;
+    return out;
+  });
+  return `\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
 }
 
 function renderTablesAsCsv(tables) {
-  const lines = [];
+  const parts = [];
   for (const table of tables) {
-    if (table.caption) lines.push(`# ${table.caption}`);
+    const lines = [];
     if (table.headers?.length) lines.push(table.headers.map(csvEscape).join(","));
     for (const row of table.rows || []) lines.push(row.map(csvEscape).join(","));
+    const heading = table.context ? `### ${table.context}\n\n` : "";
+    parts.push(`${heading}\`\`\`csv\n${lines.join("\n")}\n\`\`\``);
   }
-  return `\`\`\`csv\n${lines.join("\n")}\n\`\`\``;
+  return parts.join("\n\n");
 }
 
 async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle = "", config) {
@@ -860,7 +817,6 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
   if (!content) return null;
 
   const output = [];
-  const allTables = [];
   const zeroMatch = [];
   const order = { high: 0, medium: 1, low: 2 };
   const sorted = [...content].sort((a, b) => (order[a.priority] || 1) - (order[b.priority] || 1));
@@ -886,7 +842,6 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
       for (const el of elements) {
         const elTables = extractTablesFromDocument(doc, { container: el });
         if (elTables.length) {
-          for (const t of elTables) t.node?.remove();
           tables.push(...elTables.map(({ node, ...rest }) => rest));
           blockHadTable = true;
         }
@@ -904,7 +859,6 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
       for (const el of elements) {
         const elTables = extractTablesFromDocument(doc, { container: el });
         if (elTables.length) {
-          for (const t of elTables) t.node?.remove();
           tables.push(...elTables.map(({ node, ...rest }) => rest));
           blockHadTable = true;
         }
@@ -918,12 +872,6 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
           const rendered = await renderLeafContent(el, block.format, url, config);
           if (rendered) markdown += rendered + "\n";
           continue;
-        }
-        const elTables = extractTablesFromDocument(doc, { container: el });
-        if (elTables.length) {
-          for (const t of elTables) t.node?.remove();
-          allTables.push(...elTables.map(({ node, ...rest }) => rest));
-          blockHadTable = true;
         }
         const rendered = await renderLeafContent(el, block.format, url, config);
         if (rendered) markdown += rendered + "\n";
@@ -960,7 +908,6 @@ async function renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitl
     url,
     text: safeTruncateText(text, maxChars),
     textOriginalLength: text.length,
-    ...(allTables.length ? { tables: allTables } : {}),
     ...(zeroMatch.length ? { warnings: zeroMatch.map((selector) => `section selector "${selector}" matched 0 elements`) } : {})
   };
 }
@@ -1028,8 +975,7 @@ if (strict && hint?.content?.blocks?.length) {
           title: cleanWhitespace(doc.title || fallbackTitle || ""),
           url,
           text: safeTruncateText(text, maxChars),
-          textOriginalLength: text.length,
-          tables
+          textOriginalLength: text.length
         };
       }
     }
@@ -2229,9 +2175,6 @@ function mergeExtractedStages(stages, maxChars, preCollectedLinks = []) {
     text = safeTruncateText(text, maxChars);
     textWasTruncated = text.endsWith("...");
   }
-  if (tables.length) {
-    text = insertTablesInline(text, tables);
-  }
   return {
     text,
     textWasTruncated,
@@ -2267,7 +2210,7 @@ async function replayFlowFromSnapshot({ url, html, hint, maxChars, debug, hintNo
     }
     const extracted = await extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, defaultExtractSkipSelectors, config);
     if (extracted.tables?.length && !(extracted.text || "").trim()) {
-      extracted.text = insertTablesInline("", extracted.tables);
+      extracted.text = extracted.tables.map(renderTableAsMarkdown).join("\n\n");
       extracted.tables = [];
     }
     const stageLabel = (step.label || "").trim();
@@ -2356,7 +2299,7 @@ async function executeFlow({ page, hint, config, maxChars: _maxChars, debug, deb
         }
     const extracted = await extractHintStage(state, hint, step, FLOW_STAGE_CAPTURE_LIMIT, debug, defaultExtractSkipSelectors, config);
         if (extracted.tables?.length && !(extracted.text || "").trim()) {
-          extracted.text = insertTablesInline("", extracted.tables);
+          extracted.text = extracted.tables.map(renderTableAsMarkdown).join("\n\n");
           extracted.tables = [];
         }
         const stageLabel = (step.label || "").trim();
@@ -2610,9 +2553,6 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       });
       const links = extractLinksFromHtml({ html: cached, url });
       let finalText = extracted.text || "";
-      if (extracted.tables?.length) {
-        finalText = insertTablesInline(finalText, extracted.tables);
-      }
       const textWasTruncated = extracted.text?.endsWith("...");
       if (textWasTruncated || finalText.length > maxChars) {
         const fullSize = extracted.textOriginalLength || finalText.length;
@@ -2807,12 +2747,6 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       t = performance.now();
       const links = extractLinksFromHtml({ html, url: resolvedUrl });
       debugLog("extract_links", t);
-
-      t = performance.now();
-      if (extracted.tables?.length) {
-        finalText = insertTablesInline(finalText, extracted.tables);
-      }
-      debugLog("insert_tables", t);
 
       const textWasTruncated = extracted.text?.endsWith("...");
       if (textWasTruncated || finalText.length > maxChars) {

@@ -1,42 +1,16 @@
 [
   {
-    "domain": "github.com",
-    "pathPattern": "/*",
-    "pageType": "profile",
-    "comment": "User profile page — sidebar (name, bio, stats, orgs) + pinned repos + contribution graph.",
-    "flow": [
-      {
-        "action": "wait",
-        "selector": "turbo-frame#user-profile-frame",
-        "timeoutMs": 10000
-      },
-      {
-        "action": "extract",
-        "label": "profile",
-        "content": {
-          "blocks": [
-            {
-              "selector": "h1.vcard-names",
-              "label": "Name",
-              "priority": "high",
-              "format": "html_to_markdown"
-            },
-            {
-              "selector": "div.js-profile-editable-area",
-              "label": "Profile",
-              "priority": "high",
-              "format": "html_to_markdown"
-            },
-            {
-              "selector": "ol.js-pinned-items-reorder-list",
-              "label": "Pinned Repositories",
-              "priority": "high",
-              "format": "html_to_markdown"
-            }
-          ]
-        }
-      }
-    ]
+    "domain": "*",
+    "pathPattern": "/**",
+    "pageType": "default",
+    "comment": "Default extraction for all URLs. Edit in the Domain hints panel.",
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle",
+      "waitForSelector": [],
+      "waitForContent": [],
+      "skipSelectors": []
+    }
   },
   {
     "domain": "github.com",
@@ -175,7 +149,7 @@
   },
   {
     "domain": "10.69.1.164",
-    "pathPattern": "/**",
+    "pathPattern": "/table",
     "pageType": "chaos-article",
     "comment": "ChaosHub fake article — sections + comments list. Content randomized per visit; ignore fake bot-check/popup.",
     "testUrls": [
@@ -186,7 +160,7 @@
       "stabilizeStrategy": "",
       "waitForContent": [],
       "skipSelectors": [],
-      "format": "html_to_markdown"
+      "format": "table_csv"
     }
   },
   {
@@ -198,6 +172,12 @@
     ],
     "flow": [
       {
+        "action": "wait",
+        "selector": "",
+        "state": "visible",
+        "timeoutMs": 20000
+      },
+      {
         "action": "extract",
         "label": "",
         "content": {
@@ -206,7 +186,7 @@
               "selector": "#optionChainTable-indices",
               "label": "",
               "priority": "high",
-              "format": "reader_lm"
+              "format": "table"
             }
           ]
         }

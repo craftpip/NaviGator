@@ -22,7 +22,7 @@ import { vncManager } from "./vnc-manager.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats, getEngineProfiles, resetSearchEngine } from "./search.js";
 import { getActivityTrend, getRecentActivity, recordActivityEvent, recordPageOp } from "./activity.js";
 import { createMcpApiKey, getUsageTotals, incrementUsageTotal, initDb, initializeMcpApiKeys, listMcpApiKeys, revokeMcpApiKey, setMcpApiKeyTools } from "./db.js";
-import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters } from "./devtools.js";
+import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters, createTarget, closeTarget, getPageContent, navigatePage, listTargets } from "./devtools.js";
 import { transform as asciiTransform } from "./ascii.js";
 import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
@@ -1395,6 +1395,10 @@ function formatOpenPageResponse(payload) {
     }
     if (entry?.tables?.length) {
       lines.push(`- Tables extracted: ${entry.tables.length}`);
+    } else if (entry?.text) {
+      const tableCount = (entry.text.match(/^### Table \d/gm) || []).length
+        || (entry.text.match(/^# Table \d/gm) || []).length;
+      if (tableCount) lines.push(`- Tables extracted: ${tableCount}`);
     }
     if (entry?.text) {
       lines.push("", entry.text.trim());
@@ -2964,6 +2968,51 @@ async function maybeStartHttpServer(managerOverride) {
         return;
       }
 
+      if (url.pathname === "/console/api/tabs") {
+        if (!manager.config.enableWebConsole) {
+          sendJson(res, 404, { ok: false, error: "Web console not available" });
+          return;
+        }
+        try {
+          if (method === "POST") {
+            const body = await readJsonBody(req);
+            const result = await createTarget({ targetId: body?.targetId, url: body?.url || "about:blank", viewport: body?.viewport });
+            sendJson(res, 200, { ok: true, targetId: result.targetId });
+            return;
+          }
+          if (method === "GET") {
+            const { listTargets } = await import("./devtools.js");
+            const result = await listTargets();
+            sendJson(res, 200, { ok: true, targets: result.targets || [] });
+            return;
+          }
+          sendJson(res, 405, { ok: false, error: "Method not allowed" });
+        } catch (error) {
+          sendJson(res, 400, { ok: false, error: String(error?.message || error) });
+        }
+        return;
+      }
+
+      const tabDeleteMatch = url.pathname.match(/^\/console\/api\/tabs\/(.+)$/);
+      if (tabDeleteMatch) {
+        if (!manager.config.enableWebConsole) {
+          sendJson(res, 404, { ok: false, error: "Web console not available" });
+          return;
+        }
+        try {
+          if (method === "DELETE") {
+            const targetId = decodeURIComponent(tabDeleteMatch[1]);
+            await closeTarget({ targetId });
+            sendJson(res, 200, { ok: true });
+            return;
+          }
+          sendJson(res, 405, { ok: false, error: "Method not allowed" });
+        } catch (error) {
+          sendJson(res, 400, { ok: false, error: String(error?.message || error) });
+        }
+        return;
+      }
+
       if (url.pathname === "/console" || url.pathname.startsWith("/console/") || url.pathname === "/ui" || url.pathname === "/dashboard") {
         if (!manager.config.enableWebConsole) {
           sendJson(res, 404, { ok: false, error: "Web console not available" });
@@ -3085,8 +3134,51 @@ async function maybeStartHttpServer(managerOverride) {
         }
         let payload;
         try {
+          const targetIdParam = url.searchParams.get("targetId") || "";
           const cacheHtmlParam = String(url.searchParams.get("cacheHtml") || "");
           const cacheMode = cacheHtmlParam === "1" ? "use" : cacheHtmlParam === "refresh" ? "refresh" : cacheHtmlParam === "0" ? "clear" : null;
+
+          if (targetIdParam) {
+            try {
+              const { targets } = await listTargets();
+              const tab = (targets || []).find((t) => t.targetId === targetIdParam) || null;
+              if (tab && tab.url === targetUrls[0]) {
+                // Same URL — reuse existing tab
+              } else if (tab) {
+                // Different URL — close old, create new at same name
+                await closeTarget({ targetId: targetIdParam });
+                await createTarget({ targetId: targetIdParam, url: "about:blank" });
+                await navigatePage({ targetId: targetIdParam, url: targetUrls[0] });
+              } else {
+                // Tab missing — create fresh
+                await createTarget({ targetId: targetIdParam, url: "about:blank" });
+                await navigatePage({ targetId: targetIdParam, url: targetUrls[0] });
+              }
+              const pageHtml = await withExtractTimeout(getPageContent(targetIdParam), "getPageContent");
+              const cachedByUrl = new Map();
+              if (pageHtml) cachedByUrl.set(targetUrls[0], pageHtml);
+              payload = await runWithHangGuard("http:/extract", () =>
+                openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug, {
+                  hintOverride,
+                  cachedHtmlByUrl: cachedByUrl,
+                  captureHtml: false
+                })
+              );
+            } catch (navErr) {
+              const navMsg = String(navErr?.message || navErr);
+              if (/closed due to inactivity|Unknown targetId|timed out/i.test(navMsg)) {
+                res.setHeader("X-Target-Stale", "1");
+                payload = await runWithHangGuard("http:/extract", () =>
+                  openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug, {
+                    hintOverride
+                  })
+                );
+              } else {
+                throw navErr;
+              }
+            }
+            res.setHeader("X-Cache", "off");
+          } else {
           const cachedByUrl = new Map();
           let shouldCapture = false;
           if (cacheMode === "use" || cacheMode === "refresh") {
@@ -3126,6 +3218,7 @@ async function maybeStartHttpServer(managerOverride) {
             }
           }
           res.setHeader("X-Cache", cacheMode === "use" && cachedByUrl.size > 0 ? "hit" : cacheMode === "use" ? "miss" : cacheMode === "refresh" ? "refresh" : "off");
+          }
         } catch (error) {
           recordActivityRequest("http:/extract", false, error?.message || String(error));
           throw error;
@@ -3194,13 +3287,54 @@ async function maybeStartHttpServer(managerOverride) {
 
         let payload;
         try {
-          payload = await runWithHangGuard("http:/screenshot", () =>
-            captureScreenshotsParallel(
-              targetUrls,
-              manager.config.openPageMaxParallel,
-              options
-            )
-          );
+          const targetIdParam = url.searchParams.get("targetId") || "";
+          if (targetIdParam) {
+            try {
+              // Ensure target is on the right URL before screenshotting
+              const { targets } = await listTargets();
+              const tab = (targets || []).find((t) => t.targetId === targetIdParam) || null;
+              if (targetUrls.length > 0) {
+                if (tab && tab.url !== targetUrls[0]) {
+                  await closeTarget({ targetId: targetIdParam });
+                  await createTarget({ targetId: targetIdParam, url: "about:blank" });
+                  await navigatePage({ targetId: targetIdParam, url: targetUrls[0] });
+                } else if (!tab) {
+                  await createTarget({ targetId: targetIdParam, url: "about:blank" });
+                  await navigatePage({ targetId: targetIdParam, url: targetUrls[0] });
+                }
+              }
+              const shot = await withExtractTimeout(captureTargetScreenshot({
+                targetId: targetIdParam,
+                format,
+                fullPage,
+                ...(quality ? { quality } : {})
+              }), "screenshot");
+              payload = {
+                index: 0,
+                ok: true,
+                ...shot
+              };
+            } catch (targetErr) {
+              // Target stale or wedged — fall back to url-based fresh-page screenshot
+              console.error(`📸  target screenshot failed, falling back to url-based: ${targetErr?.message}`);
+              if (targetUrls.length > 0) {
+                res.setHeader("X-Target-Stale", "1");
+                payload = await runWithHangGuard("http:/screenshot", () =>
+                  captureScreenshotsParallel(targetUrls, manager.config.openPageMaxParallel, options)
+                );
+              } else {
+                throw targetErr;
+              }
+            }
+          } else {
+            payload = await runWithHangGuard("http:/screenshot", () =>
+              captureScreenshotsParallel(
+                targetUrls,
+                manager.config.openPageMaxParallel,
+                options
+              )
+            );
+          }
         } catch (error) {
           recordActivityRequest("http:/screenshot", false, error?.message || String(error));
           throw error;
@@ -3330,6 +3464,16 @@ async function shutdownWithExit(exitCode, context = {}) {
   }
 
   process.exit(exitCode);
+}
+
+function withExtractTimeout(promise, label) {
+  const timeoutMs = (manager.config.browserOpTimeoutMs || 25000);
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
 }
 
 async function runWithHangGuard(label, task) {
