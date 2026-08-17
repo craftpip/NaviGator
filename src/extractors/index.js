@@ -20,6 +20,7 @@ import * as table from "./table.js";
 import * as screenshot from "./screenshot.js";
 import {
   parseHtmlToDom,
+  resolveRelativeUrls,
   applySkipSelectors,
   safeTruncateText,
   cleanWhitespace,
@@ -64,8 +65,11 @@ async function applyPostProcessor(result, { url, postProcessorModel, config }) {
   }
 
   // Text input → text post-processor.
+  // If the extractor stored raw HTML (e.g. html format), pass it as `html`
+  // so the post-processor receives clean HTML instead of code-fenced markdown.
   try {
-    const ppResult = await runPostProcessor({ text: result.text, model: postProcessorModel, config });
+    const ppInput = result._rawHtml ? { html: result._rawHtml } : { text: result.text };
+    const ppResult = await runPostProcessor({ ...ppInput, model: postProcessorModel, config });
     if (ppResult) return { ...result, text: ppResult, textOriginalLength: ppResult.length };
   } catch (err) {
     console.warn(`[web_fetch] [${url}] post-processor "${postProcessorModel}" failed — keeping original: ${err.message}`);
@@ -111,6 +115,9 @@ export async function extractTextFromHtml({
 
   try {
     const doc = dom.window.document;
+
+    // ── Step 0: Resolve relative URLs to absolute ─────────────────────
+    resolveRelativeUrls(doc, url);
 
     // ── Step 1: Apply skip selectors ──────────────────────────────────
     applySkipSelectors(doc, defaultExtractSkipSelectors, hint?.default?.skipSelectors);
@@ -173,6 +180,7 @@ export async function extractTextFromHtml({
       const freshDom = parseHtmlToDom(html, url);
       try {
         const freshDoc = freshDom.window.document;
+        resolveRelativeUrls(freshDoc, url);
         applySkipSelectors(freshDoc, defaultExtractSkipSelectors, hint?.default?.skipSelectors);
         const fallback = FORMAT_EXTRACTORS.get(readability.FORMAT);
         result = await fallback(freshDoc, context);

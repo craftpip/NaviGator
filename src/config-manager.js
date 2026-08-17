@@ -77,6 +77,7 @@ const HOT_APPLYERS = {
     if (WAIT_UNTIL_VALUES.has(String(value).toLowerCase())) config.navWaitUntil = String(value).toLowerCase();
   },
   WEB_FETCH_MAX_CHARS: (config, value) => { config.maxChars = value; },
+  LINK_REFS: (config, value) => { config.enableLinkRefs = value; },
   DEBUG: (config, value) => { config.debug = value; },
   LOG_TOOL_ERRORS: (config, value) => { config.logToolErrors = value; },
   DISABLE_TOOLS: (config, value) => { config.disableTools = value; },

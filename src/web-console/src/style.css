@@ -2294,7 +2294,7 @@ select.config-input option {
 }
 .hints-row {
   display: grid;
-  grid-template-columns: 28px minmax(140px, 0.9fr) minmax(90px, 0.7fr) minmax(90px, 0.8fr) minmax(180px, 2fr) 56px auto;
+  grid-template-columns: 28px 180px 120px 160px 1fr 56px auto;
   align-items: center;
   gap: 10px;
   min-height: 40px;

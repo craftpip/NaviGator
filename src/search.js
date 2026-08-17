@@ -1573,7 +1573,7 @@ async function capturePageState(page) {
     page.title(),
     page.evaluate(() => document.body?.innerText || "").catch(() => ""),
     typeof page.screenshot === "function"
-      ? page.screenshot({ encoding: "base64", type: "jpeg", quality: 75 }).catch(() => null)
+      ? page.screenshot({ encoding: "base64", type: "jpeg", quality: 75, fullPage: true }).catch(() => null)
       : Promise.resolve(null)
   ]);
   return { html, url, title, browserText, screenshot };
@@ -2156,7 +2156,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
           page.title(),
           page.evaluate(() => document.body?.innerText || "").catch(() => ""),
           typeof page.screenshot === "function"
-            ? page.screenshot({ encoding: "base64", type: "jpeg", quality: 75 }).catch(() => null)
+            ? page.screenshot({ encoding: "base64", type: "jpeg", quality: 30 }).catch(() => null)
             : Promise.resolve(null)
         ])
       );

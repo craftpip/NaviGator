@@ -76,6 +76,10 @@ services:
       # **Instant Answer:** section between the query and the results).
       ENABLE_INSTANT_ANSWERS: ${ENABLE_INSTANT_ANSWERS:-1}
 
+      # Rewrite extracted links in web_fetch output to [text](ref_id) format
+      # and register them with web_page_links. Set to 0 to keep raw URLs.
+      LINK_REFS: ${LINK_REFS:-1}
+
       # Disable MCP tools by name (comma-separated, case-insensitive). Add any
       # tool to hide it from tools/list and reject its calls. Values come from
       # the .env file (DISABLE_TOOLS) — empty means all tools enabled.

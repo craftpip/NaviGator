@@ -431,6 +431,7 @@ export async function loadConfig() {
     debug: parseBoolean(process.env.DEBUG, false),
     logToolErrors: parseBoolean(process.env.LOG_TOOL_ERRORS, true),
     enableInstantAnswers: parseBoolean(process.env.ENABLE_INSTANT_ANSWERS, true),
+    enableLinkRefs: parseBoolean(process.env.LINK_REFS, true),
     disableTools: parseToolList(process.env.DISABLE_TOOLS),
     domainHintsPath,
     searchRouteWarmupEngines: process.env.SEARCH_ROUTE_WARMUP_ENGINES === undefined

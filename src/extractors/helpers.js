@@ -148,6 +148,22 @@ export function parseHtmlToDom(html, url) {
   }
 }
 
+export function resolveRelativeUrls(doc, baseUrl) {
+  if (!doc || !baseUrl) return;
+  let base;
+  try { base = new URL(baseUrl); } catch { return; }
+  for (const el of doc.querySelectorAll("[href], [src]")) {
+    for (const attr of ["href", "src"]) {
+      const val = el.getAttribute(attr);
+      if (!val) continue;
+      if (/^(https?:|data:|javascript:|#|mailto:)/.test(val)) continue;
+      try {
+        el.setAttribute(attr, new URL(val, base).href);
+      } catch { /* malformed — leave as-is */ }
+    }
+  }
+}
+
 export function applySkipSelectors(doc, ...selectorArrays) {
   for (const selectors of selectorArrays) {
     if (!selectors?.length) continue;

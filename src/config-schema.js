@@ -39,6 +39,7 @@ export const CONFIG_SCHEMA = [
   { key: "BROWSER_OP_TIMEOUT_MS", category: "ops", type: "number", fallback: 60000, applies: "hot", description: "Timeout for browser operations (ms)." },
   { key: "NAV_WAIT_UNTIL", category: "ops", type: "enum", values: ["load", "domcontentloaded", "networkidle0", "networkidle2"], fallback: "domcontentloaded", applies: "hot", description: "Navigation wait strategy." },
   { key: "WEB_FETCH_MAX_CHARS", category: "ops", type: "number", fallback: 90000, applies: "hot", description: "Default max characters per fetched page." },
+  { key: "LINK_REFS", category: "ops", type: "boolean", fallback: true, applies: "hot", description: "Rewrite extracted links to [text](ref_id) format for web_page_links resolution." },
   { key: "DEBUG", category: "ops", type: "boolean", fallback: false, applies: "hot", description: "Per-step benchmark timing logs." },
   { key: "LOG_TOOL_ERRORS", category: "ops", type: "boolean", fallback: true, applies: "hot", description: "Log tool errors to logs/tool-errors.log." },
   { key: "DISABLE_TOOLS", category: "ops", type: "toolList", fallback: [], applies: "hot", description: "MCP tools to hide/reject (comma-separated)." },

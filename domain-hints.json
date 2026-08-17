@@ -149,19 +149,951 @@
   },
   {
     "domain": "10.69.1.164",
-    "pathPattern": "/**",
-    "pageType": "chaos-article",
-    "comment": "ChaosHub fake article — sections + comments list. Content randomized per visit; ignore fake bot-check/popup.",
+    "pathPattern": "/",
+    "pageType": "home",
+    "comment": "Home page — welcome text + article cards + catalog links.",
+    "testUrls": [
+      "http://10.69.1.164:32768/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/post/",
+    "pageType": "blog-post",
+    "comment": "Clean blog post — article with byline, headings, lists, blockquote, aside.",
+    "testUrls": [
+      "http://10.69.1.164:32768/post/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/profile/",
+    "pageType": "profile",
+    "comment": "User profile — structured fields + pinned posts list + details table.",
+    "testUrls": [
+      "http://10.69.1.164:32768/profile/"
+    ],
+    "flow": [
+      {
+        "action": "extract",
+        "label": "Profile",
+        "content": {
+          "blocks": [
+            {
+              "selector": ".name",
+              "label": "Name",
+              "priority": "high",
+              "format": "html_to_markdown"
+            },
+            {
+              "selector": ".handle",
+              "label": "Handle",
+              "priority": "high",
+              "format": "html"
+            },
+            {
+              "selector": ".bio-full",
+              "label": "Bio",
+              "priority": "high",
+              "format": "text"
+            },
+            {
+              "selector": ".stat-line",
+              "label": "Organization",
+              "priority": "high",
+              "format": "list"
+            },
+            {
+              "selector": ".repo-card",
+              "label": "Pinned Repos",
+              "priority": "medium",
+              "format": "list"
+            },
+            {
+              "selector": ".achievements",
+              "label": "Achievements",
+              "priority": "low",
+              "format": "list"
+            },
+            {
+              "selector": ".org-list",
+              "label": "Org Table JSON",
+              "priority": "low",
+              "format": "table_json"
+            },
+            {
+              "selector": ".stat-line",
+              "label": "Stats Table CSV",
+              "priority": "low",
+              "format": "table_csv"
+            },
+            {
+              "selector": ".details-table",
+              "label": "Details Table",
+              "priority": "medium",
+              "format": "table"
+            },
+            {
+              "selector": ".about-section",
+              "label": "About (Readability)",
+              "priority": "medium",
+              "format": "readability_to_markdown"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/news/",
+    "requireSelector": "article.lead",
+    "pageType": "news-lead",
+    "comment": "News page with lead article — full text extraction. requireSelector splits lead vs fallback.",
+    "testUrls": [
+      "http://10.69.1.164:32768/news/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle",
+      "skipSelectors": [
+        "footer"
+      ]
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/news/",
+    "pageType": "news-fallback",
+    "comment": "News page fallback — if no lead article, extract all stories.",
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/table/",
+    "pageType": "tables",
+    "comment": "Data tables page — 4 tables in pipe-separated format.",
     "testUrls": [
       "http://10.69.1.164:32768/table/"
     ],
     "default": {
+      "format": "table",
+      "stabilizeStrategy": "network_idle"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/interactive/",
+    "pageType": "interactive",
+    "comment": "Button-revealed content — 3 click steps to show hidden sections.",
+    "testUrls": [
+      "http://10.69.1.164:32768/interactive/"
+    ],
+    "flow": [
+      {
+        "action": "click",
+        "selector": "#show-overview",
+        "waitForSelector": "#overview",
+        "stabilizeStrategy": "content_idle",
+        "timeoutMs": 8000
+      },
+      {
+        "action": "extract",
+        "label": "Overview",
+        "content": {
+          "blocks": [
+            {
+              "selector": "#overview",
+              "label": "Project Overview",
+              "priority": "high",
+              "format": "readability_to_markdown"
+            }
+          ]
+        }
+      },
+      {
+        "action": "click",
+        "selector": "#load-table",
+        "waitForSelector": "#report"
+      },
+      {
+        "action": "extract",
+        "label": "Monthly Report",
+        "content": {
+          "blocks": [
+            {
+              "selector": "#report",
+              "label": "Report Table",
+              "priority": "high",
+              "format": "table"
+            }
+          ]
+        }
+      },
+      {
+        "action": "click",
+        "selector": "#load-comments",
+        "waitForSelector": "#comment-list li"
+      },
+      {
+        "action": "extract",
+        "label": "Comments",
+        "content": {
+          "blocks": [
+            {
+              "selector": "#comment-list",
+              "label": "Comment List",
+              "priority": "high",
+              "format": "list"
+            }
+          ]
+        }
+      }
+    ],
+    "flowOptions": {
+      "continueOnEmptyExtract": true,
+      "totalTimeoutMs": 40000
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/chaos/",
+    "pageType": "chaos",
+    "comment": "Noise-heavy article — content blocks extract sections, skip ads/widget/popup.",
+    "testUrls": [
+      "http://10.69.1.164:32768/chaos/"
+    ],
+    "flow": [
+      {
+        "action": "extract",
+        "label": "Article",
+        "content": {
+          "blocks": [
+            {
+              "selector": "#site-sub",
+              "label": "",
+              "priority": "high",
+              "format": "text"
+            },
+            {
+              "selector": "div.section",
+              "label": "",
+              "priority": "high",
+              "format": "html_to_markdown"
+            },
+            {
+              "selector": "footer",
+              "label": "",
+              "priority": "low",
+              "format": "text"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/readability-good/article/",
+    "pageType": "article-good",
+    "comment": "Gold-standard semantic article — ideal for Readability.",
+    "testUrls": [
+      "http://10.69.1.164:32768/readability-good/article/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle",
+      "postProcessor": "reader-lm"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/readability-bad/article/",
+    "pageType": "article-bad",
+    "comment": "Table-layout article — skip nav, sidebar, ads, footer.",
+    "testUrls": [
+      "http://10.69.1.164:32768/readability-bad/article/"
+    ],
+    "default": {
+      "format": "screenshot",
+      "stabilizeStrategy": "network_idle",
+      "skipSelectors": [
+        ".nav",
+        "td.side",
+        "div.ad",
+        ".count",
+        ".foot"
+      ],
+      "postProcessor": "OvisOCR2"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/spa/",
+    "pageType": "spa",
+    "comment": "JS-rendered SPA — wait for #app h1 to appear after 150ms render.",
+    "testUrls": [
+      "http://10.69.1.164:32768/spa/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "mutation",
+      "waitForSelector": "#app h1"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/infinite-scroll/",
+    "pageType": "infinite-scroll",
+    "comment": "Infinite scroll feed — content loads via IntersectionObserver.",
+    "testUrls": [
+      "http://10.69.1.164:32768/infinite-scroll/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle",
+      "waitForSelector": "#feed article"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/paywall/",
+    "pageType": "paywall",
+    "comment": "Paywalled article — skip paywall overlay, extract article body.",
+    "testUrls": [
+      "http://10.69.1.164:32768/paywall/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle",
+      "skipSelectors": [
+        "#paywall"
+      ]
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/cookie-consent/",
+    "pageType": "recipe",
+    "comment": "Recipe page — skip cookie banner overlay.",
+    "testUrls": [
+      "http://10.69.1.164:32768/cookie-consent/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle",
+      "skipSelectors": [
+        "#cookie-banner"
+      ],
+      "waitForSelector": "#recipe-body",
+      "waitForContent": [
+        "#recipe-body"
+      ]
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/ecommerce/",
+    "pageType": "product-ocr",
+    "comment": "Product page with images — OCR post-processor extracts text from visual elements",
+    "requireSelector": "img",
+    "testUrls": [
+      "http://10.69.1.164:32768/ecommerce/"
+    ],
+    "default": {
       "waitForSelector": [],
-      "stabilizeStrategy": "",
+      "stabilizeStrategy": "network_idle",
       "waitForContent": [],
       "skipSelectors": [],
       "format": "screenshot",
       "postProcessor": "OvisOCR2"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/ecommerce/",
+    "pageType": "product",
+    "comment": "Product page — content blocks for multi-section extraction.",
+    "testUrls": [
+      "http://10.69.1.164:32768/ecommerce/"
+    ],
+    "flow": [
+      {
+        "action": "click",
+        "selector": "#view-sellers",
+        "timeoutMs": 5000
+      },
+      {
+        "action": "wait",
+        "selector": "#sellers-ul li",
+        "timeoutMs": 5000
+      },
+      {
+        "action": "extract",
+        "label": "Product",
+        "content": {
+          "blocks": [
+            {
+              "selector": "div.info h1",
+              "label": "Product Name",
+              "priority": "high",
+              "format": "text"
+            },
+            {
+              "selector": ".rating",
+              "label": "Rating",
+              "priority": "high",
+              "format": "text"
+            },
+            {
+              "selector": ".price",
+              "label": "Price",
+              "priority": "high",
+              "format": "text"
+            },
+            {
+              "selector": "table.specs",
+              "label": "Specifications",
+              "priority": "high",
+              "format": "table"
+            },
+            {
+              "selector": "#sellers-ul",
+              "label": "Sellers",
+              "priority": "medium",
+              "format": "list"
+            },
+            {
+              "selector": ".reviews",
+              "label": "Customer Reviews",
+              "priority": "medium",
+              "format": "readability_to_markdown"
+            },
+            {
+              "selector": ".reviews .review",
+              "label": "First Review",
+              "priority": "medium",
+              "itemLabel": "Review",
+              "fields": [
+                {
+                  "selector": ".author",
+                  "label": "Author",
+                  "format": "text"
+                },
+                {
+                  "selector": ".stars",
+                  "label": "Rating",
+                  "format": "text"
+                },
+                {
+                  "selector": ".text",
+                  "label": "Text",
+                  "format": "markdown"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/social/",
+    "pageType": "social-profile",
+    "comment": "Social media profile — avatar, bio, stats, post feed.",
+    "testUrls": [
+      "http://10.69.1.164:32768/social/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/docs/",
+    "pageType": "api-docs",
+    "comment": "API documentation — skip sidebar nav, extract main content with code blocks.",
+    "testUrls": [
+      "http://10.69.1.164:32768/docs/"
+    ],
+    "default": {
+      "format": "html",
+      "stabilizeStrategy": "network_idle",
+      "skipSelectors": [
+        "nav"
+      ]
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/reference/",
+    "pageType": "wiki",
+    "comment": "Wikipedia-style article — infobox, TOC, sections, demographics table.",
+    "testUrls": [
+      "http://10.69.1.164:32768/reference/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "content_idle",
+      "skipSelectors": [
+        "div.toc",
+        "div.catlinks"
+      ]
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/video/",
+    "pageType": "video",
+    "comment": "Video page — content blocks for player info, skip comments.",
+    "testUrls": [
+      "http://10.69.1.164:32768/video/"
+    ],
+    "flow": [
+      {
+        "action": "extract",
+        "label": "Video",
+        "content": {
+          "blocks": [
+            {
+              "selector": "div.player-col h1",
+              "label": "Title",
+              "priority": "high",
+              "format": "text"
+            },
+            {
+              "selector": "p.views",
+              "label": "Stats",
+              "priority": "high",
+              "format": "text"
+            },
+            {
+              "selector": "div.channel",
+              "label": "Channel",
+              "priority": "high",
+              "format": "text"
+            },
+            {
+              "selector": "div.desc",
+              "label": "Description",
+              "priority": "high",
+              "format": "text"
+            },
+            {
+              "selector": "div.chapters",
+              "label": "Chapters",
+              "priority": "medium",
+              "format": "text"
+            },
+            {
+              "selector": ".chapters",
+              "label": "Chapters Table",
+              "priority": "medium",
+              "format": "list"
+            },
+            {
+              "selector": ".player-col",
+              "label": "Player Visual",
+              "priority": "low",
+              "format": "screenshot"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/finance/",
+    "pageType": "finance",
+    "comment": "Stock/option chain — dense financial tables in JSON format.",
+    "testUrls": [
+      "http://10.69.1.164:32768/finance/"
+    ],
+    "default": {
+      "format": "table_json",
+      "stabilizeStrategy": "network_idle"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/blog/",
+    "pageType": "blog-index",
+    "comment": "Blog index — featured hero + article cards, skip sidebar and newsletter popup.",
+    "testUrls": [
+      "http://10.69.1.164:32768/blog/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "none",
+      "skipSelectors": [
+        "aside",
+        "#popup",
+        ".popup-overlay"
+      ]
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/blog/article/",
+    "pageType": "blog-article",
+    "comment": "Long-form blog article — skip comments and related posts.",
+    "testUrls": [
+      "http://10.69.1.164:32768/blog/article/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle",
+      "skipSelectors": [
+        "section.comments",
+        "section.related",
+        "div.tags"
+      ]
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/live/",
+    "pageType": "live-dashboard",
+    "comment": "Live-updating dashboard — markets, cricket, blog, chart. Content changes every ~3s.",
+    "testUrls": [
+      "http://10.69.1.164:32768/live/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "content_idle"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/lazy/",
+    "pageType": "lazy-load",
+    "comment": "Lazy-loading images — content appears on scroll.",
+    "testUrls": [
+      "http://10.69.1.164:32768/lazy/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/slow/",
+    "pageType": "slow-load",
+    "comment": "Staged loading — 4 sections revealed over 12s. Wait for final stage.",
+    "testUrls": [
+      "http://10.69.1.164:32768/slow/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "content_idle",
+      "waitForSelector": "#stage4",
+      "waitForContent": [
+        "#stage4"
+      ]
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/redirect/",
+    "pageType": "redirect",
+    "comment": "Client-side redirect to /post/. Wait for article content.",
+    "testUrls": [
+      "http://10.69.1.164:32768/redirect/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle",
+      "waitForSelector": "article"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/ecommerce/compare/",
+    "pageType": "compare",
+    "comment": "Product comparison page — dense comparison table in CSV format.",
+    "testUrls": [
+      "http://10.69.1.164:32768/ecommerce/compare/"
+    ],
+    "default": {
+      "format": "table_csv",
+      "stabilizeStrategy": "network_idle"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/form/",
+    "pageType": "form",
+    "comment": "Signup form — flow exercises type, step_submit, and step_clear.",
+    "testUrls": [
+      "http://10.69.1.164:32768/form/"
+    ],
+    "flow": [
+      {
+        "action": "extract",
+        "label": "Form initial state",
+        "content": {
+          "blocks": [
+            {
+              "selector": ".benefits",
+              "label": "Benefits",
+              "priority": "high",
+              "format": "text"
+            }
+          ]
+        }
+      },
+      {
+        "action": "type",
+        "selector": "#firstName",
+        "text": "Test",
+        "clear": true
+      },
+      {
+        "action": "extract",
+        "label": "After typing name",
+        "content": {
+          "blocks": [
+            {
+              "selector": ".benefits",
+              "label": "Benefits",
+              "priority": "high",
+              "format": "text"
+            }
+          ]
+        }
+      },
+      {
+        "action": "type",
+        "selector": "#lastName",
+        "text": "User",
+        "clear": true
+      },
+      {
+        "action": "extract",
+        "label": "After typing last name",
+        "content": {
+          "blocks": [
+            {
+              "selector": ".benefits",
+              "label": "Benefits",
+              "priority": "high",
+              "format": "text"
+            }
+          ]
+        }
+      },
+      {
+        "action": "type",
+        "selector": "#email",
+        "text": "test@example.com",
+        "clear": true,
+        "submit": true,
+        "waitForSelector": "body",
+        "timeoutMs": 10000
+      },
+      {
+        "action": "extract",
+        "label": "After submit",
+        "content": {
+          "blocks": [
+            {
+              "selector": "body",
+              "label": "Result",
+              "priority": "high",
+              "format": "text"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/flow/step1/",
+    "pageType": "onboarding",
+    "comment": "Multi-step onboarding wizard — flow exercises navigate between steps.",
+    "testUrls": [
+      "http://10.69.1.164:32768/flow/step1/"
+    ],
+    "flow": [
+      {
+        "action": "extract",
+        "label": "Step 1",
+        "content": {
+          "blocks": [
+            {
+              "selector": ".card h1",
+              "label": "Title",
+              "priority": "high",
+              "format": "text"
+            }
+          ]
+        }
+      },
+      {
+        "action": "type",
+        "selector": "#firstName",
+        "text": "Test",
+        "clear": true
+      },
+      {
+        "action": "extract",
+        "label": "After name",
+        "content": {
+          "blocks": [
+            {
+              "selector": ".card h1",
+              "label": "Title",
+              "priority": "high",
+              "format": "text"
+            }
+          ]
+        }
+      },
+      {
+        "action": "type",
+        "selector": "#email",
+        "text": "test@acme.com",
+        "clear": true,
+        "submit": true,
+        "waitForSelector": "h1",
+        "timeoutMs": 15000
+      },
+      {
+        "action": "extract",
+        "label": "Step 2",
+        "content": {
+          "blocks": [
+            {
+              "selector": ".card",
+              "label": "Step 2 content",
+              "priority": "high",
+              "format": "text"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/portfolio/",
+    "pageType": "portfolio",
+    "comment": "Creative developer portfolio — content blocks with readability_to_markdown and table formats.",
+    "testUrls": [
+      "http://10.69.1.164:32768/portfolio/"
+    ],
+    "flow": [
+      {
+        "action": "extract",
+        "label": "Portfolio",
+        "content": {
+          "blocks": [
+            {
+              "selector": ".hero",
+              "label": "Hero",
+              "priority": "high",
+              "format": "readability_to_markdown"
+            },
+            {
+              "selector": ".project-card",
+              "label": "Projects",
+              "priority": "high",
+              "format": "list"
+            },
+            {
+              "selector": ".skills-table",
+              "label": "Skills Table",
+              "priority": "medium",
+              "format": "table"
+            },
+            {
+              "selector": ".about",
+              "label": "About",
+              "priority": "medium",
+              "format": "text"
+            },
+            {
+              "selector": ".contact",
+              "label": "Contact",
+              "priority": "low",
+              "format": "html"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/social/thread/",
+    "pageType": "thread",
+    "comment": "Social media thread — threaded posts with nested replies.",
+    "testUrls": [
+      "http://10.69.1.164:32768/social/thread/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/docs/tutorial/",
+    "pageType": "tutorial",
+    "comment": "Tutorial subpage — nested documentation with code blocks.",
+    "testUrls": [
+      "http://10.69.1.164:32768/docs/tutorial/"
+    ],
+    "default": {
+      "format": "html_to_markdown",
+      "stabilizeStrategy": "network_idle"
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/news/investigation/",
+    "pageType": "investigation",
+    "comment": "Investigation article — long-form investigative journalism.",
+    "testUrls": [
+      "http://10.69.1.164:32768/news/investigation/"
+    ],
+    "default": {
+      "format": "readability_to_markdown",
+      "stabilizeStrategy": "network_idle",
+      "skipSelectors": [
+        ".share-bar",
+        ".related-articles"
+      ]
+    }
+  },
+  {
+    "domain": "10.69.1.164",
+    "pathPattern": "/404/",
+    "pageType": "error",
+    "comment": "404 error page — text format extraction. Tests postProcessor fallback when no model configured.",
+    "testUrls": [
+      "http://10.69.1.164:32768/404/"
+    ],
+    "default": {
+      "format": "text",
+      "stabilizeStrategy": "network_idle",
+      "postProcessor": "reader-lm"
     }
   },
   {
@@ -195,6 +1127,22 @@
     ],
     "flowOptions": {
       "continueOnEmptyExtract": false
+    }
+  },
+  {
+    "domain": "boniface.pe",
+    "pathPattern": "/**",
+    "comment": "",
+    "testUrls": [
+      "https://boniface.pe/blog"
+    ],
+    "default": {
+      "waitForSelector": [],
+      "stabilizeStrategy": "network_idle",
+      "waitForContent": [],
+      "skipSelectors": [],
+      "format": "html",
+      "postProcessor": "reader-lm"
     }
   }
 ]

@@ -28,7 +28,8 @@ export async function extract(doc, context) {
       title: "", // orchestrator fills title
       url,
       text: safeTruncateText(`\`\`\`html\n${bestContainerHtml}\n\`\`\``, maxChars),
-      textOriginalLength: bestContainerHtml.length
+      textOriginalLength: bestContainerHtml.length,
+      _rawHtml: bestContainerHtml
     };
   }
 

@@ -1561,7 +1561,7 @@ async function openTargetsParallel(targetUrls, maxParallel, includeSeoAnalysis =
         };
 
         // Replace markdown links [text](url) with [text](ref_id) inline
-        if (page.links?.length && result.text) {
+        if (opts.enableLinkRefs !== false && page.links?.length && result.text) {
           for (const link of page.links) {
             rememberLink(link.href);
           }
@@ -1956,7 +1956,7 @@ async function handleToolCallInner(name, args = {}) {
     const includeSeoAnalysis = args.includeSeoAnalysis !== false;
     mark = timer.step("prepare_execution", mark);
     const fullResult = await runWithHangGuard(`mcp:${name}`, () =>
-      openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, includeSeoAnalysis, manager.config.debug)
+      openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, includeSeoAnalysis, manager.config.debug, { enableLinkRefs: manager.config.enableLinkRefs })
     );
     mark = timer.step("open_targets", mark);
     await setCachedToolResult(name, cacheKeyArgs, fullResult);
@@ -3142,35 +3142,50 @@ async function maybeStartHttpServer(managerOverride) {
             try {
               const { targets } = await listTargets();
               const tab = (targets || []).find((t) => t.targetId === targetIdParam) || null;
+              let reuseCachedHtml = false;
               if (tab && tab.url === targetUrls[0]) {
-                // Same URL — reuse existing tab
+                // Same URL — reuse existing tab and its HTML
+                reuseCachedHtml = true;
               } else if (tab) {
                 // Different URL — close old, create new at same name
                 await closeTarget({ targetId: targetIdParam });
                 await createTarget({ targetId: targetIdParam, url: "about:blank" });
                 await navigatePage({ targetId: targetIdParam, url: targetUrls[0] });
+                // Don't reuse HTML — the page may have client-side JS (redirects, SPA)
+                // that hasn't executed yet; let browserOpenAndExtract render it fully.
               } else {
                 // Tab missing — create fresh
                 await createTarget({ targetId: targetIdParam, url: "about:blank" });
                 await navigatePage({ targetId: targetIdParam, url: targetUrls[0] });
               }
-              const pageHtml = await withExtractTimeout(getPageContent(targetIdParam), "getPageContent");
-              const cachedByUrl = new Map();
-              if (pageHtml) cachedByUrl.set(targetUrls[0], pageHtml);
-              payload = await runWithHangGuard("http:/extract", () =>
-                openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug, {
-                  hintOverride,
-                  cachedHtmlByUrl: cachedByUrl,
-                  captureHtml: false
-                })
-              );
+              if (reuseCachedHtml) {
+                const pageHtml = await withExtractTimeout(getPageContent(targetIdParam), "getPageContent");
+                const cachedByUrl = new Map();
+                if (pageHtml) cachedByUrl.set(targetUrls[0], pageHtml);
+                payload = await runWithHangGuard("http:/extract", () =>
+                  openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug, {
+                    hintOverride,
+                    cachedHtmlByUrl: cachedByUrl,
+                    captureHtml: false,
+                    enableLinkRefs: manager.config.enableLinkRefs
+                  })
+                );
+              } else {
+                payload = await runWithHangGuard("http:/extract", () =>
+                  openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug, {
+                    hintOverride,
+                    enableLinkRefs: manager.config.enableLinkRefs
+                  })
+                );
+              }
             } catch (navErr) {
               const navMsg = String(navErr?.message || navErr);
               if (/closed due to inactivity|Unknown targetId|timed out/i.test(navMsg)) {
                 res.setHeader("X-Target-Stale", "1");
                 payload = await runWithHangGuard("http:/extract", () =>
                   openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug, {
-                    hintOverride
+                    hintOverride,
+                    enableLinkRefs: manager.config.enableLinkRefs
                   })
                 );
               } else {
@@ -3196,7 +3211,8 @@ async function maybeStartHttpServer(managerOverride) {
             openTargetsParallel(targetUrls, manager.config.openPageMaxParallel, false, manager.config.debug, {
               hintOverride,
               cachedHtmlByUrl: cachedByUrl,
-              captureHtml: shouldCapture
+              captureHtml: shouldCapture,
+              enableLinkRefs: manager.config.enableLinkRefs
             })
           );
           if (shouldCapture) {

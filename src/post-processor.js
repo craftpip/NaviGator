@@ -237,7 +237,8 @@ export async function runPostProcessor({ text, html, screenshot, model, config, 
 
       // Screenshot → image variant of chat transport (regardless of kind).
       if (screenshot) {
-        return await extractWithChatImage(entry, screenshot, entry.prompt || DEFAULT_SCREENSHOT_PROMPT, config, debug);
+        const dataUrl = screenshot.startsWith("data:") ? screenshot : `data:image/jpeg;base64,${screenshot}`;
+        return await extractWithChatImage(entry, dataUrl, entry.prompt || DEFAULT_SCREENSHOT_PROMPT, config, debug);
       }
 
       // Text/HTML → dispatch by kind.
