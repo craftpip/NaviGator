@@ -1384,6 +1384,10 @@ function formatOpenPageResponse(payload) {
     if (entry?.url) {
       lines.push(`- URL: ${entry.url}`);
     }
+    if (entry?.pageType) {
+      const conf = entry.confidence != null ? ` | confidence: ${entry.confidence.toFixed(2)}` : "";
+      lines.push(`- Page type: ${entry.pageType}${conf}`);
+    }
     if (entry?.warnings?.length) {
       for (const warning of entry.warnings) {
         lines.push(`- ⚠ ${warning}`);

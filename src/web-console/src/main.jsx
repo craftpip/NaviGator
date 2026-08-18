@@ -2519,6 +2519,7 @@ function Keys() {
 const HINT_PRIORITIES = ["high", "medium", "low"];
 const HINT_FORMATS = ["text", "list", "markdown", "html", "html_to_markdown", "readability_to_markdown"];
 const DEFAULT_FORMATS = [
+  "trafilatura_to_markdown",
   "readability_to_markdown",
   "html_to_markdown",
   "html",
@@ -2529,6 +2530,7 @@ const DEFAULT_FORMATS = [
   "screenshot",
 ];
 const HINT_BLOCK_FORMATS = [
+  "trafilatura_to_markdown",
   "text",
   "list",
   "html",
@@ -2550,6 +2552,7 @@ const FORMAT_LABELS = {
   table_json: "Tables only (JSON)",
   table_csv: "Tables only (CSV)",
   screenshot: "Full-page screenshot (for post-processors)",
+  trafilatura_to_markdown: "Trafilatura → markdown (Rule+ML)",
 };
 function formatLabel(format) {
   return FORMAT_LABELS[format] || format;

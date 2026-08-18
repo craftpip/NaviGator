@@ -18,6 +18,7 @@ import * as text from "./text.js";
 import * as html from "./html.js";
 import * as table from "./table.js";
 import * as screenshot from "./screenshot.js";
+import * as trafilatura from "./trafilatura.js";
 import {
   parseHtmlToDom,
   resolveRelativeUrls,
@@ -31,6 +32,7 @@ import { runPostProcessor } from "../post-processor.js";
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 const FORMAT_EXTRACTORS = new Map([
+  [trafilatura.FORMAT, trafilatura.extract],
   [readability.FORMAT, readability.extract],
   [htmlToMarkdown.FORMAT, htmlToMarkdown.extract],
   [text.FORMAT, text.extract],

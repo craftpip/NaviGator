@@ -1056,12 +1056,12 @@
     "domain": "10.69.1.164",
     "pathPattern": "/docs/tutorial/",
     "pageType": "tutorial",
-    "comment": "Tutorial subpage — nested documentation with code blocks.",
+    "comment": "Test suite docs — trafilatura (doc F1 0.931)",
     "testUrls": [
       "http://10.69.1.164:32768/docs/tutorial/"
     ],
     "default": {
-      "format": "html_to_markdown",
+      "format": "trafilatura_to_markdown",
       "stabilizeStrategy": "network_idle"
     }
   },
@@ -1132,7 +1132,7 @@
   {
     "domain": "boniface.pe",
     "pathPattern": "/**",
-    "comment": "",
+    "comment": "My site — trafilatura Rule+ML extraction",
     "testUrls": [
       "https://boniface.pe/blog"
     ],
@@ -1141,8 +1141,7 @@
       "stabilizeStrategy": "network_idle",
       "waitForContent": [],
       "skipSelectors": [],
-      "format": "html",
-      "postProcessor": "reader-lm"
+      "format": "trafilatura_to_markdown"
     }
   },
   {

@@ -20,6 +20,7 @@ import { EngineScheduler } from "./engine-scheduler.js";
 import { incrementUsageTotal } from "./db.js";
 import { runPostProcessor, getPostProcessorModels } from "./post-processor.js";
 import { extractTextFromHtml } from "./extractors/index.js";
+import { extract as trafilaturaExtract } from "./extractors/trafilatura.js";
 import {
   safeTruncateText,
   extractTablesFromDocument,
@@ -481,6 +482,20 @@ async function renderLeafContent(element, format, url, config) {
       if (article?.content) return htmlToMarkdown(article.content, { baseUrl: url }).trim();
     } catch {
       // fall through to raw html_to_markdown below
+    }
+    return htmlToMarkdown(innerHtml, { baseUrl: url }).trim();
+  }
+  if (format === "trafilatura_to_markdown") {
+    try {
+      const miniDoc = new JSDOM(`<body>${innerHtml}</body>`, { url }).window.document;
+      const result = await trafilaturaExtract(miniDoc, {
+        url,
+        maxChars: Number.MAX_SAFE_INTEGER,
+        fallbackTitle: ""
+      });
+      if (result?.text?.trim()) return result.text.trim();
+    } catch {
+      // trafilatura on a fragment may fail — fall through below
     }
     return htmlToMarkdown(innerHtml, { baseUrl: url }).trim();
   }
