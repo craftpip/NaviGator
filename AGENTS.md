@@ -12,8 +12,23 @@
 - [Development](#development)
 - [Navigator CLI and Stats](#navigator-cli-and-stats)
 - [Known Issues](#known-issues)
+- [Code Philosophy](#code-philosophy)
 - [Fix Patterns](#fix-patterns)
 - [Project Learnings](#project-learnings)
+
+---
+
+## Code Philosophy
+
+This project is in active development. Every change should improve architecture, not just patch a symptom. Small, isolated fixes accumulate into a fragile codebase over time — each one making the next change harder and riskier. The goal is the opposite: every change should make the system *easier* to change next time.
+
+**Rules:**
+- **Think deeply first.** Before writing any code, understand the full picture: module boundaries, data flow, responsibility layers, and how the change ripples across the system. Do not rush to edit — understanding the problem fully is more important than solving it quickly.
+- **No small fixes.** Do not make isolated line-level patches unless the bug is genuinely trivial. If a function is poorly structured, restructure it. If a module is disorganized, reorganize it.
+- **Object-oriented design.** Use classes and interfaces. Encapsulate state. Prefer composition over loose function bundles.
+- **Architecture first.** Before editing code, understand the module boundaries, data flow, and responsibility layers. Changes should leave the system more organized than before.
+- **Organize as you go.** If you touch a file and see a better way to structure it, do it. Technical debt compounds — pay it down while you're already there.
+- **Think in systems.** A change in one module often affects others. Consider the ripple. Design interfaces that stay stable even when internals change.
 
 ---
 
@@ -313,7 +328,7 @@ Default on; independent of `DEBUG` (error logs exist in production). Implementat
 
 ## Known Issues
 
-- **"Heads up: N recent web browsing error(s)" banner is cryptic for `http:/extract` errors (TODO — handle in future).** The status banner counts `stats.requests.recentErrors` filtered to `WEB_TOOLS` non-expected errors. `http:/extract` is NOT an MCP tool — it's the internal label for the HTTP test endpoint `GET /extract?url=…&hint=<json>` used by the Domain hints editor's Test pane (`HintTestPanel`, main.jsx:2840-2845 auto re-runs 800ms after every keystroke). A half-typed hint draft yields `invalid hint param` (server logs it via `recordActivityRequest("http:/extract", …)` at src/mcp-server.js:2955/2961 — generic message, no detail on which field failed). Those errors live ONLY in the in-memory `requestLog` (never written to `logs/tool-errors.log`, so they vanish on restart or when 8 newer errors push them out of `recentErrors`). Partially fixed 2026-08-12: the console banner item is now expandable (click to see tool/time/message) and the "Recent errors" panel merges `recentErrors` into `logs` via `mergeErrorLogs()` (dedup key = tool + first line, e.g. devtools errors exist in both sources). **Still TODO:** (1) make the server error message human-readable — `hint param must be URL-encoded JSON` / name the failing field from `validateHintRule()` instead of the generic "invalid hint param"; (2) the Test pane should debounce/skip invalid JSON drafts before firing; (3) consider labeling the tool in the banner as `hint test` instead of `http:/extract`. A container restart clears stale in-memory errors and the banner.
+- **"Heads up: N recent web browsing error(s)" banner is cryptic for `http:/extract` errors (TODO — handle in future).** The status banner counts `stats.requests.recentErrors` filtered to `WEB_TOOLS` non-expected errors. `http:/extract` is NOT an MCP tool — it's the internal label for the HTTP test endpoint `GET /extract?url=…&hint=<json>` used by the Domain hints editor's Test pane (`HintTestPanel`, main.jsx:4065 auto re-runs 800ms after every keystroke). A half-typed hint draft yields `invalid hint param` (server logs it via `recordActivityRequest("http:/extract", …)` at src/mcp-server.js:3102/3123/3129 — generic message, no detail on which field failed). Those errors live ONLY in the in-memory `requestLog` (never written to `logs/tool-errors.log`, so they vanish on restart or when 8 newer errors push them out of `recentErrors`). Partially fixed 2026-08-12: the console banner item is now expandable (click to see tool/time/message) and the "Recent errors" panel merges `recentErrors` into `logs` via `mergeErrorLogs()` (dedup key = tool + first line, e.g. devtools errors exist in both sources). **Still TODO:** (1) make the server error message human-readable — `hint param must be URL-encoded JSON` / name the failing field from `validateHintRule()` instead of the generic "invalid hint param"; (2) the Test pane should debounce/skip invalid JSON drafts before firing; (3) consider labeling the tool in the banner as `hint test` instead of `http:/extract`. A container restart clears stale in-memory errors and the banner.
 
 - SSE streams die after ~5 min if there is no keepalive traffic. The MCP SDK writes to SSE only when there is actual JSON-RPC data. Any idle connection gets killed by TCP keepalive, Docker networking, or upstream proxies. Fixed with 30s SSE comment keepalive (`: keepalive\n\n`) written directly to each active stream controller via `_streamMapping`, HTTP server timeouts (`keepAliveTimeout: 300s`, `headersTimeout: 300s`, `timeout: 0`), and `retryInterval: 30000` on the transport. The SDK's `StreamableHTTPServerTransport` wraps `WebStandardStreamableHTTPServerTransport` — the internal `_streamMapping` holds all active SSE controllers (standalone GET and POST response streams). SSE comments are ignored by spec-compliant clients but keep TCP/proxy idle timers alive.
 
@@ -482,7 +497,7 @@ field is rejected as unknown.
 - **Smart hints, not smart code.** Do NOT add auto-detection logic (list detection, content type detection) in search.js. Formatting decisions belong in the hint — choose precise selectors that naturally produce clean output. The section extraction code stays simple: textContent → lines → dedup → render as flat list items.
 - **Link reference IDs** appear inline as `[text](ref_id)`. Resolve them with `web_page_links(ref_ids: [link_ref_id])`, then visit them with `web_fetch(ref_ids: [link_ref_id])`.
 - **test without the hints first** as step 6 before writing the hint to see what's missing.
-- **Path pattern matching:** `/*` means one segment (`/foo`), `/*/*` means two segments (`/foo/bar`), `/**` means everything. Uses `compileGlob` which converts `*` to `[^/]*`. The special case for `/*` was removed — it now uses `compileGlob` like everything else.
+- **Path pattern matching:** `/*` means one segment (`/foo`), `/*/*` means two segments (`/foo/bar`), `/**` means everything. Uses `compileGlob` which converts `*` to `[^/]*`. The special case for `/*` was removed — it now uses `compileGlob` like everything else. Trailing slashes are stripped from both the pathPattern and the URL pathname before matching, except when the pattern ends with `/**`.
 - **Hint matching is first-match:** The first hint that matches wins. List hints from most specific to least specific (profile before repo, then issues, etc.). GitHub entries are ordered: profile (`/*`), repo (`/*/*`), issues (`/*/*/issues`), prs (`/*/*/pulls`).
 - **`requireSelector` splits one domain+path:** With `requireSelector` set, the first hint in file order whose selector exists immediately after navigation wins — a hint without `requireSelector` is the fallback for the same domain+path. If none match initially, matching is retried after stabilization; the test pane reports `⚠ requireSelector "…" not found — hint did not apply` when an override hint's selector is missing.
 - **GitHub selector stability:** GitHub uses React + Turbo and CSS-module classes change per build. Use stable selectors like `h1.vcard-names`, `div.js-profile-editable-area`, `ol.js-pinned-items-reorder-list`, `article.markdown-body`, `li[role="listitem"]` (issues/PRs list). Avoid CSS-module class names. For repo pages, `article.markdown-body` is inside Turbo + React, so wait for it specifically.
@@ -532,7 +547,7 @@ Do not remove `console.log` / `console.error` calls from `src/search.js` or othe
 
 **Durable facts:**
 - `initDb()` defaults to `process.cwd()/data` (container cwd `/app` = bind mount → host `data/`). `DATA_DIR` env is NOT read by db.js. Host smoke tests writing activity rows will pollute the live DB unless run from a temp cwd.
-- `recordDbEngineAttempt` takes an **options object** and gets its `search_id` FK from `searchContext` (AsyncLocalStorage) — it MUST be called inside `searchContext.run({ searchId }, …)`. `browserSearch` already does this (src/search.js:1523).
+- `recordDbEngineAttempt` takes an **options object** and gets its `search_id` FK from `searchContext` (AsyncLocalStorage) — it MUST be called inside `searchContext.run({ searchId }, …)`. `browserSearch` already does this (src/search.js:1238).
 - `searches` and `page_ops` have **independent id sequences** — a single `since` cursor across both drops rows. `GET /stats/activity` takes `since` (searches) and `sinceOps` (page_ops) separately; the console tracks two refs.
 - Activity rows store `ts` as epoch ms (`Date.now()`), not ISO. `formatTime` in main.jsx must handle epoch-ms (and epoch-s < 1e12).
 - Feed merge lives in `App.load()` and `feed` is passed as a direct prop to `StatusView` — stuffing it into `snapshot` state creates a stale-closure bug because `load` is captured by the mount-once effect.
@@ -842,7 +857,7 @@ Search result labels and page headers follow the same form: `- **Title** [domain
 **Why:** Previously, the LLM had no way to know when content was truncated. The article text was truncated to `maxChars`, but tables (extracted separately) could push the total output far beyond `maxChars` with no indicator.
 
 **Implementation (Option B — awareness only):**
-- `src/search.js:2175-2177` in `browserOpenAndExtract()` — after `insertTablesInline()`:
+- `src/search.js:2019` in `browserOpenAndExtract()` — after `insertTablesInline()`:
   ```js
   if (maxChars && finalText.length > maxChars) {
     finalText += `\n\n*(Response truncated — increase maxChars to see more)*`;
@@ -948,7 +963,7 @@ For each site:
 
 **What:** Adding a new output format to `web_fetch` (e.g., `format: "json"`) means adding a new response formatter — never touching extraction. The extraction pipeline already returns structured data internally; markdown is the lossy flattening, not the source.
 
-**Why:** `browserOpenAndExtract()` / `openTargetsParallel()` entries are already structured: `{ ref_id, ok, title, url, text, tables: [{context, headers, rows}], links: [{ref_id, url, text}], seo }`. The cache stores this structured payload (`setCachedToolResult(name, cacheKeyArgs, fullResult)`), and formatting happens on read — both cache-hit (src/mcp-server.js:1246) and cache-miss (line 1273) paths run `formatOpenPageResponse(truncated)`. The `/extract` HTTP endpoint (src/mcp-server.js:2049) does the same.
+**Why:** `browserOpenAndExtract()` / `openTargetsParallel()` entries are already structured: `{ ref_id, ok, title, url, text, tables: [{context, headers, rows}], links: [{ref_id, url, text}], seo }`. The cache stores this structured payload (`setCachedToolResult(name, cacheKeyArgs, fullResult)`), and formatting happens on read — both cache-hit (src/mcp-server.js:1369) and cache-miss (line 1952/1965) paths run `formatOpenPageResponse(truncated)`. The `/extract` HTTP endpoint (src/mcp-server.js:3086) does the same.
 
 **Key facts:**
 - Cache key for web_fetch is `excludeMaxChars(getCacheArgs(args))` — `maxChars` is excluded; `format` must also be excluded (read-time concern, cache stays format-agnostic).
@@ -983,6 +998,23 @@ For each site:
 - `ensureWildcardHint(hintsPath)` ensures the wildcard hint exists, migrating from env vars if needed.
 - `browserOpenAndExtract()` uses `getWildcardHint(hints)` as the fallback hint when no domain hint matches.
 - `stabilizePage()` uses wildcard hint's `default.stabilizeStrategy` as fallback.
+
+### Architecture Over Small Fixes
+
+**Created:** 2026-08-17
+
+**Trigger:** Project is in active development — small patches accumulate debt faster than they solve problems.
+
+**The rule:**
+- When touching any part of the codebase, evaluate the module's structure. If a function, class, or file is poorly organized, restructure it as part of the change — don't leave it worse.
+- Use classes and interfaces. Prefer OOP over loose function bundles. Encapsulate state.
+- Every change should leave the system *more* organized than before. At minimum, maintain the current level of organization.
+- If a bug fix requires changing 3+ lines in a function that's already tangled, refactor the function first, then fix the bug in the clean structure.
+- Don't introduce new utility functions when a class method would be more natural. Don't add top-level variables when instance state would be cleaner.
+- Think about module boundaries, responsibility layers, and data flow. Changes should respect those boundaries or improve them.
+
+**Why:** Small fixes compound into a codebase where every change risks breaking something. Good architecture makes changes safe. The cost of restructuring while touching code is near-zero; the cost of restructuring later is high.
+- Think deeply about every change. Understand the full context before writing code. Rushed edits produce fragile solutions.
 - Console UI: wildcard hint has a "default" badge, hidden pathPattern/requireSelector fields, hidden flow toggle, and a test panel that works with any URL.
 - The default hint must NOT carry a `flow` — it is never set, so `runFlowExtraction` is never triggered for unmatched pages.
 - Test gotcha: single-row key/value tables (`columnCount === 2 && rows.length === 1`) are filtered out by `extractTablesFromDocument`, so a "tables-only" default-extract test needs a table with ≥2 body rows.

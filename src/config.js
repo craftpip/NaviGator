@@ -428,6 +428,7 @@ export async function loadConfig() {
     enableHangRestart: parseBoolean(process.env.ENABLE_HANG_RESTART, false),
     hangRestartTimeoutMs: parseNumber(process.env.HANG_RESTART_TIMEOUT_MS, 120000),
     startupUrl: process.env.STARTUP_URL || "about:blank",
+    toolCacheTtlMs: parseNumber(process.env.TOOL_CACHE_TTL_MS, 5 * 60 * 1000),
     debug: parseBoolean(process.env.DEBUG, false),
     logToolErrors: parseBoolean(process.env.LOG_TOOL_ERRORS, true),
     enableInstantAnswers: parseBoolean(process.env.ENABLE_INSTANT_ANSWERS, true),

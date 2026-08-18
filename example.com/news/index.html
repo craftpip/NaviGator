@@ -7,112 +7,310 @@
   <meta name="author" content="News Desk">
   <meta name="description" content="Breaking news, local reporting, and a live ticker from Testville.">
   <style>
-    body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #222; line-height: 1.6; }
-    header { background: #111; color: #fff; padding: 14px 28px; }
-    header h1 { margin: 0; font-size: 1.6em; }
-    header .mast { font-size: 0.75em; color: #999; letter-spacing: 2px; text-transform: uppercase; }
-    nav { background: #b3541e; padding: 8px 28px; }
-    nav a { color: #fff; margin-right: 16px; text-decoration: none; font-size: 0.9em; }
-    .ticker { background: #fffbe6; border-bottom: 2px solid #e6a700; padding: 7px 28px; font-size: 0.85em; color: #7a5d00; overflow: hidden; white-space: nowrap; }
-    .ticker b { color: #c00; }
-    .ticker span { margin-right: 40px; }
-    main { max-width: 760px; margin: 24px auto; padding: 0 20px; }
-    .lead { border-bottom: 3px solid #111; padding-bottom: 14px; margin-bottom: 18px; }
-    .lead h2 { font-size: 1.7em; margin: 6px 0; }
-    .kicker { color: #b3541e; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; font-size: 0.8em; }
-    .byline { color: #777; font-size: 0.85em; }
-    article.story { border-bottom: 1px solid #eee; padding: 14px 0; }
-    article.story h3 { margin: 4px 0; }
-    .author-box { display: flex; gap: 12px; background: #f5f5f5; border-radius: 8px; padding: 12px 14px; margin: 18px 0; font-size: 0.9em; }
-    .author-box .av { width: 42px; height: 42px; border-radius: 50%; background: #b3541e; color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: bold; }
-    .related { background: #eef4fb; padding: 14px 16px; border-radius: 8px; margin-top: 20px; }
-    footer { background: #f2f2f2; padding: 14px 28px; margin-top: 30px; font-size: 13px; }
+    body { font-family: Georgia, 'Times New Roman', serif; margin: 0; color: #1a1a1a; line-height: 1.65; background: #fafafa; }
+    a { color: #1a5276; }
+    a:hover { text-decoration: underline; }
+
+    /* Masthead */
+    .masthead { background: #111; color: #fff; text-align: center; padding: 18px 28px 14px; }
+    .masthead h1 { margin: 0; font-size: 2.4em; font-weight: 900; letter-spacing: -1px; font-family: Georgia, serif; }
+    .masthead .tagline { font-size: 0.78em; color: #999; letter-spacing: 3px; text-transform: uppercase; margin-top: 4px; font-family: Arial, sans-serif; }
+    .masthead .date-line { font-size: 0.8em; color: #bbb; margin-top: 6px; font-family: Arial, sans-serif; }
+
+    /* Nav */
+    .nav-bar { background: #b3541e; padding: 8px 0; text-align: center; }
+    .nav-bar a { color: #fff; margin: 0 14px; text-decoration: none; font-size: 0.88em; font-family: Arial, sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .nav-bar a:hover { color: #ffe0b2; text-decoration: none; }
+    .nav-bar a.active { border-bottom: 2px solid #fff; padding-bottom: 2px; }
+
+    /* Ticker */
+    .ticker { background: #fffbe6; border-bottom: 2px solid #e6a700; padding: 8px 28px; font-size: 0.85em; color: #7a5d00; overflow: hidden; white-space: nowrap; font-family: Arial, sans-serif; }
+    .ticker b { color: #c00; margin-right: 8px; }
+    .ticker span { margin-right: 60px; }
+
+    /* Layout */
+    .page-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px; display: grid; grid-template-columns: 1fr 320px; gap: 30px; }
+    @media (max-width: 800px) { .page-wrap { grid-template-columns: 1fr; } }
+
+    /* Lead story */
+    .lead { border-bottom: 3px solid #111; padding-bottom: 18px; margin-bottom: 24px; }
+    .lead h2 { font-size: 2em; margin: 8px 0; line-height: 1.2; }
+    .kicker { color: #b3541e; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; font-size: 0.78em; font-family: Arial, sans-serif; }
+    .byline { color: #777; font-size: 0.82em; font-family: Arial, sans-serif; margin-bottom: 10px; }
+    .lead p { font-size: 1.05em; }
+    .lead-img { width: 100%; height: 280px; background: #e8e0d8; border-radius: 4px; margin: 14px 0; display: flex; align-items: center; justify-content: center; color: #999; font-size: 0.85em; font-family: Arial, sans-serif; }
+
+    /* Stories */
+    article.story { border-bottom: 1px solid #e0e0e0; padding: 16px 0; }
+    article.story h3 { margin: 4px 0; font-size: 1.15em; }
+    article.story p { font-size: 0.92em; color: #333; }
+
+    /* Inline data table */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.85em; font-family: Arial, sans-serif; margin: 14px 0; }
+    .data-table th { background: #f5f5f5; text-align: left; padding: 8px 10px; border-bottom: 2px solid #ddd; font-weight: 700; }
+    .data-table td { padding: 7px 10px; border-bottom: 1px solid #eee; }
+    .data-table tr:hover td { background: #fafafa; }
+
+    /* Sidebar */
+    .sidebar { font-family: Arial, sans-serif; }
+    .sidebar-box { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin-bottom: 20px; }
+    .sidebar-box h3 { font-size: 0.88em; text-transform: uppercase; letter-spacing: 1px; color: #b3541e; margin: 0 0 10px; border-bottom: 2px solid #b3541e; padding-bottom: 6px; }
+    .sidebar-box ul { list-style: none; padding: 0; margin: 0; }
+    .sidebar-box li { padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.85em; }
+    .sidebar-box li:last-child { border-bottom: none; }
+    .sidebar-box .trend-num { color: #b3541e; font-weight: 700; margin-right: 6px; }
+
+    .author-box { display: flex; gap: 12px; background: #f5f5f5; border-radius: 8px; padding: 14px; margin: 18px 0; font-size: 0.88em; font-family: Arial, sans-serif; }
+    .author-box .av { width: 44px; height: 44px; border-radius: 50%; background: #b3541e; color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: bold; font-size: 0.85em; }
+
+    blockquote { border-left: 4px solid #b3541e; margin: 16px 0; padding: 10px 18px; background: #faf5ee; font-style: italic; }
+
+    .related { background: #eef4fb; padding: 16px 18px; border-radius: 8px; margin-top: 24px; }
+    .related h3 { margin-top: 0; font-size: 1em; }
+
+    footer { background: #111; color: #999; padding: 20px 28px; margin-top: 40px; font-size: 0.8em; font-family: Arial, sans-serif; text-align: center; }
+    footer a { color: #ccc; }
   </style>
 </head>
 <body>
-  <header>
+  <header class="masthead">
     <h1>Testville Times</h1>
-    <span class="mast">Independent · since 1904</span>
+    <div class="tagline">Independent · Fearless · Since 1904</div>
+    <div class="date-line">Monday, August 18, 2026 · Testville, State of doing</div>
   </header>
-  <nav>
-    <a href="/">Home</a>
+  <div class="nav-bar">
+    <a href="/" class="active">Home</a>
     <a href="/news/">News</a>
     <a href="#">Local</a>
-    <a href="#">Sports</a>
+    <a href="#">Politics</a>
     <a href="#">Business</a>
     <a href="#">Opinion</a>
+    <a href="#">Sports</a>
     <a href="/chaos/">Chaos</a>
-  </nav>
+  </div>
   <div class="ticker" id="ticker">
     <b>BREAKING</b> <span id="ticker-msg">Fountain vote resumes this afternoon after overnight recount</span>
   </div>
 
-  <main>
-    <article class="lead">
-      <p class="kicker">Local News</p>
-      <h2>Local Library Reopens After Six-Month Renovation</h2>
-      <p class="byline">By News Desk · Published 2026-08-02 · Updated 2026-08-03</p>
-      <p>TESTVILLE — The Central Testville Library reopened its doors on Monday after a six-month renovation that added a new reading hall, a children's wing, and a digital media lab.</p>
-      <p>Hundreds of residents lined up outside the century-old building for the ribbon-cutting ceremony. The mayor called the reopening "a new chapter" for the community and praised the library staff for working through the construction.</p>
-      <h3>What changed</h3>
-      <ul>
-        <li>Two new floors of reading space</li>
-        <li>A dedicated children's area with story-time rooms</li>
-        <li>A digital media lab with free computers</li>
-        <li>Extended evening hours from 8am to 10pm</li>
-      </ul>
-      <blockquote style="border-left:4px solid #b3541e;margin:14px 0;padding:8px 16px;background:#faf5ee;">"The building is newer, but the mission is the same." — Head Librarian Jane Doe</blockquote>
-      <p>The library is open Monday through Saturday from 8am to 10pm and Sundays from 10am to 6pm. Entry is free and no membership is required to browse.</p>
-    </article>
+  <div class="page-wrap">
+    <main>
+      <!-- Lead story -->
+      <article class="lead">
+        <p class="kicker">Investigation</p>
+        <h2>City Spent $4.2 Million on Fountain That Nobody Asked For, Records Show</h2>
+        <p class="byline">By Sarah Chen and Marcus Webb · Published Aug 17, 2026 · Updated 3 hours ago</p>
+        <div class="lead-img">📸 Aerial photo of the Testville fountain construction site, Aug 2026</div>
+        <p>TESTVILLE — The city government spent $4.2 million on a decorative fountain in the new civic plaza — nearly three times its original budget — according to internal documents obtained by the Testville Times under a public records request.</p>
+        <p>The project, originally estimated at $1.5 million in the 2024 capital budget, ballooned after a series of change orders, contractor disputes, and what one city engineer described in an email as "scope creep disguised as value engineering."</p>
+        <p>Three former city officials and two contractors spoke to the Times on the condition of anonymity, describing a pattern of last-minute design changes pushed by council members who wanted the fountain to be "iconic" — a word that appears 17 times in the project's internal correspondence.</p>
 
-    <div class="author-box">
-      <div class="av">ND</div>
-      <div><b>News Desk</b> — the collective byline of the Times newsroom. We verify twice and publish once, most of the time.</div>
-    </div>
+        <h3>How the costs spiraled</h3>
+        <p>The fountain's original design was a simple recirculating water feature with LED lighting. But between January and June 2025, the project underwent 14 formal change orders that added a programmable music-and-light show, imported Italian marble cladding, and a underground mechanical room larger than some city apartments.</p>
 
-    <article class="story">
-      <p class="kicker">Environment</p>
-      <h3><a href="/readability-good/article/">City Completes Solar Streetlight Rollout on River Avenue</a></h3>
-      <p class="byline">By Mira Patel · Aug 6, 2026</p>
-      <p>The final 340 lights went live this week, finishing the pilot phase six weeks early. Public Works says the avenue is now 15% brighter and costs 40% less to run.</p>
-    </article>
+        <table class="data-table">
+          <thead>
+            <tr><th>Phase</th><th>Original Budget</th><th>Actual Cost</th><th>Overrun</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Design & engineering</td><td>$180,000</td><td>$340,000</td><td>+89%</td></tr>
+            <tr><td>Excavation & foundation</td><td>$420,000</td><td>$580,000</td><td>+38%</td></tr>
+            <tr><td>Mechanical & plumbing</td><td>$350,000</td><td>$890,000</td><td>+154%</td></tr>
+            <tr><td>Marble cladding (imported)</td><td>$0</td><td>$720,000</td><td>new</td></tr>
+            <tr><td>LED & music system</td><td>$120,000</td><td>$480,000</td><td>+300%</td></tr>
+            <tr><td>Landscape & plaza</td><td>$280,000</td><td>$410,000</td><td>+46%</td></tr>
+            <tr><td>Contingency (10%)</td><td>$150,000</td><td>$340,000</td><td>+127%</td></tr>
+            <tr><td>Permits, inspections, misc</td><td>$0</td><td>$440,000</td><td>new</td></tr>
+            <tr style="font-weight:700;background:#f9f9f9;"><td>Total</td><td>$1,500,000</td><td>$4,200,000</td><td>+180%</td></tr>
+          </tbody>
+        </table>
 
-    <article class="story">
-      <p class="kicker">Transport</p>
-      <h3><a href="#">New East Side Bridge Clears Final Inspection</a></h3>
-      <p class="byline">By Diego Ramos · Aug 5, 2026</p>
-      <p>Engineers signed off on the structural report Tuesday, clearing the way for the bridge to open to traffic next month — eleven months behind schedule and over budget, as tradition requires.</p>
-    </article>
+        <blockquote>
+          "Every time we got close to the budget, someone would call a meeting and say, 'But what if we made it bigger?' I started calling it the money fountain."<br>
+          — Former city engineer, speaking on condition of anonymity
+        </blockquote>
 
-    <article class="story">
-      <p class="kicker">Community</p>
-      <h3><a href="#">Market Vendors Report Record Summer Crowds</a></h3>
-      <p class="byline">By Aisha Khan · Aug 4, 2026</p>
-      <p>Sunday footfall at the River Avenue market hit 18,000, a record. Vendors credit the good weather, the street art, and, inexplicably, the geese.</p>
-    </article>
+        <h3>The council's role</h3>
+        <p>Internal emails show that three council members — whose names the Times is withholding pending further reporting — pushed for the upgrades in private meetings with the project manager. One email from March 2025 reads: "We need this to be the thing people photograph. If it's just a regular fountain, why bother?"</p>
+        <p>The council approved each change order individually, often with less than 48 hours of public notice. Under city rules, change orders under $100,000 do not require a full council vote — a threshold that critics say is too high for a project of this size.</p>
+        <p>Mayor Linda Torres, who was elected on a fiscal responsibility platform, declined to comment for this story. Her office provided a written statement saying the fountain "reflects the ambition of our community" and that "cost management is an ongoing process."</p>
 
-    <section class="related">
-      <h3>More from the Times</h3>
-      <ul>
-        <li><a href="/news/">City Announces New Park Opening Next Month</a></li>
-        <li><a href="/post/">Why Test Pages Matter</a></li>
-        <li><a href="/live/">Live: council meeting day</a></li>
-        <li><a href="/">Back to home</a></li>
-      </ul>
-    </section>
-  </main>
+        <h3>What happens now</h3>
+        <p>The city's Inspector General has opened a preliminary review of the project. Separately, a group of residents has collected 2,400 signatures on a petition asking the council to halt the fountain's scheduled Sept. 15 grand opening pending an independent audit.</p>
+        <p>The fountain, which is 85% complete, currently sits dry in the middle of the civic plaza. Its mechanical room is finished, its Italian marble is installed, and its 200 LED lights are wired — but the water has never been turned on.</p>
 
-  <footer>Testville Times · news@testvilletimes.example · © 2026</footer>
+        <p style="font-size:0.88em;color:#555;margin-top:18px;"><em>This is a developing story. The Testville Times will update this article as new information becomes available. Contact the investigative team at tips@testvilletimes.example.</em></p>
+      </article>
+
+      <div class="author-box">
+        <div class="av">SC</div>
+        <div><b>Sarah Chen</b> is an investigative reporter at the Testville Times covering government spending and public accountability. She has been with the paper since 2019. <a href="#">@sarahchen</a></div>
+      </div>
+      <div class="author-box">
+        <div class="av">MW</div>
+        <div><b>Marcus Webb</b> is a data journalist specializing in public finance analysis. Before joining the Times, he worked at the State Auditor's office. <a href="#">@marcuswebb</a></div>
+      </div>
+
+      <!-- More stories -->
+      <article class="story">
+        <p class="kicker">Politics</p>
+        <h3><a href="#">Council to Vote on $180M Budget Tonight; Fountain Audit on Agenda</a></h3>
+        <p class="byline">By Rachel Kim · Aug 17, 2026</p>
+        <p>The city council meets tonight at 7pm to vote on the FY2027 operating budget, which includes a new line item for an independent audit of the civic plaza fountain project. The meeting will be held at City Hall, Room 201, and is open to the public. Public comment is limited to 3 minutes per speaker.</p>
+      </article>
+
+      <article class="story">
+        <p class="kicker">Education</p>
+        <h3><a href="#">Testville High Wins State Robotics Championship for Third Consecutive Year</a></h3>
+        <p class="byline">By Priya Sharma · Aug 16, 2026</p>
+        <p>The Testville High School robotics team, the Gears of Wrath, defeated 47 other teams at the state championship in Columbus this weekend. Their robot, "Sansa," completed the obstacle course in a record 47 seconds. The team's coach, retired engineer Tom Nakamura, said the win was "-validation that our after-school program works."</p>
+        <p>The school has won the state title every year since 2024, when a group of sophomores built their first robot from a kit and a pile of spare parts. The program now serves 62 students across three grade levels.</p>
+      </article>
+
+      <article class="story">
+        <p class="kicker">Environment</p>
+        <h3><a href="#">City Completes Solar Streetlight Rollout on River Avenue</a></h3>
+        <p class="byline">By Mira Patel · Aug 15, 2026</p>
+        <p>The final 340 solar-powered streetlights went live on River Avenue this week, completing the city's $2.1 million pilot project six weeks ahead of schedule. Public Works Director James Okafor said the avenue is now 15% brighter at night and costs 40% less to illuminate than before.</p>
+        <p>The project, funded by a state green infrastructure grant, replaces aging sodium-vapor lights with programmable LED fixtures powered by rooftop solar panels. Each light stores enough energy to operate for three consecutive cloudy days.</p>
+        <p>"This is what responsible infrastructure looks like," Okafor said at a press conference Tuesday. "We're saving money, reducing emissions, and making the street safer — all at the same time."</p>
+        <p>The city plans to expand the program to three additional avenues in 2027, pending council approval of the capital budget.</p>
+      </article>
+
+      <article class="story">
+        <p class="kicker">Transport</p>
+        <h3><a href="#">New East Side Bridge Clears Final Structural Inspection</a></h3>
+        <p class="byline">By Diego Ramos · Aug 14, 2026</p>
+        <p>Engineers signed off on the structural report for the East Side Bridge on Tuesday, clearing the way for the $38 million crossing to open to traffic next month. The bridge, which spans the river between Elm Street and Route 9, was originally supposed to open in October 2025.</p>
+        <p>The 11-month delay was caused by a combination of supply chain disruptions, a labor dispute, and — according to one inspector's report — "unexpected geological conditions" that required a redesigned foundation. The project is now $4.2 million over its original $33.8 million budget.</p>
+      </article>
+
+      <article class="story">
+        <p class="kicker">Community</p>
+        <h3><a href="#">Market Vendors Report Record Summer Crowds; Geese Take Credit</a></h3>
+        <p class="byline">By Aisha Khan · Aug 13, 2026</p>
+        <p>Sunday foot traffic at the River Avenue farmers' market hit 18,200 visitors — a record since the market moved to its current location in 2019. Vendors attributed the surge to good weather, new street art installations, and the growing fame of the market's resident goose colony.</p>
+        <p>"People come for the produce and stay for the geese," said market manager David Chen. "We've had three food bloggers write about them this month alone." The geese, who nest under the market's main pavilion, have become an unlikely social media sensation, with a fan account that has 14,000 followers.</p>
+      </article>
+
+      <article class="story">
+        <p class="kicker">Business</p>
+        <h3><a href="#">Downtown Bakery Expands to Second Location After TikTok Goes Viral</a></h3>
+        <p class="byline">By Leila Ahmed · Aug 12, 2026</p>
+        <p>Flour & Fold, the downtown bakery whose croissants went viral on TikTok in June, has signed a lease for a second location on Oak Street. Owner Maria Gonzalez said the shop, which opened in March 2025, has been selling out of croissants by 9am every day since a video of her laminating dough got 2.3 million views.</p>
+        <p>The new location will include a dedicated baking classroom and a coffee bar. Gonzalez plans to hire eight additional staff members and hopes to open by November.</p>
+      </article>
+
+      <article class="story">
+        <p class="kicker">Health</p>
+        <h3><a href="#">Free Health Screenings at Community Center This Saturday</a></h3>
+        <p class="byline">By Health Desk · Aug 11, 2026</p>
+        <p>The Testville Community Health Center is offering free blood pressure, cholesterol, and glucose screenings this Saturday from 9am to 3pm at the downtown community center. No appointment is needed. The event is open to all residents regardless of insurance status.</p>
+        <p>"We're trying to catch problems early," said Dr. Anita Patel, the center's medical director. "High blood pressure is called the silent killer for a reason — you can feel fine and still be at risk." Last year's event screened 340 people and identified 28 individuals who were referred for follow-up care.</p>
+      </article>
+
+      <article class="story">
+        <p class="kicker">Weather</p>
+        <h3><a href="#">Heat Advisory Issued for Friday; City Opens Cooling Centers</a></h3>
+        <p class="byline">By Weather Desk · Aug 10, 2026</p>
+        <p>The National Weather Service has issued a heat advisory for Friday, with temperatures expected to reach 97°F — the hottest day of the summer. The city will open cooling centers at the downtown library, the Eastside Community Center, and three senior centers.</p>
+        <p>Parks Director Sandra Lee said the city's public pools will extend their hours to 9pm on Friday and Saturday. "Stay hydrated, check on your neighbors, and don't leave kids or pets in cars," Lee said.</p>
+      </article>
+
+      <section class="related">
+        <h3>More from the Times</h3>
+        <ul>
+          <li><a href="/news/investigation/">Investigation: The $4.2M Fountain</a> — full document archive</li>
+          <li><a href="/live/">Live: City council budget meeting</a> — real-time coverage</li>
+          <li><a href="/post/">Opinion: Why transparency matters</a></li>
+          <li><a href="/">Back to home</a></li>
+        </ul>
+      </section>
+    </main>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-box">
+        <h3>Trending Now</h3>
+        <ul>
+          <li><span class="trend-num">1.</span> <a href="#">Fountain cost controversy</a></li>
+          <li><span class="trend-num">2.</span> <a href="#">Robotics championship</a></li>
+          <li><span class="trend-num">3.</span> <a href="#">Solar streetlight rollout</a></li>
+          <li><span class="trend-num">4.</span> <a href="#">Bridge opening date</a></li>
+          <li><span class="trend-num">5.</span> <a href="#">Farmers market geese</a></li>
+        </ul>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>Weather</h3>
+        <table class="data-table">
+          <tbody>
+            <tr><td>Today</td><td>☀️ 88°F / 72°F</td></tr>
+            <tr><td>Tuesday</td><td>⛅ 85°F / 70°F</td></tr>
+            <tr><td>Wednesday</td><td>🌧️ 78°F / 68°F</td></tr>
+            <tr><td>Thursday</td><td>⛅ 82°F / 69°F</td></tr>
+            <tr><td>Friday</td><td>🔥 97°F / 78°F</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>Upcoming Events</h3>
+        <ul>
+          <li><b>Aug 18</b> — City council budget vote, 7pm</li>
+          <li><b>Aug 20</b> — Library summer reading finale</li>
+          <li><b>Aug 22</b> — Free health screenings, 9am–3pm</li>
+          <li><b>Aug 24</b> — Farmers market (regular hours)</li>
+          <li><b>Sep 1</b> — Labor Day parade, Main Street</li>
+          <li><b>Sep 15</b> — Fountain grand opening (tentative)</li>
+        </ul>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>Today's Paper</h3>
+        <ul>
+          <li><a href="#">Front page (PDF)</a></li>
+          <li><a href="#">Classifieds</a></li>
+          <li><a href="#">Obituaries</a></li>
+          <li><a href="#">Letters to the editor</a></li>
+          <li><a href="#">Subscription services</a></li>
+        </ul>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>Newsletter</h3>
+        <p style="font-size:0.85em;color:#555;margin:0 0 10px;">Get the day's top stories delivered to your inbox every morning.</p>
+        <div style="display:flex;gap:6px;">
+          <input type="email" placeholder="your@email.com" style="flex:1;padding:8px 10px;border:1px solid #ddd;border-radius:4px;font-size:0.85em;">
+          <button style="background:#b3541e;color:#fff;border:none;padding:8px 14px;border-radius:4px;font-size:0.85em;cursor:pointer;font-weight:600;">Subscribe</button>
+        </div>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>Public Notices</h3>
+        <ul>
+          <li><a href="#">Road closure: Oak St between 3rd and 5th Ave, Aug 19–21</a></li>
+          <li><a href="#">Water main maintenance: Eastside, Aug 22, 9am–4pm</a></li>
+          <li><a href="#">Planning commission hearing: 200-unit apartment proposal, Aug 25</a></li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    <p>Testville Times · news@testvilletimes.example · © 2026 Testville Times Inc.</p>
+    <p style="margin-top:6px;"><a href="#">About</a> · <a href="#">Contact</a> · <a href="#">Careers</a> · <a href="#">Privacy Policy</a> · <a href="#">Terms of Service</a> · <a href="#">Accessibility</a></p>
+  </footer>
 
   <script>
-    // Simulated breaking-news ticker that rotates headlines.
     (function () {
       var headlines = [
         'Fountain vote resumes this afternoon after overnight recount',
         'Heat advisory issued for Friday — city opens cooling centers',
-        'Drone bread deliveries continue; origin still unknown',
+        'Council to vote on $180M budget tonight; fountain audit on agenda',
         'River levels stable after overnight rain',
-        'Geese relocate to the new fountain plaza, officials confirm'
+        'Geese relocate to the new fountain plaza, officials confirm',
+        'Downtown bakery opens second location after viral TikTok',
+        'Free health screenings at community center this Saturday'
       ];
       var i = 0;
       var el = document.getElementById('ticker-msg');

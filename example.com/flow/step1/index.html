@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Step 1: Tell us about yourself — CloudStack Onboarding</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #f8f9fb; line-height: 1.6; min-height: 100vh; display: flex; flex-direction: column; }
+    a { color: #4f46e5; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .topbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-size: 1.1em; font-weight: 700; color: #4f46e5; display: flex; align-items: center; gap: 6px; }
+    .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 0.85em; color: #6b7280; }
+    .topbar-right a { color: #6b7280; }
+
+    .progress-wrap { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 20px 24px; }
+    .progress-inner { max-width: 720px; margin: 0 auto; }
+    .progress-steps { display: flex; justify-content: space-between; margin-bottom: 12px; }
+    .progress-step { display: flex; align-items: center; gap: 8px; font-size: 0.82em; color: #9ca3af; }
+    .progress-step.active { color: #4f46e5; font-weight: 600; }
+    .progress-step.done { color: #10b981; }
+    .step-circle { width: 28px; height: 28px; border-radius: 50%; border: 2px solid #d1d5db; display: flex; align-items: center; justify-content: center; font-size: 0.78em; font-weight: 700; }
+    .progress-step.active .step-circle { border-color: #4f46e5; background: #4f46e5; color: #fff; }
+    .progress-step.done .step-circle { border-color: #10b981; background: #10b981; color: #fff; }
+    .progress-bar { height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #4f46e5; border-radius: 2px; transition: width 0.3s; }
+
+    .main { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 40px 24px; gap: 24px; max-width: 860px; margin: 0 auto; width: 100%; }
+    @media (max-width: 768px) { .main { flex-direction: column; } .sidebar { display: none; } }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 36px; width: 100%; max-width: 560px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .card h1 { font-size: 1.5em; font-weight: 700; margin-bottom: 4px; }
+    .card .subtitle { font-size: 0.9em; color: #6b7280; margin-bottom: 24px; }
+
+    .sidebar { width: 260px; flex-shrink: 0; padding-top: 8px; }
+    .sidebar-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+    .sidebar-box h3 { font-size: 0.82em; font-weight: 700; color: #374151; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .sidebar-box p, .sidebar-box li { font-size: 0.82em; color: #6b7280; line-height: 1.5; }
+    .sidebar-box ul { padding-left: 16px; margin: 0; }
+    .sidebar-box li { margin-bottom: 4px; }
+    .sidebar-box .tip-icon { font-size: 1.2em; margin-bottom: 4px; display: block; }
+    .stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f3f4f6; font-size: 0.82em; }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-row .stat-label { color: #6b7280; }
+    .stat-row .stat-value { font-weight: 600; color: #111827; }
+
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 0.85em; font-weight: 600; color: #374151; margin-bottom: 5px; }
+    .field input, .field select, .field textarea { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9em; color: #111827; background: #fff; }
+    .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+    .field .hint { font-size: 0.78em; color: #6b7280; margin-top: 4px; }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .role-card { border: 2px solid #e5e7eb; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.15s; text-align: center; }
+    .role-card:hover { border-color: #c7d2fe; }
+    .role-card.selected { border-color: #4f46e5; background: #eef2ff; }
+    .role-card input { display: none; }
+    .role-card .role-icon { font-size: 1.5em; margin-bottom: 4px; }
+    .role-card .role-label { font-size: 0.85em; font-weight: 600; color: #111827; }
+
+    .check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 0.85em; color: #374151; }
+    .check-row input { accent-color: #4f46e5; }
+
+    .btn-row { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; }
+    .btn-back { background: none; border: 1px solid #d1d5db; padding: 10px 20px; border-radius: 8px; font-size: 0.88em; color: #374151; cursor: pointer; font-weight: 500; }
+    .btn-back:hover { background: #f9fafb; }
+    .btn-next { background: #4f46e5; color: #fff; border: none; padding: 10px 28px; border-radius: 8px; font-size: 0.88em; font-weight: 600; cursor: pointer; }
+    .btn-next:hover { background: #4338ca; }
+
+    footer { border-top: 1px solid #e5e7eb; padding: 16px 24px; text-align: center; font-size: 0.78em; color: #9ca3af; }
+    footer a { color: #6b7280; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">☁️ CloudStack</div>
+    <div class="topbar-right">
+      <span>Step 1 of 3</span>
+      <a href="#">Exit onboarding</a>
+    </div>
+  </header>
+
+  <div class="progress-wrap">
+    <div class="progress-inner">
+      <div class="progress-steps">
+        <div class="progress-step active">
+          <div class="step-circle">1</div>
+          <span>Your profile</span>
+        </div>
+        <div class="progress-step">
+          <div class="step-circle">2</div>
+          <span>Team setup</span>
+        </div>
+        <div class="progress-step">
+          <div class="step-circle">3</div>
+          <span>Deploy project</span>
+        </div>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:33%"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="card">
+      <h1>Tell us about yourself</h1>
+      <p class="subtitle">This helps us set up your workspace and recommend the right templates. Takes about 2 minutes.</p>
+
+      <form id="step1" novalidate>
+        <div class="field">
+          <label>What best describes your role?</label>
+          <div class="role-grid" id="roleGrid">
+            <label class="role-card selected" data-role="engineer">
+              <input type="radio" name="role" value="engineer" checked>
+              <div class="role-icon">💻</div>
+              <div class="role-label">Software Engineer</div>
+            </label>
+            <label class="role-card" data-role="devops">
+              <input type="radio" name="role" value="devops">
+              <div class="role-icon">⚙️</div>
+              <div class="role-label">DevOps / Platform</div>
+            </label>
+            <label class="role-card" data-role="lead">
+              <input type="radio" name="role" value="lead">
+              <div class="role-icon">👥</div>
+              <div class="role-label">Engineering Lead</div>
+            </label>
+            <label class="role-card" data-role="founder">
+              <input type="radio" name="role" value="founder">
+              <div class="role-icon">🚀</div>
+              <div class="role-label">Founder / CTO</div>
+            </label>
+            <label class="role-card" data-role="designer">
+              <input type="radio" name="role" value="designer">
+              <div class="role-icon">🎨</div>
+              <div class="role-label">Designer</div>
+            </label>
+            <label class="role-card" data-role="pm">
+              <input type="radio" name="role" value="pm">
+              <div class="role-icon">📋</div>
+              <div class="role-label">Product Manager</div>
+            </label>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="firstName">First name</label>
+            <input type="text" id="firstName" name="firstName" placeholder="Ada" required>
+          </div>
+          <div class="field">
+            <label for="lastName">Last name</label>
+            <input type="text" id="lastName" name="lastName" placeholder="Lovelace" required>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="email">Work email</label>
+          <input type="email" id="email" name="email" placeholder="ada@acme.com" required>
+          <div class="hint">We'll send a verification link — no spam, ever.</div>
+        </div>
+
+        <div class="field">
+          <label for="company">Company or project name</label>
+          <input type="text" id="company" name="company" placeholder="Acme Inc." required>
+          <div class="hint">This becomes your workspace name. You can change it later.</div>
+        </div>
+
+        <div class="field">
+          <label for="website">Company website (optional)</label>
+          <input type="url" id="website" name="website" placeholder="https://acme.com">
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="teamSize">Team size</label>
+            <select id="teamSize" name="teamSize">
+              <option value="">Select...</option>
+              <option value="1">Just me</option>
+              <option value="2-5">2–5 people</option>
+              <option value="6-20">6–20 people</option>
+              <option value="21-100">21–100 people</option>
+              <option value="100+">100+ people</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="industry">Industry</label>
+            <select id="industry" name="industry">
+              <option value="">Select...</option>
+              <option value="saas">SaaS / Software</option>
+              <option value="ecommerce">E-commerce</option>
+              <option value="fintech">Fintech</option>
+              <option value="healthcare">Healthcare</option>
+              <option value="education">Education</option>
+              <option value="agency">Agency / Consultancy</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="useCase">What will you use CloudStack for?</label>
+          <textarea id="useCase" name="useCase" rows="3" placeholder="e.g., Deploy our React SPA, run API endpoints on the edge, host a documentation site..."></textarea>
+          <div class="hint">This helps us recommend the right templates and settings.</div>
+        </div>
+
+        <div class="field">
+          <label>How did you hear about us?</label>
+          <div class="check-row"><input type="radio" name="source" value="google" id="src-google"><label for="src-google">Google search</label></div>
+          <div class="check-row"><input type="radio" name="source" value="twitter" id="src-twitter"><label for="src-twitter">Twitter / X</label></div>
+          <div class="check-row"><input type="radio" name="source" value="hackernews" id="src-hn"><label for="src-hn">Hacker News</label></div>
+          <div class="check-row"><input type="radio" name="source" value="friend" id="src-friend"><label for="src-friend">Friend / colleague</label></div>
+          <div class="check-row"><input type="radio" name="source" value="ad" id="src-ad"><label for="src-ad">Advertisement</label></div>
+          <div class="check-row"><input type="radio" name="source" value="other" id="src-other"><label for="src-other">Other</label></div>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" class="btn-back" disabled>← Back</button>
+          <button type="submit" class="btn-next">Continue →</button>
+        </div>
+      </form>
+    </div>
+
+    <aside class="sidebar">
+      <div class="sidebar-box">
+        <span class="tip-icon">💡</span>
+        <h3>Why we ask</h3>
+        <p>Your role and team size help us pre-configure your workspace with the right defaults — CI/CD pipelines, access controls, and notification settings.</p>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>Onboarding stats</h3>
+        <div class="stat-row"><span class="stat-label">Avg. setup time</span><span class="stat-value">2 min 14 sec</span></div>
+        <div class="stat-row"><span class="stat-label">Teams active this week</span><span class="stat-value">1,247</span></div>
+        <div class="stat-row"><span class="stat-label">Projects deployed today</span><span class="stat-value">3,891</span></div>
+        <div class="stat-row"><span class="stat-label">Countries represented</span><span class="stat-value">142</span></div>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>What you'll get</h3>
+        <ul>
+          <li>14-day free trial of Pro plan</li>
+          <li>$50 in free credits</li>
+          <li>Access to all 38 regions</li>
+          <li>Priority support during trial</li>
+          <li>No credit card required</li>
+        </ul>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>Need help?</h3>
+        <p>Our onboarding team is available via live chat (bottom-right corner) or email at <a href="#">support@cloudstack.example</a>. Average response time: 3 minutes.</p>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    <a href="#">Help</a> · <a href="#">Privacy</a> · <a href="#">Terms</a> · © 2026 CloudStack, Inc. (Fictional)
+  </footer>
+
+  <script>
+    document.querySelectorAll('.role-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        card.querySelector('input').checked = true;
+      });
+    });
+    document.getElementById('step1').addEventListener('submit', (e) => {
+      e.preventDefault();
+      window.location.href = '/flow/step2/';
+    });
+  </script>
+</body>
+</html>

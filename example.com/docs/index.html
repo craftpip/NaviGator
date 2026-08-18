@@ -3,65 +3,230 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>widgets.js Documentation — getWidget</title>
-  <meta name="description" content="Reference documentation for the widgets.js library.">
+  <title>widgets.js Documentation — API Reference</title>
+  <meta name="description" content="Full API reference for the widgets.js library with multiple methods, parameters, types, examples, and migration notes.">
   <style>
-    body { font-family: -apple-system, Arial, sans-serif; margin: 0; color: #24292e; line-height: 1.6; }
-    header { background: #24292e; color: #fff; padding: 12px 20px; }
-    .layout { display: flex; max-width: 1100px; margin: 20px auto; padding: 0 20px; gap: 30px; }
-    nav.sidebar { width: 220px; flex-shrink: 0; font-size: 14px; }
-    nav.sidebar a { display: block; color: #0366d6; text-decoration: none; padding: 4px 0; }
-    nav.sidebar .group { font-weight: bold; margin-top: 12px; color: #444; }
-    main { flex: 1; min-width: 0; }
-    h1 { font-size: 1.8em; }
-    pre { background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px; padding: 12px; overflow-x: auto; }
-    code { font-family: monospace; background: #f6f8fa; padding: 2px 5px; border-radius: 4px; }
-    pre code { background: none; padding: 0; }
-    table { border-collapse: collapse; width: 100%; margin: 14px 0; }
-    th, td { border: 1px solid #dfe2e5; padding: 8px 10px; text-align: left; font-size: 14px; }
-    th { background: #f6f8fa; }
-    .callout { background: #fffbdd; border-left: 4px solid #ffd33d; padding: 10px 14px; border-radius: 4px; margin: 14px 0; }
-    footer { border-top: 1px solid #e1e4e8; padding: 14px 20px; color: #586069; font-size: 13px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; color: #24292e; line-height: 1.6; }
+    header { background: #24292e; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 20px; }
+    header nav a { color: #ccc; text-decoration: none; font-size: 0.9em; margin-right: 16px; }
+    header .version { background: #444d56; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; }
+    .layout { display: flex; max-width: 1100px; margin: 0 auto; padding: 0 20px; gap: 30px; }
+    nav.sidebar { width: 240px; flex-shrink: 0; font-size: 14px; padding: 20px 0; position: sticky; top: 0; max-height: 100vh; overflow-y: auto; }
+    nav.sidebar .group { font-weight: bold; margin-top: 16px; font-size: 0.85em; color: #6a737d; text-transform: uppercase; letter-spacing: 0.5px; }
+    nav.sidebar a { display: block; color: #0366d6; text-decoration: none; padding: 3px 0; font-size: 0.9em; }
+    nav.sidebar a.sub { padding-left: 14px; font-size: 0.85em; color: #586069; }
+    nav.sidebar a.sub:hover { color: #0366d6; }
+    nav.sidebar .badge { background: #28a745; color: #fff; font-size: 0.65em; padding: 1px 5px; border-radius: 3px; margin-left: 4px; vertical-align: middle; }
+    nav.sidebar .badge.deprecated { background: #d73a49; }
+    nav.sidebar .badge.new { background: #0366d6; }
+    main { flex: 1; min-width: 0; padding: 20px 0; }
+    h1 { font-size: 2em; border-bottom: 1px solid #e1e4e8; padding-bottom: 8px; }
+    h2 { font-size: 1.5em; border-bottom: 1px solid #e1e4e8; padding-bottom: 6px; margin-top: 40px; color: #0366d6; }
+    h3 { font-size: 1.15em; margin-top: 28px; color: #24292e; }
+    pre { background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px; padding: 14px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+    code { font-family: 'SF Mono', Consolas, monospace; font-size: 0.9em; }
+    :not(pre) > code { background: #f6f8fa; padding: 2px 6px; border-radius: 4px; }
+    table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+    th, td { border: 1px solid #dfe2e5; padding: 8px 12px; text-align: left; }
+    th { background: #f6f8fa; font-weight: 600; }
+    .callout { border-left: 4px solid #ffd33d; background: #fffbdd; padding: 10px 14px; border-radius: 4px; margin: 14px 0; font-size: 0.95em; }
+    .callout.danger { border-left-color: #d73a49; background: #ffeef0; }
+    .callout.info { border-left-color: #0366d6; background: #f1f8ff; }
+    .deprecation { background: #ffeef0; border: 1px solid #fdaeb7; border-radius: 6px; padding: 12px 16px; margin: 12px 0; }
+    .deprecation strong { color: #d73a49; }
+    .migration { background: #f1f8ff; border: 1px solid #b3d7ff; border-radius: 6px; padding: 12px 16px; margin: 12px 0; }
+    .migration strong { color: #0366d6; }
+    .changelog { font-size: 0.9em; }
+    .changelog li { margin-bottom: 6px; }
+    .type-badge { background: #e8ecf0; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 0.85em; }
+    footer { border-top: 1px solid #e1e4e8; padding: 16px 20px; color: #586069; font-size: 13px; }
   </style>
 </head>
 <body>
-  <header><strong>widgets.js</strong> — v2.4.0 documentation</header>
+  <header>
+    <strong style="font-size:1.1em;">widgets.js</strong>
+    <span class="version">v2.4.0</span>
+    <nav>
+      <a href="#">Guide</a>
+      <a href="#">API</a>
+      <a href="#">Examples</a>
+      <a href="#">Changelog</a>
+      <a href="#">GitHub</a>
+    </nav>
+  </header>
+
   <div class="layout">
     <nav class="sidebar">
       <div class="group">Getting started</div>
       <a href="#">Installation</a>
       <a href="#">Quick start</a>
-      <a href="#">Migration guide</a>
-      <div class="group">API reference</div>
-      <a href="#">getWidget</a>
-      <a href="#">createWidget</a>
-      <a href="#">destroyWidget</a>
-      <a href="#">events</a>
+      <a href="#">Migration from v1</a>
+
+      <div class="group">Core API</div>
+      <a href="#createWidget">createWidget</a>
+      <a href="#getWidget">getWidget</a>
+      <a href="#destroyWidget">destroyWidget</a>
+      <a href="#listWidgets">listWidgets</a>
+
+      <div class="group">Widget instance</div>
+      <a href="#render" class="sub">render()</a>
+      <a href="#update" class="sub">update(data)</a>
+      <a href="#destroy" class="sub">destroy()</a>
+      <a href="#on" class="sub">on(event, handler)</a>
+      <a href="#off" class="sub">off(event, handler)</a>
+      <a href="#getState" class="sub">getState()</a>
+
+      <div class="group">Events</div>
+      <a href="#events">Event reference</a>
+
       <div class="group">Guides</div>
       <a href="#">Theming</a>
       <a href="#">Accessibility</a>
       <a href="#">Performance</a>
+      <a href="#">Server-side rendering</a>
+      <a href="#">Testing</a>
+
+      <div class="group">Advanced</div>
+      <a href="#">Plugin system</a>
+      <a href="#">Custom renderers</a>
+      <a href="#">Tree-shaking</a>
+      <a href="#">TypeScript config</a>
+
+      <div class="group">Migration</div>
+      <a href="#">v1 → v2 guide</a>
+      <a href="#">Deprecated APIs</a>
     </nav>
+
     <main>
-      <h1>getWidget</h1>
-      <p>Returns a reference to an existing widget instance by its id. Throws if the id was never registered.</p>
+      <h1>API Reference</h1>
+      <p>Complete reference for the widgets.js library API. This covers core functions, widget instance methods, events, types, and migration notes.</p>
 
-      <h2>Signature</h2>
-      <pre><code>getWidget(id: string): Widget</code></pre>
+      <div class="callout info">
+        <strong>Tip:</strong> Use <code>getWidget</code> instead of keeping your own map of instances — the library maintains it internally and cleans up on destroy.
+      </div>
 
-      <h2>Parameters</h2>
+      <!-- ========================================= -->
+      <!-- createWidget                              -->
+      <!-- ========================================= -->
+      <h2 id="createWidget">createWidget(id, options)</h2>
+      <p>Creates a new widget instance and registers it with the internal store.</p>
+
+      <h3>Signature</h3>
+      <pre><code>function createWidget&lt;T extends WidgetType&gt;(
+  id: string,
+  options: WidgetOptions&lt;T&gt;
+): Widget&lt;T&gt;</code></pre>
+
+      <h3>Parameters</h3>
       <table>
-        <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+        <thead>
+          <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
         <tbody>
-          <tr><td>id</td><td>string</td><td>yes</td><td>The unique id passed to <code>createWidget()</code>.</td></tr>
-          <tr><td>options</td><td>object</td><td>no</td><td>Reserved for future options. Currently unused.</td></tr>
+          <tr>
+            <td><code>id</code></td>
+            <td><span class="type-badge">string</span></td>
+            <td>Yes</td>
+            <td>Unique identifier for this widget instance. Must not be empty. Thrown on <code>DuplicateWidgetError</code> if already registered.</td>
+          </tr>
+          <tr>
+            <td><code>options.type</code></td>
+            <td><span class="type-badge">string</span></td>
+            <td>Yes</td>
+            <td>Widget type: <code>"line"</code> | <code>"bar"</code> | <code>"pie"</code> | <code>"table"</code> | <code>"card"</code> | <code>"custom"</code></td>
+          </tr>
+          <tr>
+            <td><code>options.data</code></td>
+            <td><span class="type-badge">unknown</span></td>
+            <td>No</td>
+            <td>Initial data payload. Shape depends on widget type.</td>
+          </tr>
+          <tr>
+            <td><code>options.container</code></td>
+            <td><span class="type-badge">HTMLElement | string</span></td>
+            <td>No</td>
+            <td>DOM element or CSS selector to mount into. If omitted, <code>render()</code> must be called with an explicit target.</td>
+          </tr>
+          <tr>
+            <td><code>options.theme</code></td>
+            <td><span class="type-badge">ThemeConfig</span></td>
+            <td>No</td>
+            <td>Color scheme, font stack, and spacing overrides. Falls back to the global theme.</td>
+          </tr>
+          <tr>
+            <td><code>options.lazy</code></td>
+            <td><span class="type-badge">boolean</span></td>
+            <td>No</td>
+            <td>Default <code>false</code>. When <code>true</code>, the widget defers rendering until it enters the viewport (IntersectionObserver).</td>
+          </tr>
+          <tr>
+            <td><code>options.onReady</code></td>
+            <td><span class="type-badge">() => void</span></td>
+            <td>No</td>
+            <td>Callback fired after the first render completes.</td>
+          </tr>
         </tbody>
       </table>
 
-      <h2>Returns</h2>
-      <p>The matching <code>Widget</code> instance. Each instance exposes <code>render()</code>, <code>update(data)</code> and <code>on(event, handler)</code>.</p>
+      <h3>Returns</h3>
+      <p>A <code>Widget</code> instance — see <a href="#">Widget instance methods</a> below.</p>
 
-      <h2>Example</h2>
+      <h3>Errors</h3>
+      <ul>
+        <li><code>DuplicateWidgetError</code> — the id is already registered</li>
+        <li><code>InvalidTypeError</code> — the type string is not a known widget type</li>
+        <li><code>TypeError</code> — id is not a string or options is not an object</li>
+      </ul>
+
+      <h3>Example</h3>
+      <pre><code>import { createWidget } from 'widgets';
+
+const chart = createWidget('chart-1', {
+  type: 'line',
+  data: {
+    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+    datasets: [{ label: 'Revenue', values: [12000, 15000, 18000, 22000, 19000] }]
+  },
+  container: '#chart-container',
+  theme: { primary: '#0366d6', fontFamily: 'Inter, sans-serif' },
+  lazy: true,
+  onReady: () => console.log('Chart mounted')
+});
+
+chart.render();</code></pre>
+
+      <div class="callout">
+        <strong>Performance note:</strong> Creating many widgets in a loop? Use <code>createWidgets(ids, options)</code> (batch variant) to share a single DOM reconciliation pass.
+      </div>
+
+      <!-- ========================================= -->
+      <!-- getWidget                                 -->
+      <!-- ========================================= -->
+      <h2 id="getWidget">getWidget(id)</h2>
+      <p>Returns a reference to an existing widget instance by its id.</p>
+
+      <h3>Signature</h3>
+      <pre><code>function getWidget&lt;T extends WidgetType&gt;(id: string): Widget&lt;T&gt;</code></pre>
+
+      <h3>Parameters</h3>
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>id</code></td>
+            <td><span class="type-badge">string</span></td>
+            <td>Yes</td>
+            <td>The unique id passed to <code>createWidget()</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Returns</h3>
+      <p>The matching <code>Widget</code> instance. Each instance exposes <code>render()</code>, <code>update(data)</code>, <code>destroy()</code>, <code>on()</code>, <code>off()</code>, and <code>getState()</code>.</p>
+
+      <h3>Example</h3>
       <pre><code>import { createWidget, getWidget } from 'widgets';
 
 createWidget('chart-1', { type: 'line', data: [1, 2, 3] });
@@ -69,20 +234,194 @@ const widget = getWidget('chart-1');
 widget.update({ data: [3, 2, 1] });
 console.log(widget.isMounted()); // true</code></pre>
 
-      <h2>Errors</h2>
+      <h3>Errors</h3>
       <ul>
-        <li><code>UnknownWidgetError</code> — the id was never created</li>
+        <li><code>UnknownWidgetError</code> — the id was never created or was destroyed</li>
         <li><code>TypeError</code> — id is not a string</li>
       </ul>
 
-      <div class="callout">
-        <strong>Tip:</strong> use <code>getWidget</code> instead of keeping your own map of instances; the library maintains it internally and cleans up on destroy.
+      <!-- ========================================= -->
+      <!-- destroyWidget                             -->
+      <!-- ========================================= -->
+      <h2 id="destroyWidget">destroyWidget(id)</h2>
+      <p>Destroys a widget, removes its DOM, and frees internal memory.</p>
+
+      <h3>Signature</h3>
+      <pre><code>function destroyWidget(id: string): boolean</code></pre>
+
+      <h3>Parameters</h3>
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>id</code></td>
+            <td><span class="type-badge">string</span></td>
+            <td>Yes</td>
+            <td>The widget id to destroy.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Returns</h3>
+      <p><code>true</code> if the widget existed and was destroyed. <code>false</code> if the id was not found (no-op).</p>
+
+      <h3>Side effects</h3>
+      <ul>
+        <li>Removes all event listeners attached via <code>on()</code></li>
+        <li>Unmounts the DOM if mounted</li>
+        <li>Fires a <code>destroy</code> event before cleanup</li>
+        <li>Emits a <code>destroy</code> event on the global event bus</li>
+      </ul>
+
+      <h3>Example</h3>
+      <pre><code>import { destroyWidget } from 'widgets';
+
+const removed = destroyWidget('chart-1');
+console.log(removed); // true
+console.log(getWidget('chart-1')); // throws UnknownWidgetError</code></pre>
+
+      <!-- ========================================= -->
+      <!-- listWidgets                              -->
+      <!-- ========================================= -->
+      <h2 id="listWidgets">listWidgets(filter?)</h2>
+      <p>Returns all registered widget instances, optionally filtered.</p>
+
+      <h3>Signature</h3>
+      <pre><code>function listWidgets(filter?: {
+  type?: WidgetType;
+  mounted?: boolean;
+}): WidgetInfo[];</code></pre>
+
+      <h3>Returns</h3>
+      <p>An array of <code>WidgetInfo</code> objects: <code>{ id, type, mounted, createdAt, dataSize }</code>.</p>
+
+      <h3>Example</h3>
+      <pre><code>import { listWidgets } from 'widgets';
+
+const all = listWidgets();
+// [
+//   { id: 'chart-1', type: 'line', mounted: true, createdAt: ..., dataSize: 1200 },
+//   { id: 'table-1', type: 'table', mounted: false, createdAt: ..., dataSize: 45000 },
+// ]
+
+const mounted = listWidgets({ mounted: true });
+const charts = listWidgets({ type: 'line' });</code></pre>
+
+      <!-- ========================================= -->
+      <!-- Widget Instance Methods                   -->
+      <!-- ========================================= -->
+      <h2>Widget Instance Methods</h2>
+      <p>Every widget instance returned by <code>createWidget</code> or <code>getWidget</code> exposes the following methods:</p>
+
+      <h3 id="render">render(target?)</h3>
+      <p>Mounts or re-renders the widget into a DOM target.</p>
+      <pre><code>widget.render();               // uses the container from createWidget
+widget.render('#new-target');  // re-mount to a different element</code></pre>
+
+      <h3 id="update">update(data)</h3>
+      <p>Merges new data into the widget's state and triggers a re-render. Supports partial updates — only the changed keys are reconciled.</p>
+      <pre><code>// Update just the data
+widget.update({ data: [5, 4, 3, 2, 1] });
+
+// Update data and theme
+widget.update({
+  data: [10, 20, 30],
+  theme: { primary: '#e36209' }
+});
+
+// Partial dataset update (line chart)
+widget.update({
+  datasets: [{ label: 'Revenue', values: [12, 18, 24] }]
+});</code></pre>
+
+      <h3 id="on">on(event, handler)</h3>
+      <p>Subscribes to a widget event. Returns an unsubscribe function.</p>
+      <pre><code>const unsub = widget.on('click', (event) => {
+  console.log('Clicked:', event.dataPoint);
+});
+
+// Later:
+unsub();</code></pre>
+
+      <h3 id="off">off(event, handler)</h3>
+      <p>Removes a specific event listener. Prefer the unsubscribe function from <code>on()</code>.</p>
+
+      <h3 id="getState">getState()</h3>
+      <p>Returns a frozen snapshot of the widget's internal state: <code>{ id, type, data, mounted, renderCount, lastUpdated }</code>.</p>
+      <pre><code>const state = widget.getState();
+console.log(state.renderCount); // 14
+console.log(state.lastUpdated); // 1692847200000</code></pre>
+
+      <!-- ========================================= -->
+      <!-- Events                                    -->
+      <!-- ========================================= -->
+      <h2 id="events">Event Reference</h2>
+      <p>All events can be listened to via <code>widget.on()</code> or globally via <code>Widgets.on()</code>.</p>
+
+      <table>
+        <thead>
+          <tr><th>Event</th><th>Payload</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>ready</code></td><td><code>{ id }</code></td><td>Fired after the first render completes.</td></tr>
+          <tr><td><code>update</code></td><td><code>{ id, data, diff }</code></td><td>Fired after every data update.</td></tr>
+          <tr><td><code>click</code></td><td><code>{ id, dataPoint, element }</code></td><td>User clicked a data point (charts, tables).</td></tr>
+          <tr><td><code>hover</code></td><td><code>{ id, dataPoint }</code></td><td>User hovered a data point.</td></tr>
+          <tr><td><code>error</code></td><td><code>{ id, error, phase }</code></td><td>Render or data error. Phase: <code>"render"</code> | <code>"data"</code> | <code>"mount"</code>.</td></tr>
+          <tr><td><code>destroy</code></td><td><code>{ id }</code></td><td>Widget is about to be destroyed.</td></tr>
+          <tr><td><code>resize</code></td><td><code>{ id, width, height }</code></td><td>Container was resized (debounced 100ms).</td></tr>
+          <tr><td><code>visible</code></td><td><code>{ id }</code></td><td>Widget entered the viewport (lazy mode).</td></tr>
+          <tr><td><code>hidden</code></td><td><code>{ id }</code></td><td>Widget left the viewport (lazy mode).</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ========================================= -->
+      <!-- Migration Notes                           -->
+      <!-- ========================================= -->
+      <h2>Migration from v1</h2>
+
+      <div class="deprecation">
+        <strong>Deprecated in v2:</strong> <code>createWidget(id, type, data)</code> — the 3-argument overload is removed. Use the options object form: <code>createWidget(id, { type, data })</code>.
       </div>
 
-      <h2>Browser compatibility</h2>
-      <p>Supported in all evergreen browsers. IE11 is not supported since v2.0.</p>
+      <div class="migration">
+        <strong>Migration path:</strong> Replace all <code>createWidget('x', 'line', [1,2,3])</code> calls with <code>createWidget('x', { type: 'line', data: [1,2,3] })</code>. The old form was removed in v2.0.0.
+      </div>
+
+      <div class="deprecation">
+        <strong>Deprecated in v2:</strong> <code>widget.setData(data)</code> — use <code>widget.update({ data })</code> instead.
+      </div>
+
+      <div class="deprecation">
+        <strong>Removed in v2:</strong> <code>Widgets.renderAll()</code> — widgets now auto-render when a container is provided.
+      </div>
+
+      <h3>Breaking changes in v2</h3>
+      <ul>
+        <li>Minimum Node.js version: 18.0 (was 14.0)</li>
+        <li>IE11 is no longer supported</li>
+        <li><code>Widget.render()</code> now returns a <code>Promise&lt;void&gt;</code> (was <code>void</code>)</li>
+        <li>The <code>data</code> option is no longer mutated — updates go through <code>update()</code></li>
+        <li>Error events now include a <code>phase</code> field</li>
+        <li>Theme config renamed <code>colors</code> → <code>colorMap</code> (old name still works with a warning)</li>
+      </ul>
+
+      <h3>Full changelog</h3>
+      <div class="changelog">
+        <ul>
+          <li><strong>v2.4.0</strong> — Added <code>listWidgets()</code>, <code>lazy</code> option, <code>visible</code>/<code>hidden</code> events</li>
+          <li><strong>v2.3.0</strong> — Added <code>onReady</code> callback, <code>resize</code> event</li>
+          <li><strong>v2.2.0</strong> — Added <code>createWidgets()</code> batch API, improved tree-shaking (−12KB)</li>
+          <li><strong>v2.1.0</strong> — Added <code>getState()</code>, TypeScript generic inference improvements</li>
+          <li><strong>v2.0.0</strong> — Major release: options-object API, removed 3-arg overload, IE11 dropped</li>
+          <li><strong>v1.9.0</strong> — Final v1 release, added deprecation warnings for v2 migration</li>
+        </ul>
+      </div>
+
+      <footer>widgets.js docs · MIT license · <a href="#">Edit this page on GitHub</a></footer>
     </main>
   </div>
-  <footer>widgets.js docs · license MIT · <a href="#">Edit this page on GitHub</a></footer>
 </body>
 </html>

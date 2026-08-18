@@ -3,76 +3,323 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TestBank Markets — WIDG NSE Option Chain</title>
+  <title>TestBank Markets — WIDG NSE Option Chain & F&O Dashboard</title>
+  <meta name="description" content="Complex financial dashboard with option chains, Greeks, sector data, and market depth.">
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; color: #222; }
-    header { background: #0b3d62; color: #fff; padding: 12px 20px; }
-    header a { color: #ffd166; margin-right: 12px; font-size: 13px; text-decoration: none; }
-    main { max-width: 1100px; margin: 20px auto; padding: 0 20px; }
-    h1 { font-size: 1.4em; }
-    .quote { display: flex; gap: 24px; font-size: 15px; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 12px 0; background: #f8fafc; }
-    .up { color: #0a7a2a; }
-    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; color: #222; line-height: 1.5; }
+    header { background: #0b3d62; color: #fff; padding: 10px 20px; display: flex; align-items: center; gap: 20px; }
+    header a { color: #ffd166; margin-right: 14px; font-size: 0.85em; text-decoration: none; }
+    header .search { margin-left: auto; }
+    header .search input { padding: 4px 10px; border: 1px solid #4a7fa5; border-radius: 4px; background: #1a5276; color: #fff; font-size: 13px; width: 180px; }
+    .breadcrumb { background: #eef4fb; padding: 6px 20px; font-size: 0.8em; color: #555; }
+    .breadcrumb a { color: #0b3d62; text-decoration: none; }
+    main { max-width: 1200px; margin: 16px auto; padding: 0 20px; }
+    h1 { font-size: 1.4em; margin: 0 0 8px; }
+    h2 { font-size: 1.15em; margin: 24px 0 8px; color: #0b3d62; }
+    h3 { font-size: 1.05em; margin: 16px 0 6px; color: #333; }
+    .quote { display: flex; flex-wrap: wrap; gap: 18px; font-size: 0.9em; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 10px 0; background: #f8fafc; }
+    .quote > div { white-space: nowrap; }
+    .up { color: #0a7a2a; font-weight: 600; }
+    .down { color: #c0392b; font-weight: 600; }
+    table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin: 8px 0 16px; }
     th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: right; white-space: nowrap; }
     th { background: #0b3d62; color: #fff; text-align: center; }
-    td:nth-child(1), td:nth-child(2) { text-align: left; }
+    td:first-child, th:first-child { text-align: left; }
+    tr:nth-child(even) { background: #f6f9fc; }
     .strike { background: #eef4fb; font-weight: bold; }
-    tbody tr:nth-child(even) { background: #f6f9fc; }
-    .note { font-size: 12px; color: #777; margin-top: 8px; }
+    .note { font-size: 11px; color: #777; margin-top: 4px; font-style: italic; }
+    .tabs { display: flex; gap: 0; border-bottom: 2px solid #0b3d62; margin: 16px 0 0; }
+    .tab { padding: 8px 16px; font-size: 0.85em; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: #555; }
+    .tab.active { font-weight: bold; color: #0b3d62; border-bottom-color: #0b3d62; }
+    .two-col { display: flex; gap: 20px; flex-wrap: wrap; }
+    .two-col > div { flex: 1; min-width: 340px; }
+    .greek { font-size: 11px; color: #888; }
+    .market-depth { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .depth-side { font-size: 0.85em; }
+    .depth-side.bids td:nth-child(2) { color: #0a7a2a; }
+    .depth-side.asks td:nth-child(2) { color: #c0392b; }
+    .callout { background: #fffbdd; border-left: 3px solid #e6a700; padding: 8px 12px; margin: 12px 0; font-size: 0.85em; border-radius: 3px; }
+    .sector-bar { height: 12px; border-radius: 6px; margin: 4px 0; }
     footer { border-top: 1px solid #ddd; margin-top: 24px; padding: 12px 20px; font-size: 12px; color: #777; }
+    @media (max-width: 768px) { .two-col { flex-direction: column; } .market-depth { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <header>
-    <strong>TestBank Markets</strong>
-    <a href="#">Markets</a><a href="#">Options</a><a href="#">Indices</a><a href="#">News</a><a href="#">Portfolio</a>
+    <strong style="font-size:1.1em;">TestBank Markets</strong>
+    <a href="#">Markets</a>
+    <a href="#">Options</a>
+    <a href="#">Indices</a>
+    <a href="#">Mutual Funds</a>
+    <a href="#">Commodities</a>
+    <a href="#">News</a>
+    <a href="#">Portfolio</a>
+    <div class="search"><input type="text" placeholder="Search stocks…"></div>
   </header>
+  <div class="breadcrumb">
+    <a href="#">Home</a> › <a href="#">Equities</a> › <a href="#">NSE</a> › <a href="#">WIDG</a> › Option Chain
+  </div>
+
   <main>
+    <!-- ============================================ -->
+    <!-- Stock Quote Header                            -->
+    <!-- ============================================ -->
     <h1>WIDG — Widget Industries Ltd.</h1>
     <div class="quote">
       <div>Last: <b>₹412.35</b></div>
       <div>Change: <b class="up">+₹8.10 (+2.00%)</b></div>
       <div>Open: ₹405.20</div>
       <div>Prev close: ₹404.25</div>
+      <div>High: ₹414.80</div>
+      <div>Low: ₹402.10</div>
       <div>Volume: 1,840,552</div>
+      <div>Avg vol (30d): 1,245,000</div>
       <div>52w high: ₹465.00</div>
       <div>52w low: ₹301.10</div>
+      <div>Mkt cap: ₹2,061 Cr</div>
+      <div>P/E: 22.4</div>
+      <div>EPS: ₹18.41</div>
+      <div>BV: ₹142.60</div>
+      <div>Div yield: 1.8%</div>
     </div>
 
-    <h2 style="font-size:1.1em;">Option chain — expiry 28 Aug 2026 (Calls / Puts)</h2>
-    <table id="option-chain">
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab active">Option Chain</div>
+      <div class="tab">Futures</div>
+      <div class="tab">Greeks</div>
+      <div class="tab">Market Depth</div>
+      <div class="tab">Delivery</div>
+      <div class="tab">Sector</div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- Option Chain — Full with OI + Volume          -->
+    <!-- ============================================ -->
+    <h2>Option chain — expiry 28 Aug 2026</h2>
+    <p class="note">Strike 410.00 is at the money. OI = open interest, LTP = last traded price, IV = implied volatility, chg = change in OI from previous day.</p>
+
+    <table>
       <thead>
         <tr>
-          <th>Call OI</th><th>Call LTP</th><th>Strike</th><th>Put LTP</th><th>Put OI</th>
+          <th colspan="4" style="background:#1a5a3a;">CALLS</th>
+          <th>Strike</th>
+          <th colspan="4" style="background:#7a1a1a;">PUTS</th>
+        </tr>
+        <tr>
+          <th>OI</th><th>Chg OI</th><th>LTP</th><th>Vol</th>
+          <th></th>
+          <th>Vol</th><th>LTP</th><th>Chg OI</th><th>OI</th>
         </tr>
       </thead>
       <tbody>
-        <tr><td>1,152,000</td><td>41.85</td><td>370.00</td><td>0.35</td><td>3,114,000</td></tr>
-        <tr><td>1,980,000</td><td>32.60</td><td>380.00</td><td>0.55</td><td>2,888,000</td></tr>
-        <tr><td>2,340,000</td><td>23.75</td><td>390.00</td><td>0.95</td><td>2,650,000</td></tr>
-        <tr><td>2,110,000</td><td>15.90</td><td>400.00</td><td>2.10</td><td>2,305,000</td></tr>
-        <tr class="strike"><td>2,842,000</td><td>9.45</td><td>410.00</td><td>4.80</td><td>2,976,000</td></tr>
-        <tr><td>1,760,000</td><td>5.15</td><td>420.00</td><td>10.25</td><td>1,840,000</td></tr>
-        <tr><td>980,000</td><td>2.60</td><td>430.00</td><td>18.90</td><td>1,120,000</td></tr>
-        <tr><td>642,000</td><td>1.35</td><td>440.00</td><td>27.40</td><td>880,000</td></tr>
-        <tr><td>388,000</td><td>0.70</td><td>450.00</td><td>36.05</td><td>610,000</td></tr>
-        <tr><td>201,000</td><td>0.30</td><td>460.00</td><td>45.80</td><td>402,000</td></tr>
+        <tr>
+          <td>680,000</td><td class="up">+12,400</td><td>72.50</td><td>8,200</td>
+          <td>370.00</td>
+          <td>5,100</td><td>0.35</td><td class="down">−8,200</td><td>3,420,000</td>
+        </tr>
+        <tr>
+          <td>920,000</td><td class="up">+18,600</td><td>61.20</td><td>12,400</td>
+          <td>380.00</td>
+          <td>9,800</td><td>0.55</td><td class="down">−12,100</td><td>3,188,000</td>
+        </tr>
+        <tr>
+          <td>1,152,000</td><td class="up">+24,100</td><td>51.85</td><td>18,600</td>
+          <td>390.00</td>
+          <td>14,200</td><td>0.95</td><td class="down">−15,800</td><td>2,850,000</td>
+        </tr>
+        <tr>
+          <td>1,980,000</td><td class="up">+31,200</td><td>42.60</td><td>24,100</td>
+          <td>400.00</td>
+          <td>21,800</td><td>2.10</td><td class="down">−19,400</td><td>2,305,000</td>
+        </tr>
+        <tr class="strike">
+          <td>2,842,000</td><td class="up">+42,800</td><td>32.45</td><td>38,200</td>
+          <td>410.00</td>
+          <td>42,600</td><td>4.80</td><td class="down">−28,600</td><td>2,976,000</td>
+        </tr>
+        <tr>
+          <td>1,760,000</td><td class="down">−14,200</td><td>23.15</td><td>31,400</td>
+          <td>420.00</td>
+          <td>28,400</td><td>10.25</td><td class="up">+16,800</td><td>1,840,000</td>
+        </tr>
+        <tr>
+          <td>980,000</td><td class="down">−8,600</td><td>15.60</td><td>22,800</td>
+          <td>430.00</td>
+          <td>18,200</td><td>18.90</td><td class="up">+12,400</td><td>1,120,000</td>
+        </tr>
+        <tr>
+          <td>642,000</td><td class="down">−5,200</td><td>9.35</td><td>14,600</td>
+          <td>440.00</td>
+          <td>11,800</td><td>27.40</td><td class="up">+8,600</td><td>880,000</td>
+        </tr>
+        <tr>
+          <td>388,000</td><td class="down">−3,400</td><td>5.20</td><td>8,400</td>
+          <td>450.00</td>
+          <td>6,200</td><td>36.05</td><td class="up">+5,400</td><td>610,000</td>
+        </tr>
+        <tr>
+          <td>201,000</td><td class="down">−1,800</td><td>2.80</td><td>4,200</td>
+          <td>460.00</td>
+          <td>3,100</td><td>45.80</td><td class="up">+3,200</td><td>402,000</td>
+        </tr>
+        <tr>
+          <td>98,000</td><td class="down">−800</td><td>1.30</td><td>2,100</td>
+          <td>470.00</td>
+          <td>1,400</td><td>55.40</td><td class="up">+1,600</td><td>245,000</td>
+        </tr>
       </tbody>
     </table>
-    <p class="note">Data delayed by 15 minutes. Strike 410.00 is at the money. OI = open interest, LTP = last traded price.</p>
 
-    <h2 style="font-size:1.1em;">Recent trades</h2>
-    <table>
-      <thead><tr><th>Time</th><th>Price</th><th>Qty</th><th>Direction</th></tr></thead>
+    <!-- ============================================ -->
+    <!-- Greeks Table                                  -->
+    <!-- ============================================ -->
+    <h2>Option Greeks — WIDG Aug 2026</h2>
+    <p class="note">Delta = price sensitivity, Gamma = delta sensitivity, Theta = time decay, Vega = volatility sensitivity, Rho = interest rate sensitivity.</p>
+
+    <div class="two-col">
+      <div>
+        <h3>Call Greeks</h3>
+        <table>
+          <thead>
+            <tr><th>Strike</th><th>LTP</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th><th>Rho</th><th>IV</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>390.00</td><td>51.85</td><td>0.72</td><td>0.008</td><td>−0.42</td><td>1.85</td><td>0.38</td><td>28.4%</td></tr>
+            <tr><td>400.00</td><td>42.60</td><td>0.65</td><td>0.011</td><td>−0.48</td><td>2.12</td><td>0.35</td><td>26.8%</td></tr>
+            <tr class="strike"><td>410.00</td><td>32.45</td><td>0.54</td><td>0.014</td><td>−0.52</td><td>2.34</td><td>0.31</td><td>25.6%</td></tr>
+            <tr><td>420.00</td><td>23.15</td><td>0.42</td><td>0.013</td><td>−0.46</td><td>2.08</td><td>0.27</td><td>24.9%</td></tr>
+            <tr><td>430.00</td><td>15.60</td><td>0.31</td><td>0.010</td><td>−0.38</td><td>1.72</td><td>0.22</td><td>24.2%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3>Put Greeks</h3>
+        <table>
+          <thead>
+            <tr><th>Strike</th><th>LTP</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th><th>Rho</th><th>IV</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>390.00</td><td>0.95</td><td>−0.06</td><td>0.004</td><td>−0.18</td><td>0.82</td><td>−0.14</td><td>29.2%</td></tr>
+            <tr><td>400.00</td><td>2.10</td><td>−0.12</td><td>0.008</td><td>−0.28</td><td>1.34</td><td>−0.19</td><td>27.4%</td></tr>
+            <tr class="strike"><td>410.00</td><td>4.80</td><td>−0.22</td><td>0.012</td><td>−0.38</td><td>1.92</td><td>−0.24</td><td>25.8%</td></tr>
+            <tr><td>420.00</td><td>10.25</td><td>−0.35</td><td>0.014</td><td>−0.44</td><td>2.24</td><td>−0.28</td><td>25.1%</td></tr>
+            <tr><td>430.00</td><td>18.90</td><td>−0.52</td><td>0.013</td><td>−0.42</td><td>2.06</td><td>−0.31</td><td>24.4%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- Recent Trades                                 -->
+    <!-- ============================================ -->
+    <h2>Recent trades</h2>
+    <table style="max-width:500px;">
+      <thead><tr><th>Time</th><th>Price</th><th>Qty</th><th>Value (₹)</th><th>Direction</th><th>Instrument</th></tr></thead>
       <tbody>
-        <tr><td>15:29:04</td><td>412.35</td><td>350</td><td class="up">Buy</td></tr>
-        <tr><td>15:28:51</td><td>412.00</td><td>120</td><td>Sell</td></tr>
-        <tr><td>15:28:40</td><td>412.10</td><td>480</td><td class="up">Buy</td></tr>
-        <tr><td>15:28:22</td><td>411.80</td><td>95</td><td>Sell</td></tr>
-        <tr><td>15:28:05</td><td>412.05</td><td>610</td><td class="up">Buy</td></tr>
+        <tr><td>15:29:04</td><td>412.35</td><td>350</td><td>144,322</td><td class="up">Buy</td><td>Cash</td></tr>
+        <tr><td>15:28:58</td><td>410.00</td><td>500</td><td>205,000</td><td class="down">Sell</td><td>Fut Aug</td></tr>
+        <tr><td>15:28:51</td><td>412.00</td><td>120</td><td>49,440</td><td class="down">Sell</td><td>Cash</td></tr>
+        <tr><td>15:28:40</td><td>412.10</td><td>480</td><td>197,808</td><td class="up">Buy</td><td>Cash</td></tr>
+        <tr><td>15:28:35</td><td>420.00</td><td>200</td><td>—</td><td class="up">Buy</td><td>CE 420</td></tr>
+        <tr><td>15:28:22</td><td>411.80</td><td>95</td><td>39,121</td><td class="down">Sell</td><td>Cash</td></tr>
+        <tr><td>15:28:15</td><td>410.00</td><td>1,000</td><td>410,000</td><td class="up">Buy</td><td>Fut Aug</td></tr>
+        <tr><td>15:28:05</td><td>412.05</td><td>610</td><td>251,350</td><td class="up">Buy</td><td>Cash</td></tr>
+        <tr><td>15:27:58</td><td>410.00</td><td>300</td><td>—</td><td class="down">Sell</td><td>PE 400</td></tr>
+        <tr><td>15:27:44</td><td>411.90</td><td>220</td><td>90,618</td><td class="up">Buy</td><td>Cash</td></tr>
       </tbody>
     </table>
+
+    <!-- ============================================ -->
+    <!-- Market Depth                                  -->
+    <!-- ============================================ -->
+    <h2>Market depth — WIDG (Cash)</h2>
+    <div class="market-depth">
+      <div class="depth-side bids">
+        <h3 style="color:#0a7a2a;">Bids (Buy)</h3>
+        <table>
+          <thead><tr><th>Price</th><th>Qty</th><th># Orders</th><th>Total</th></tr></thead>
+          <tbody>
+            <tr><td>412.30</td><td>450</td><td>12</td><td>450</td></tr>
+            <tr><td>412.25</td><td>820</td><td>18</td><td>1,270</td></tr>
+            <tr><td>412.20</td><td>1,200</td><td>24</td><td>2,470</td></tr>
+            <tr><td>412.15</td><td>680</td><td>15</td><td>3,150</td></tr>
+            <tr><td>412.10</td><td>2,100</td><td>31</td><td>5,250</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="depth-side asks">
+        <h3 style="color:#c0392b;">Asks (Sell)</h3>
+        <table>
+          <thead><tr><th>Price</th><th>Qty</th><th># Orders</th><th>Total</th></tr></thead>
+          <tbody>
+            <tr><td>412.35</td><td>350</td><td>8</td><td>350</td></tr>
+            <tr><td>412.40</td><td>620</td><td>14</td><td>970</td></tr>
+            <tr><td>412.45</td><td>1,100</td><td>22</td><td>2,070</td></tr>
+            <tr><td>412.50</td><td>780</td><td>17</td><td>2,850</td></tr>
+            <tr><td>412.55</td><td>1,950</td><td>28</td><td>4,800</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="note">Best bid: ₹412.30 (450 shares) · Best ask: ₹412.35 (350 shares) · Spread: ₹0.05 (0.01%)</p>
+
+    <!-- ============================================ -->
+    <!-- Delivery Data                                 -->
+    <!-- ============================================ -->
+    <h2>Delivery vs. intraday</h2>
+    <table style="max-width:500px;">
+      <thead><tr><th>Metric</th><th>Today</th><th>5-day avg</th><th>20-day avg</th></tr></thead>
+      <tbody>
+        <tr><td>Total volume</td><td>1,840,552</td><td>1,456,200</td><td>1,245,000</td></tr>
+        <tr><td>Delivery volume</td><td>642,188</td><td>512,400</td><td>438,000</td></tr>
+        <tr><td>Delivery %</td><td>34.9%</td><td>35.2%</td><td>35.2%</td></tr>
+        <tr><td>Intraday volume</td><td>1,198,364</td><td>943,800</td><td>807,000</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ============================================ -->
+    <!-- Sector Breakdown                              -->
+    <!-- ============================================ -->
+    <h2>Sector performance — today</h2>
+    <table>
+      <thead>
+        <tr><th>Sector</th><th>Change</th><th>Volume (Cr)</th><th>Top gainer</th><th>Top loser</th><th>Breadth</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>IT Software</td><td class="up">+2.8%</td><td>4,280</td><td>TechCorp +5.2%</td><td>SoftSell −1.4%</td><td>38 ↑ / 12 ↓</td></tr>
+        <tr><td>Banking</td><td class="up">+1.4%</td><td>6,120</td><td>SouthBank +3.8%</td><td>NorthFin −0.9%</td><td>24 ↑ / 8 ↓</td></tr>
+        <tr><td>Auto</td><td class="up">+0.8%</td><td>2,840</td><td>MotorWorks +2.1%</td><td>PartsCo −1.2%</td><td>12 ↑ / 6 ↓</td></tr>
+        <tr><td>Pharma</td><td class="down">−0.6%</td><td>1,960</td><td>HealthInc +1.4%</td><td>MediCorp −2.8%</td><td>8 ↑ / 14 ↓</td></tr>
+        <tr><td>FMCG</td><td class="down">−1.2%</td><td>1,540</td><td>ConsumerCo +0.4%</td><td>DailyGoods −3.1%</td><td>6 ↑ / 18 ↓</td></tr>
+        <tr><td>Metals</td><td class="down">−2.4%</td><td>3,280</td><td>SteelInc +0.2%</td><td>IronCorp −4.6%</td><td>4 ↑ / 22 ↓</td></tr>
+        <tr><td>Energy</td><td class="up">+1.8%</td><td>2,120</td><td>SolarTech +4.2%</td><td>OilGasCo −1.1%</td><td>16 ↑ / 10 ↓</td></tr>
+        <tr><td>Real Estate</td><td class="down">−0.4%</td><td>1,280</td><td>BuildCo +1.8%</td><td>LandCorp −2.2%</td><td>10 ↑ / 12 ↓</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ============================================ -->
+    <!-- NIFTY 50 Snapshot                             -->
+    <!-- ============================================ -->
+    <h2>NIFTY 50 — Index snapshot</h2>
+    <div class="quote">
+      <div>Last: <b>24,582.30</b></div>
+      <div>Change: <b class="up">+186.40 (+0.76%)</b></div>
+      <div>Open: 24,412.80</div>
+      <div>Prev close: 24,395.90</div>
+      <div>High: 24,618.20</div>
+      <div>Low: 24,388.60</div>
+      <div>Volume: ₹1.24 Lakh Cr</div>
+      <div>Advances: 32</div>
+      <div>Declines: 16</div>
+      <div>Unchanged: 2</div>
+    </div>
+
+    <div class="callout">
+      <strong>Note:</strong> All data is simulated for testing purposes only. Not investment advice. Market data delayed by 15 minutes.
+    </div>
   </main>
-  <footer>TestBank Markets · market data for testing only, not investment advice.</footer>
+
+  <footer>TestBank Markets · Simulated market data for extraction testing · Not investment advice.</footer>
 </body>
 </html>

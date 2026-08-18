@@ -16,3 +16,8 @@ data/
 
 # Domain hints atomic-write backups
 domain-hints.json.bak
+
+# Website (GitHub Pages)
+website/.vitepress/dist/
+website/.vitepress/cache/
+website/node_modules/

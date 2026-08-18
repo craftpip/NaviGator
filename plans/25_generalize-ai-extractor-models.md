@@ -436,7 +436,7 @@ dropdowns (line 411 special-case updated).
 - [x] tests: `tests/post-processor.test.js` (29 tests: chat/mineru/api dispatch, interpolation, screenshot, concurrency, input validation); coercion tests in `config.test.js` + `domain-hints.test.js`; old `tests/ai-extractor.test.js` deleted
 - [x] docs: AGENTS.md, README.md, `.env.example`, `.env.example.full`, `docs/navigator-mineru-sidecar.md`
 
-### Phase 3 — Console structured editor for POST_PROCESSOR_MODELS (not started)
+### Phase 3 — Console structured editor for POST_PROCESSOR_MODELS (done)
 
 Replace the generic JSON text input for `POST_PROCESSOR_MODELS` with a dedicated structured
 editor. Also make `DEFAULT_EXTRACT_POST_PROCESSOR` a dropdown populated from the entered models.

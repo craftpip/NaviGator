@@ -4,21 +4,40 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Example Test Site — Home</title>
-  <meta name="description" content="A bare-bones test website for extraction testing.">
+  <meta name="description" content="A comprehensive test website for extraction testing — realistic pages simulating news, e-commerce, social, docs, finance, forms, interactive UI, and more.">
   <style>
-    body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #222; }
-    header { background: #33475b; color: #fff; padding: 20px 30px; }
-    nav a { color: #ffd166; margin-right: 14px; text-decoration: none; }
-    main { max-width: 800px; margin: 30px auto; padding: 0 20px; }
-    .hero { background: #eef4fb; padding: 20px; border-radius: 8px; }
-    article.post { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 18px 0; }
-    article.post h2 { margin-top: 0; }
-    footer { background: #f2f2f2; padding: 15px 30px; margin-top: 40px; font-size: 14px; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; color: #1a1a2e; line-height: 1.6; background: #f8f9fb; }
+    header { background: #1e293b; color: #fff; padding: 28px 30px; }
+    header h1 { font-size: 1.6em; margin: 0 0 4px; }
+    header p { font-size: 0.9em; color: #94a3b8; margin: 0 0 14px; }
+    nav a { color: #60a5fa; margin-right: 16px; text-decoration: none; font-size: 0.88em; }
+    nav a:hover { text-decoration: underline; }
+    main { max-width: 900px; margin: 30px auto; padding: 0 20px; }
+    .hero { background: #eef2ff; border: 1px solid #c7d2fe; padding: 24px 28px; border-radius: 12px; margin-bottom: 32px; }
+    .hero h2 { margin: 0 0 6px; font-size: 1.3em; }
+    .hero p { margin: 0; color: #475569; font-size: 0.95em; }
+    .section-label { font-size: 0.78em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #6b7280; margin: 28px 0 12px; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px; }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+    .tile { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 18px; text-decoration: none; color: inherit; transition: border-color 0.15s, box-shadow 0.15s; }
+    .tile:hover { border-color: #a5b4fc; box-shadow: 0 2px 8px rgba(79,70,229,0.08); }
+    .tile h3 { font-size: 0.95em; margin: 0 0 3px; color: #1e293b; }
+    .tile .desc { font-size: 0.82em; color: #6b7280; line-height: 1.45; }
+    .tile .tags { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+    .tile .tag { font-size: 0.68em; font-weight: 600; padding: 2px 7px; border-radius: 4px; background: #f1f5f9; color: #475569; }
+    .tile .tag.green { background: #ecfdf5; color: #065f46; }
+    .tile .tag.blue { background: #eff6ff; color: #1e40af; }
+    .tile .tag.amber { background: #fffbeb; color: #92400e; }
+    .tile .tag.rose { background: #fff1f2; color: #9f1239; }
+    .tile .tag.violet { background: #f5f3ff; color: #5b21b6; }
+    footer { border-top: 1px solid #e5e7eb; padding: 20px 30px; margin-top: 40px; font-size: 0.82em; color: #9ca3af; text-align: center; }
   </style>
 </head>
 <body>
   <header>
     <h1>Example Test Site</h1>
+    <p>28 realistic page types for testing web extraction. Fictional content, real DOM patterns.</p>
     <nav>
       <a href="/">Home</a>
       <a href="/post/">Blog Post</a>
@@ -33,75 +52,199 @@
   <main>
     <section class="hero">
       <h2>Welcome to the test site</h2>
-      <p>This site is a bare-bones HTML playground used to test the web extraction tool. It has a few page types: a blog post, a user profile, a news article, and some data tables.</p>
-      <p>Jump to: <a href="/post/">Read the blog post</a>, <a href="/table/">see the tables</a>.</p>
+      <p>This site is a comprehensive HTML playground for testing web extraction tools. Every page simulates a real-world layout — news articles, dashboards, social feeds, docs, e-commerce, forms, multi-step flows, and more — all with fictional content in a realistic "Testville / CloudStack" world. No real data, no real companies.</p>
     </section>
 
-    <h2>Latest posts</h2>
+    <div class="section-label">Content & Reading</div>
+    <div class="grid">
+      <a class="tile" href="/post/">
+        <h3>Blog Post — Long-form Article</h3>
+        <div class="desc">Dense 15,000-character essay on the ethics of testing. Rich paragraphs, blockquotes, inline code, multiple heading levels. Good for Readability extraction.</div>
+        <div class="tags"><span class="tag green">Readability-friendly</span><span class="tag">Long-form</span></div>
+      </a>
+      <a class="tile" href="/news/">
+        <h3>News — Full Newspaper</h3>
+        <div class="desc">Complete newspaper layout: 8 articles, sidebar with trending, weather, upcoming events, newsletter signup, and public notices. Live ticker at top.</div>
+        <div class="tags"><span class="tag green">Readability-friendly</span><span class="tag blue">Multi-article</span><span class="tag">Sidebar</span></div>
+      </a>
+      <a class="tile" href="/news/investigation/">
+        <h3>Investigative Report</h3>
+        <div class="desc">Long-form journalism with document excerpts, source tables, financial data, and a historical timeline. Complex structure with nested sections.</div>
+        <div class="tags"><span class="tag green">Readability-friendly</span><span class="tag amber">Complex structure</span></div>
+      </a>
+      <a class="tile" href="/reference/">
+        <h3>Wikipedia-style Article</h3>
+        <div class="desc">26,000-character encyclopedia article about Testville. Infobox, table of contents, citations, external links, multiple sections with figures.</div>
+        <div class="tags"><span class="tag green">Readability-friendly</span><span class="tag">Infobox</span><span class="tag">Citations</span></div>
+      </a>
+      <a class="tile" href="/blog/article/">
+        <h3>Blog Article — Full Essay</h3>
+        <div class="desc">21,500-character essay with author bio, reading time, tags, social share buttons, and a nested comment thread at the bottom.</div>
+        <div class="tags"><span class="tag green">Readability-friendly</span><span class="tag violet">Comments</span></div>
+      </a>
+      <a class="tile" href="/docs/tutorial/">
+        <h3>Documentation Tutorial</h3>
+        <div class="desc">Step-by-step widgets.js tutorial with code blocks, copy buttons, tables, admonitions (tip/warning/danger), and a table of contents sidebar.</div>
+        <div class="tags"><span class="tag green">Readability-friendly</span><span class="tag blue">Code blocks</span><span class="tag">Admonitions</span></div>
+      </a>
+    </div>
 
-    <article class="post">
-      <h2><a href="/post/">Why Test Pages Matter</a></h2>
-      <p class="meta">Posted on 2026-08-01 by Test Author</p>
-      <p>Every extraction tool needs a stable, predictable page to be tested against. This is one of them. It contains headings, paragraphs, lists and links.</p>
-      <a href="/post/">Read more</a>
-    </article>
+    <div class="section-label">Structured Data</div>
+    <div class="grid">
+      <a class="tile" href="/table/">
+        <h3>Financial Tables</h3>
+        <div class="desc">10 complex HTML tables: quarterly financials, revenue breakdown, regional performance, customer metrics, churn cohort, P&amp;L statement. 25,000+ characters.</div>
+        <div class="tags"><span class="tag amber">10 tables</span><span class="tag">Numeric data</span><span class="tag">Spans/merges</span></div>
+      </a>
+      <a class="tile" href="/finance/">
+        <h3>F&amp;O Dashboard — Option Chain</h3>
+        <div class="desc">Indian derivatives dashboard with option chain (50+ rows), Greeks table, margin calculator, and underlying price. Dense numerical extraction target.</div>
+        <div class="tags"><span class="tag amber">Dense tables</span><span class="tag">Greeks</span><span class="tag">50+ rows</span></div>
+      </a>
+      <a class="tile" href="/ecommerce/compare/">
+        <h3>Product Comparison</h3>
+        <div class="desc">Phone comparison page: side-by-side specs table, feature ratings, benchmark scores, pros/cons lists, user ratings breakdown, and Q&amp;A section.</div>
+        <div class="tags"><span class="tag amber">Comparison table</span><span class="tag">Ratings</span><span class="tag">Pros/cons</span></div>
+      </a>
+      <a class="tile" href="/docs/">
+        <h3>API Reference</h3>
+        <div class="desc">widgets.js documentation: function signatures, parameter tables, return type tables, code examples, sidebar navigation, and a getting-started guide.</div>
+        <div class="tags"><span class="tag blue">API docs</span><span class="tag">Parameter tables</span><span class="tag">Code</span></div>
+      </a>
+    </div>
 
-    <article class="post">
-      <h2><a href="/news/">Local Library Reopens After Renovation</a></h2>
-      <p class="meta">Posted on 2026-08-02 by News Desk</p>
-      <p>A quick news item to exercise article extraction with a byline, date and body copy.</p>
-      <a href="/news/">Read more</a>
-    </article>
+    <div class="section-label">Profiles & Social</div>
+    <div class="grid">
+      <a class="tile" href="/profile/">
+        <h3>Developer Profile</h3>
+        <div class="desc">GitHub-style profile (Elena Vasquez): pinned repos, contribution heatmap, follower stats, activity feed, org memberships, badges, and a bio.</div>
+        <div class="tags"><span class="tag violet">Social profile</span><span class="tag">Stats grid</span><span class="tag">Activity feed</span></div>
+      </a>
+      <a class="tile" href="/social/">
+        <h3>Social Feed — Chirp</h3>
+        <div class="desc">Twitter/Chirp feed: timeline with threads, polls, quote tweets, trending topics sidebar, and who-to-follow suggestions.</div>
+        <div class="tags"><span class="tag violet">Social feed</span><span class="tag">Threads</span><span class="tag">Sidebar</span></div>
+      </a>
+      <a class="tile" href="/social/thread/">
+        <h3>Long Thread</h3>
+        <div class="desc">31,700-character Twitter thread with deeply nested replies (4+ levels), quote tweets, reactions, and a long chain of back-and-forth replies.</div>
+        <div class="tags"><span class="tag violet">Nested replies</span><span class="tag amber">Deep nesting</span><span class="tag">31K chars</span></div>
+      </a>
+      <a class="tile" href="/portfolio/">
+        <h3>Developer Portfolio</h3>
+        <div class="desc">Mira Solano's personal site: hero section, project grid (6 projects with images), blog posts, talks, tech stack, and contact form.</div>
+        <div class="tags"><span class="tag violet">Portfolio</span><span class="tag">Project grid</span><span class="tag">Contact form</span></div>
+      </a>
+    </div>
 
-    <article class="post">
-      <h2><a href="/table/">Monthly Sales Report</a></h2>
-      <p class="meta">Posted on 2026-08-03 by Data Team</p>
-      <p>Structured data in HTML tables. Good for testing table extraction and pipe-separated output.</p>
-      <a href="/table/">Read more</a>
-    </article>
+    <div class="section-label">Interactive & Stateful</div>
+    <div class="grid">
+      <a class="tile" href="/interactive/">
+        <h3>Help Center — Interactive</h3>
+        <div class="desc">Tab panels, accordion FAQ, toggle switches that show/hide elements, modals, tooltips, and conditional content sections. 35,000 characters.</div>
+        <div class="tags"><span class="tag blue">Tabs</span><span class="tag blue">Accordion</span><span class="tag amber">Toggles</span><span class="tag">Modals</span></div>
+      </a>
+      <a class="tile" href="/form/">
+        <h3>SaaS Signup Form</h3>
+        <div class="desc">CloudStack registration: text inputs, email, password, selects, radio buttons, plan picker cards, checkboxes with toggles, and multi-section layout.</div>
+        <div class="tags"><span class="tag rose">Form inputs</span><span class="tag">Plan picker</span><span class="tag">Validation</span></div>
+      </a>
+      <a class="tile" href="/flow/step1/">
+        <h3>Onboarding Step 1 — Profile</h3>
+        <div class="desc">First step of a 3-page wizard: role selection, company details, industry pick, checkbox preferences. Sidebar with role descriptions and org limits.</div>
+        <div class="tags"><span class="tag rose">Multi-step flow</span><span class="tag">Sidebar</span><span class="tag">flow_type</span></div>
+      </a>
+      <a class="tile" href="/flow/step2/">
+        <h3>Onboarding Step 2 — Team</h3>
+        <div class="desc">Team invite step: email inputs with role selects, add/remove rows, permissions matrix, role descriptions, workspace limits, and CSV import info.</div>
+        <div class="tags"><span class="tag rose">Multi-step flow</span><span class="tag">Dynamic rows</span><span class="tag">flow_type</span></div>
+      </a>
+      <a class="tile" href="/flow/step3/">
+        <h3>Onboarding Step 3 — Deploy</h3>
+        <div class="desc">Deploy step: template grid selector, project name, region picker, deploy button, and post-deploy success state with next steps.</div>
+        <div class="tags"><span class="tag rose">Multi-step flow</span><span class="tag">Template selector</span><span class="tag">flow_navigate</span></div>
+      </a>
+    </div>
 
-    <section>
-      <h2>Test sites catalog</h2>
-      <p>Realistic page types for exercising extraction — each folder simulates a different pattern of the real internet:</p>
-      <ul>
-        <li><a href="/readability-good/article/">The Daily Chronicle</a> — clean, semantic news (Readability-friendly)</li>
-        <li><a href="/readability-bad/article/">TrendyBlogz</a> — 1998 div-soup portal (Readability-hostile)</li>
-        <li><a href="/spa/">WidgetDash SPA</a> — content rendered entirely by JavaScript</li>
-        <li><a href="/infinite-scroll/">ScrollFeed</a> — content loads on scroll (IntersectionObserver)</li>
-        <li><a href="/paywall/">PremiumBeat</a> — article blurred behind a paywall overlay</li>
-        <li><a href="/cookie-consent/">RecipeNest</a> — full article with a fixed cookie banner</li>
-        <li><a href="/ecommerce/">GadgetHub</a> — product page with specs table and reviews</li>
-        <li><a href="/social/">Chirp profile</a> — social profile with stats and a feed</li>
-        <li><a href="/docs/">widgets.js docs</a> — docs page with sidebar, code, and tables</li>
-        <li><a href="/reference/">Testpedia</a> — Wikipedia-style article with infobox</li>
-        <li><a href="/video/">VidStream</a> — video page with description, comments, sidebar</li>
-        <li><a href="/finance/">TestBank Markets</a> — dense option-chain data tables</li>
-        <li><a href="/blog/">The Testville Ledger</a> — rich blog: featured posts, tags, comments, exit-intent popup</li>
-        <li><a href="/blog/article/">Ledger article</a> — full essay with author box and nested comment thread</li>
-        <li><a href="/chaos/">ChaosHub</a> — a page that randomizes itself on every load</li>
-        <li><a href="/live/">LiveWire</a> — markets, scores, and a live blog that never stop updating</li>
-        <li><a href="/lazy/">SlowScroller</a> — images and text lazy-load on scroll</li>
-        <li><a href="/slow/">SlowServe</a> — content appears in stages with random delays</li>
-        <li><a href="/404/">Soft 404</a> — the page-not-found pattern with search</li>
-        <li><a href="/redirect/">Redirect</a> — a page that redirects elsewhere after 3 seconds</li>
-      </ul>
-    </section>
+    <div class="section-label">Edge Cases & Stress Tests</div>
+    <div class="grid">
+      <a class="tile" href="/readability-good/article/">
+        <h3>The Daily Chronicle</h3>
+        <div class="desc">Clean, semantic news page with article, nav, aside, footer. Readability-friendly — should extract cleanly without hints.</div>
+        <div class="tags"><span class="tag green">Readability-friendly</span><span class="tag">Semantic HTML</span></div>
+      </a>
+      <a class="tile" href="/readability-bad/article/">
+        <h3>TrendyBlogz — Div Soup</h3>
+        <div class="desc">1998-style div-soup portal: nested divs, no semantic elements, mixed content, sidebar noise. Readability-hostile by design.</div>
+        <div class="tags"><span class="tag rose">Readability-hostile</span><span class="tag">Div soup</span></div>
+      </a>
+      <a class="tile" href="/chaos/">
+        <h3>ChaosHub — Randomized</h3>
+        <div class="desc">Page that randomizes itself on every load: random headings, paragraphs, tables, links, images, and layout. Tests extraction stability.</div>
+        <div class="tags"><span class="tag rose">Unpredictable</span><span class="tag">Non-deterministic</span></div>
+      </a>
+      <a class="tile" href="/live/">
+        <h3>LiveWire — Never-Stop Updating</h3>
+        <div class="desc">Live stock ticker, live scores, and a live blog that continuously appends new entries via JavaScript. Content is always changing.</div>
+        <div class="tags"><span class="tag amber">Dynamic content</span><span class="tag">Auto-updating</span></div>
+      </a>
+      <a class="tile" href="/404/">
+        <h3>Soft 404</h3>
+        <div class="desc">A page-not-found page with a search box, suggested links, and helpful copy. Looks like a real page but is actually a 404.</div>
+        <div class="tags"><span class="tag amber">Soft 404</span><span class="tag">Search box</span></div>
+      </a>
+      <a class="tile" href="/paywall/">
+        <h3>PremiumBeat — Paywall</h3>
+        <div class="desc">Article with the first 2 paragraphs visible, then a blurred overlay with a subscription prompt. Content is in the DOM but hidden.</div>
+        <div class="tags"><span class="tag amber">Paywall</span><span class="tag">Hidden content</span></div>
+      </a>
+      <a class="tile" href="/cookie-consent/">
+        <h3>RecipeNest — Cookie Banner</h3>
+        <div class="desc">Full recipe article with a fixed cookie consent banner at the bottom. Content is accessible but partially obscured by the overlay.</div>
+        <div class="tags"><span class="tag amber">Cookie banner</span><span class="tag">Fixed overlay</span></div>
+      </a>
+      <a class="tile" href="/spa/">
+        <h3>WidgetDash — SPA</h3>
+        <div class="desc">Content rendered entirely by JavaScript. No server-rendered HTML — the page body is empty until JS executes. Tests JS-dependent extraction.</div>
+        <div class="tags"><span class="tag rose">JavaScript-rendered</span><span class="tag">SPA</span></div>
+      </a>
+      <a class="tile" href="/infinite-scroll/">
+        <h3>ScrollFeed — Infinite Scroll</h3>
+        <div class="desc">Content loads on scroll via IntersectionObserver. Only the first batch is in the DOM initially — more appears as you scroll down.</div>
+        <div class="tags"><span class="tag amber">Lazy-loaded</span><span class="tag">IntersectionObserver</span></div>
+      </a>
+      <a class="tile" href="/lazy/">
+        <h3>SlowScroller — Lazy Load</h3>
+        <div class="desc">Images and text blocks lazy-load on scroll. Below the fold, elements are placeholders until they enter the viewport.</div>
+        <div class="tags"><span class="tag amber">Lazy images</span><span class="tag">Scroll-triggered</span></div>
+      </a>
+      <a class="tile" href="/slow/">
+        <h3>SlowServe — Staged Loading</h3>
+        <div class="desc">Content appears in stages with random delays. Header loads first, then body content after 1–3 seconds, then sidebar.</div>
+        <div class="tags"><span class="tag amber">Staged load</span><span class="tag">Random delays</span></div>
+      </a>
+      <a class="tile" href="/redirect/">
+        <h3>Redirect</h3>
+        <div class="desc">A page that redirects to another URL after 3 seconds. Tests redirect detection and follow behavior.</div>
+        <div class="tags"><span class="tag amber">Meta redirect</span><span class="tag">3s delay</span></div>
+      </a>
+    </div>
 
-    <section>
-      <h2>About this site</h2>
-      <p>All pages are plain static HTML with no JavaScript. Content loads immediately, which makes timing simple. Use it to verify that the extractor keeps headings, paragraphs, lists, tables and links clean.</p>
-      <ul>
-        <li>Home page: <code>/</code></li>
-        <li>Blog article: <code>/post/</code></li>
-        <li>User profile: <code>/profile/</code></li>
-        <li>News article: <code>/news/</code></li>
-        <li>Data tables: <code>/table/</code></li>
+    <section style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-top:28px;">
+      <h2 style="font-size:1.1em;margin:0 0 8px;">About this site</h2>
+      <p style="font-size:0.88em;color:#6b7280;margin:0 0 12px;">All pages are fictional. The world is called "Testville" (news, reference, profiles) and "CloudStack" (SaaS product, onboarding). No real companies, no real data. Pages range from static HTML to fully JavaScript-rendered SPAs.</p>
+      <ul style="font-size:0.85em;color:#6b7280;padding-left:18px;margin:0;">
+        <li><strong>28 page types</strong> across 10 categories</li>
+        <li><strong>Character range:</strong> 9K (step pages) to 36K (interactive help center)</li>
+        <li><strong>Extraction patterns:</strong> Readability-friendly, Readability-hostile, tables-only, social, docs, forms, multi-step flows</li>
+        <li><strong>Edge cases:</strong> paywalls, cookie banners, SPAs, infinite scroll, lazy load, staged loading, chaos, redirects, soft 404s</li>
+        <li><strong>Interactive elements:</strong> tabs, accordions, toggles, modals, forms, multi-page wizards, dynamic content</li>
       </ul>
     </section>
   </main>
 
   <footer>
-    <p>Example Test Site — made for extraction testing. Contact: test@example.com</p>
+    Example Test Site — made for extraction testing. All content is fictional. Contact: test@example.com
   </footer>
 </body>
 </html>

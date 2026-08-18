@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread: The future of web rendering — Chirp</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; color: #0f1419; background: #f7f9f9; }
+    header { background: #fff; border-bottom: 1px solid #eff3f4; padding: 10px 20px; display: flex; align-items: center; gap: 20px; }
+    header nav a { color: #536471; text-decoration: none; font-size: 0.9em; margin-right: 16px; }
+    main { max-width: 680px; margin: 0 auto; padding: 16px 20px 60px; }
+    .breadcrumb { font-size: 0.85em; color: #536471; margin-bottom: 12px; }
+    .breadcrumb a { color: #1d9bf0; text-decoration: none; }
+
+    /* Thread post */
+    .thread-post { background: #fff; border: 1px solid #eff3f4; border-radius: 16px; padding: 16px; margin-bottom: 4px; }
+    .thread-main { border-radius: 16px; margin-bottom: 0; }
+    .thread-main + .thread-connector { border-left: 2px solid #eff3f4; margin-left: 34px; height: 8px; }
+    .post-header { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+    .avatar { width: 44px; height: 44px; border-radius: 50%; background: #cfd9de; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85em; color: #536471; }
+    .avatar.blue { background: #1d9bf0; color: #fff; }
+    .avatar.green { background: #00ba7c; color: #fff; }
+    .avatar.purple { background: #7856ff; color: #fff; }
+    .avatar.orange { background: #ff7a00; color: #fff; }
+    .post-meta { flex: 1; }
+    .post-author { font-weight: 700; font-size: 0.95em; }
+    .post-handle { color: #536471; font-size: 0.85em; margin-left: 4px; }
+    .post-time { color: #536471; font-size: 0.85em; }
+    .post-body { font-size: 0.95em; line-height: 1.5; margin-bottom: 10px; word-wrap: break-word; }
+    .post-body a { color: #1d9bf0; text-decoration: none; }
+    .post-body a:hover { text-decoration: underline; }
+    .post-body .hashtag { color: #1d9bf0; }
+    .post-body .mention { color: #1d9bf0; }
+    .post-body .edit-note { color: #536471; font-size: 0.8em; font-style: italic; margin-top: 4px; }
+    .post-media { border-radius: 12px; overflow: hidden; margin: 10px 0; border: 1px solid #eff3f4; }
+    .post-media img { width: 100%; display: block; }
+    .post-media-placeholder { background: #e7e9ea; height: 200px; display: flex; align-items: center; justify-content: center; color: #536471; font-size: 0.9em; }
+
+    .quote-tweet { border: 1px solid #eff3f4; border-radius: 12px; padding: 12px; margin: 10px 0; }
+    .quote-tweet .post-body { margin-bottom: 4px; }
+
+    .reactions { display: flex; gap: 12px; padding: 6px 0; border-top: 1px solid #eff3f4; font-size: 0.85em; color: #536471; }
+    .reactions .reaction { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .reactions .reaction:hover { color: #1d9bf0; }
+    .reactions .count { font-weight: 600; }
+
+    .engagement-bar { display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid #eff3f4; margin-top: 6px; font-size: 0.85em; color: #536471; }
+    .engagement-bar a { color: #536471; text-decoration: none; display: flex; align-items: center; gap: 4px; }
+    .engagement-bar a:hover { color: #1d9bf0; }
+    .engagement-bar .liked { color: #f91880; }
+
+    .reply { margin-left: 50px; }
+    .reply-deep { margin-left: 100px; }
+
+    .thread-divider { border-top: 1px solid #eff3f4; margin: 12px 0; }
+
+    .edit-badge { background: #eff3f4; color: #536471; font-size: 0.7em; padding: 1px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600; }
+
+    /* Pinned note */
+    .pinned-note { background: #fff; border: 1px solid #eff3f4; border-radius: 16px; padding: 12px 16px; margin-bottom: 16px; font-size: 0.85em; color: #536471; text-align: center; }
+    .pinned-note strong { color: #0f1419; }
+
+    footer { border-top: 1px solid #eff3f4; padding: 16px 20px; color: #536471; font-size: 0.75em; text-align: center; background: #fff; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong style="font-size:1.1em;color:#1d9bf0;">🐦 Chirp</strong>
+    <nav>
+      <a href="#">Home</a>
+      <a href="#">Explore</a>
+      <a href="#">Notifications</a>
+      <a href="#">Profile</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="breadcrumb">
+      <a href="#">@webstandards</a> · Thread
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Original post (OP)                             -->
+    <!-- ============================================= -->
+    <div class="thread-main">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar blue">WS</div>
+          <div class="post-meta">
+            <span class="post-author">Web Standards Watch</span>
+            <span class="post-handle">@webstandards</span>
+            <div class="post-time">Aug 14, 2026 · 9:42 AM · <span class="post-handle">2.1M views</span></div>
+          </div>
+        </div>
+        <div class="post-body">
+          The future of web rendering is here, and it's not what anyone expected.
+
+          A thread on why server components, islands architecture, and edge rendering are converging into something entirely new 🧵
+          <div class="post-media">
+            <div class="post-media-placeholder">📊 Architecture diagram: Server → Edge → Client rendering pipeline</div>
+          </div>
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 247</a>
+          <a href="#">🔁 1,893</a>
+          <a href="#">❤️ 8,421</a>
+          <a href="#">📊 125K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Reply 1: context                               -->
+    <!-- ============================================= -->
+    <div class="thread-connector"></div>
+    <div class="reply">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar blue">WS</div>
+          <div class="post-meta">
+            <span class="post-author">Web Standards Watch</span>
+            <span class="post-handle">@webstandards</span>
+            <div class="post-time">Aug 14, 2026 · 9:43 AM</div>
+          </div>
+        </div>
+        <div class="post-body">
+          <strong>Background:</strong> For 15 years, we've debated server-rendered vs client-rendered. The answer was always "it depends."
+
+          But three trends are converging:
+          <br>1/ Server Components (RSC, React Server DOM)
+          <br>2/ Islands architecture (Astro, Fresh, Marko)
+          <br>3/ Edge computing (Cloudflare Workers, Deno Deploy, Vercel Edge)
+          <br><br>Each alone is incremental. Together, they're a paradigm shift.
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 43</a>
+          <a href="#">🔁 567</a>
+          <a href="#">❤️ 2,103</a>
+          <a href="#">📊 48K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Reply 2: Server components deep dive           -->
+    <!-- ============================================= -->
+    <div class="thread-connector"></div>
+    <div class="reply">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar blue">WS</div>
+          <div class="post-meta">
+            <span class="post-author">Web Standards Watch</span>
+            <span class="post-handle">@webstandards</span>
+            <div class="post-time">Aug 14, 2026 · 9:45 AM</div>
+          </div>
+        </div>
+        <div class="post-body">
+          <strong>1/ Server Components changed everything</strong>
+          <br><br>
+          Before RSC: you ship JavaScript to the client, the client parses it, renders the DOM, hydrates event handlers.
+          <br><br>
+          With RSC: the server does the heavy lifting (data fetching, rendering, serialization), and the client only hydrates interactive "client components."
+          <br><br>
+          Result: <strong>40-60% less JavaScript</strong> on initial load. The TTI (Time to Interactive) improvement is massive.
+          <div class="post-media">
+            <div class="post-media-placeholder">📈 Chart: JS bundle size reduction — Before RSC (420KB) vs After RSC (180KB)</div>
+          </div>
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 89</a>
+          <a href="#">🔁 1,204</a>
+          <a href="#">❤️ 5,892</a>
+          <a href="#">📊 87K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Deep reply: counter-argument                   -->
+    <!-- ============================================= -->
+    <div class="thread-connector"></div>
+    <div class="reply">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar orange">RN</div>
+          <div class="post-meta">
+            <span class="post-author">React Native Dev</span>
+            <span class="post-handle">@rn_dev_sara</span>
+            <div class="post-time">Aug 14, 2026 · 9:51 AM</div>
+          </div>
+        </div>
+        <div class="post-body">
+          <span class="mention">@webstandards</span> Interesting thread but I think you're overselling RSC. The DX complexity is significant — you now have two mental models (server vs client) and the boundary isn't always obvious. Also, RSC only works with React's server runtime. Other frameworks have different approaches that work just as well.
+          <br><br>
+          Astro's islands architecture achieves the same JS reduction without the mental model overhead.
+        </div>
+        <div class="reactions">
+          <span class="reaction">👀 <span class="count">42</span></span>
+          <span class="reaction">🤔 <span class="count">18</span></span>
+          <span class="reaction">💡 <span class="count">31</span></span>
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 56</a>
+          <a href="#">🔁 89</a>
+          <a href="#">❤️ 234</a>
+          <a href="#">📊 12K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- OP reply to counter-argument (quote tweet) -->
+    <div class="thread-connector"></div>
+    <div class="reply">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar blue">WS</div>
+          <div class="post-meta">
+            <span class="post-author">Web Standards Watch</span>
+            <span class="post-handle">@webstandards</span>
+            <div class="post-time">Aug 14, 2026 · 9:58 AM</div>
+          </div>
+        </div>
+        <div class="post-body">
+          <span class="mention">@rn_dev_sara</span> Fair points! The DX complexity is real. But here's the thing — Astro islands are exactly what I mean by the convergence. Astro 4.0 added RSC support, and Next.js added partial prerendering. The frameworks are borrowing from each other.
+          <div class="quote-tweet">
+            <div class="post-header">
+              <div class="avatar orange">RN</div>
+              <div class="post-meta">
+                <span class="post-author">React Native Dev</span>
+                <span class="post-handle">@rn_dev_sara</span>
+              </div>
+            </div>
+            <div class="post-body">
+              Astro's islands architecture achieves the same JS reduction without the mental model overhead.
+            </div>
+          </div>
+          The "mental model" complexity decreases as tooling improves. In 2 years, the server/client boundary will be a build-time concern, not a developer concern.
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 34</a>
+          <a href="#">🔁 201</a>
+          <a href="#">❤️ 876</a>
+          <a href="#">📊 19K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Reply 3: Edge rendering                        -->
+    <!-- ============================================= -->
+    <div class="thread-connector"></div>
+    <div class="reply">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar blue">WS</div>
+          <div class="post-meta">
+            <span class="post-author">Web Standards Watch</span>
+            <span class="post-handle">@webstandards</span>
+            <div class="post-time">Aug 14, 2026 · 10:02 AM</div>
+          </div>
+        </div>
+        <div class="post-body">
+          <strong>2/ Edge rendering is the missing piece</strong>
+          <br><br>
+          Server Components run on the origin server. But what if your server is in Virginia and your user is in Tokyo?
+          <br><br>
+          Edge rendering puts server logic <em>at the CDN edge</em> — 50-200ms from the user. Vercel Edge Runtime, Cloudflare Workers, and Deno Deploy all support this.
+          <br><br>
+          The key insight: <strong>server components + edge = near-instant personalization</strong>. Your server renders with the user's auth token, location, and preferences — all at CDN speed.
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 78</a>
+          <a href="#">🔁 890</a>
+          <a href="#">❤️ 3,456</a>
+          <a href="#">📊 62K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Reply 4: practical example                     -->
+    <!-- ============================================= -->
+    <div class="thread-connector"></div>
+    <div class="reply">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar green">TC</div>
+          <div class="post-meta">
+            <span class="post-author">Tailwind Conf</span>
+            <span class="post-handle">@tailwindconf</span>
+            <div class="post-time">Aug 14, 2026 · 10:08 AM</div>
+          </div>
+        </div>
+        <div class="post-body">
+          <span class="mention">@webstandards</span> We've been doing this at Tailwind since v4. Server-rendered CSS with edge caching, client-only interactive components. Our LCP went from 3.2s to 0.8s.
+          <div class="post-media">
+            <div class="post-media-placeholder">📸 Screenshot: Tailwind v4 performance dashboard showing LCP improvement</div>
+          </div>
+          <div class="post-media">
+            <div class="post-media-placeholder">📊 Before/After: Core Web Vitals comparison table</div>
+          </div>
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 67</a>
+          <a href="#">🔁 432</a>
+          <a href="#">❤️ 1,890</a>
+          <a href="#">📊 34K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Deep reply: developer concern                  -->
+    <!-- ============================================= -->
+    <div class="thread-connector"></div>
+    <div class="reply-deep">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar purple">JR</div>
+          <div class="post-meta">
+            <span class="post-author">Junior Dev</span>
+            <span class="post-handle">@junior_coder</span>
+            <div class="post-time">Aug 14, 2026 · 10:12 AM</div>
+          </div>
+        </div>
+        <div class="post-body">
+          <span class="mention">@tailwindconf</span> <span class="mention">@webstandards</span> This is great for experienced devs but what about beginners? I'm still learning React and now there's Server Components, Client Components, Edge Runtime, Islands, partial prerendering... how do I even start?
+          <br><br>
+          Genuinely asking — is there a learning path that makes sense?
+        </div>
+        <div class="reactions">
+          <span class="reaction">❤️ <span class="count">89</span></span>
+          <span class="reaction">🤔 <span class="count">12</span></span>
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 124</a>
+          <a href="#">🔁 15</a>
+          <a href="#">❤️ 567</a>
+          <a href="#">📊 8K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- OP response to junior dev -->
+    <div class="thread-connector"></div>
+    <div class="reply-deep">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar blue">WS</div>
+          <div class="post-meta">
+            <span class="post-author">Web Standards Watch</span>
+            <span class="post-handle">@webstandards</span>
+            <div class="post-time">Aug 14, 2026 · 10:18 AM</div>
+          </div>
+        </div>
+        <div class="post-body">
+          <span class="mention">@junior_coder</span> Great question. Here's my honest take:
+          <br><br>
+          <strong>Step 1:</strong> Learn HTML, CSS, and vanilla JS. Seriously. Most "framework complexity" disappears when you understand the fundamentals.
+          <br><br>
+          <strong>Step 2:</strong> Pick ONE framework (Next.js or Astro are good entry points). Don't try to learn all of them.
+          <br><br>
+          <strong>Step 3:</strong> Start with server-rendered pages (the default in Next.js). Only add client components when you need interactivity.
+          <br><br>
+          <strong>Step 4:</strong> Learn edge deployment later. It's a deployment optimization, not a coding paradigm.
+          <br><br>
+          The complexity is real, but you don't need to master everything at once. Ship something simple first.
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 89</a>
+          <a href="#">🔁 678</a>
+          <a href="#">❤️ 4,521</a>
+          <a href="#">📊 95K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Reply 5: edge cases and gotchas                -->
+    <!-- ============================================= -->
+    <div class="thread-connector"></div>
+    <div class="reply">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar blue">WS</div>
+          <div class="post-meta">
+            <span class="post-author">Web Standards Watch</span>
+            <span class="post-handle">@webstandards</span>
+            <div class="post-time">Aug 14, 2026 · 10:22 AM</div>
+          </div>
+        </div>
+        <div class="post-body">
+          <strong>3/ The convergence is already happening</strong>
+          <br><br>
+          Here's what the merged architecture looks like in practice:
+          <br><br>
+          <strong>Static shell</strong> → Edge-cached HTML/CSS (0ms TTFB)
+          <br><strong>Server components</strong> → Edge-rendered (50-200ms)
+          <br><strong>Client components</strong> → Hydrated on demand (lazy)
+          <br><strong>Data</strong> → Edge-cached + ISR (stale-while-revalidate)
+          <br><br>
+          The result: pages that load in &lt;1s globally, with full personalization. No compromise.
+          <div class="post-media">
+            <div class="post-media-placeholder">📊 Performance comparison: Traditional SSR (2.8s TTI) vs Edge+RSC (0.9s TTI)</div>
+          </div>
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 156</a>
+          <a href="#">🔁 2,341</a>
+          <a href="#">❤️ 12,456</a>
+          <a href="#">📊 189K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Controversial reply                             -->
+    <!-- ============================================= -->
+    <div class="thread-connector"></div>
+    <div class="reply">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar" style="background:#dc3545;color:#fff;">PD</div>
+          <div class="post-meta">
+            <span class="post-author">Performance Skeptic</span>
+            <span class="post-handle">@perf_skeptic</span>
+            <div class="post-time">Aug 14, 2026 · 10:25 AM</div>
+            <span class="edit-badge">Edited</span>
+          </div>
+        </div>
+        <div class="post-body">
+          <span class="mention">@webstandards</span> You're measuring the wrong things. TTI is a vanity metric. What matters is <strong>total blocking time</strong> and <strong>interaction latency</strong>.
+          <br><br>
+          Edge rendering adds network hops. Server components add serialization overhead. The "0.9s TTI" hides 200ms of server computation + 150ms of hydration.
+          <br><br>
+          Meanwhile, a well-optimized vanilla SPA with code splitting hits 0.6s TTI with zero server dependency.
+          <div class="edit-note">Edited to add: I ran benchmarks on my own blog. Vanilla SPA (Vite) outperformed Next.js RSC on all Core Web Vitals except LCP. YMMV.</div>
+        </div>
+        <div class="reactions">
+          <span class="reaction">👀 <span class="count">156</span></span>
+          <span class="reaction">🤔 <span class="count">89</span></span>
+          <span class="reaction">😤 <span class="count">42</span></span>
+          <span class="reaction">💡 <span class="count">67</span></span>
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 234</a>
+          <a href="#">🔁 567</a>
+          <a href="#">❤️ 1,234</a>
+          <a href="#">📊 45K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- OP reply to skeptic -->
+    <div class="thread-connector"></div>
+    <div class="reply">
+      <div class="thread-post">
+        <div class="post-header">
+          <div class="avatar blue">WS</div>
+          <div class="post-meta">
+            <span class="post-author">Web Standards Watch</span>
+            <span class="post-handle">@webstandards</span>
+            <div class="post-time">Aug 14, 2026 · 10:31 AM</div>
+          </div>
+        </div>
+        <div class="post-body">
+          <span class="mention">@perf_skeptic</span> Fair pushback! You're right that TTI alone is misleading. But a few clarifications:
+          <br><br>
+          1/ Edge rendering doesn't add network hops — it removes them. CDN edge → user is 1 hop. Origin → user is 5-15 hops.
+          <br><br>
+          2/ RSC serialization is streamed, not blocking. The client renders the shell while data streams in.
+          <br><br>
+          3/ Your vanilla SPA comparison is apples-to-oranges unless you're serving it from an edge CDN with the same cache invalidation strategy.
+          <br><br>
+          That said — I'd love to see your benchmarks! Can you share the Lighthouse scores?
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 89</a>
+          <a href="#">🔁 234</a>
+          <a href="#">❤️ 1,890</a>
+          <a href="#">📊 38K</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Moderation note                                 -->
+    <!-- ============================================= -->
+    <div class="thread-connector"></div>
+    <div class="reply">
+      <div class="thread-post" style="border-left: 3px solid #1d9bf0;">
+        <div class="post-header">
+          <div class="avatar blue">WS</div>
+          <div class="post-meta">
+            <span class="post-author">Web Standards Watch</span>
+            <span class="post-handle">@webstandards</span>
+            <div class="post-time">Aug 14, 2026 · 10:35 AM · <span class="post-handle">Pinned</span></div>
+          </div>
+        </div>
+        <div class="post-body">
+          📌 <strong>Thread update:</strong> This blew up way more than expected. I'll compile all the replies into a blog post this weekend with benchmarks, diagrams, and a TL;DR for each perspective.
+          <br><br>
+          Key takeaways so far:
+          <br>• Server Components + Edge = the emerging default
+          <br>• DX complexity is the real barrier, not performance
+          <br>• Vanilla SPA can still win on raw metrics
+          <br>• The "right" choice depends on your team's expertise
+          <br><br>
+          Thanks for the thoughtful debate 🙏
+        </div>
+        <div class="engagement-bar">
+          <a href="#">💬 312</a>
+          <a href="#">🔁 4,567</a>
+          <a href="#">❤️ 28,901</a>
+          <a href="#">📊 2.1M</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Recent replies                                  -->
+    <!-- ============================================= -->
+    <div class="thread-divider"></div>
+    <h3 style="font-size:0.9em;color:#536471;margin:16px 0 8px;">Recent replies</h3>
+
+    <div class="thread-post" style="margin-bottom:4px;">
+      <div class="post-header">
+        <div class="avatar" style="background:#20c997;color:#fff;">AI</div>
+        <div class="post-meta">
+          <span class="post-author">Astro Insider</span>
+          <span class="post-handle">@astro_insider</span>
+          <div class="post-time">Aug 14, 2026 · 11:02 AM</div>
+        </div>
+      </div>
+      <div class="post-body">
+        The Astro team just shipped partial hydration with fine-grained island boundaries. It's now possible to have a page with 50 interactive components but only load JS for the 3 the user actually interacts with. The future is here.
+      </div>
+      <div class="engagement-bar">
+        <a href="#">💬 12</a>
+        <a href="#">🔁 89</a>
+        <a href="#">❤️ 234</a>
+        <a href="#">📊 5K</a>
+      </div>
+    </div>
+
+    <div class="thread-post" style="margin-bottom:4px;">
+      <div class="post-header">
+        <div class="avatar" style="background:#e83e8c;color:#fff;">KW</div>
+        <div class="post-meta">
+          <span class="post-author">Kent W. (not that one)</span>
+          <span class="post-handle">@kent_w_false</span>
+          <div class="post-time">Aug 14, 2026 · 11:15 AM</div>
+        </div>
+      </div>
+      <div class="post-body">
+        Hot take: this entire discussion is irrelevant because WebAssembly is going to replace JavaScript rendering within 3 years.
+        <br><br>
+        <span class="mention">@webstandards</span> any thoughts on WASM-based rendering pipelines? I've been experimenting with Rust + WASM for DOM manipulation and it's 10× faster than React reconciliation.
+      </div>
+      <div class="reactions">
+        <span class="reaction">😤 <span class="count">234</span></span>
+        <span class="reaction">🤔 <span class="count">89</span></span>
+        <span class="reaction">😂 <span class="count">156</span></span>
+      </div>
+      <div class="engagement-bar">
+        <a href="#">💬 78</a>
+        <a href="#">🔁 34</a>
+        <a href="#">❤️ 123</a>
+        <a href="#">📊 8K</a>
+      </div>
+    </div>
+
+    <div class="thread-post" style="margin-bottom:4px;">
+      <div class="post-header">
+        <div class="avatar" style="background:#6f42c1;color:#fff;">MD</div>
+        <div class="post-meta">
+          <span class="post-author">Mx Dev</span>
+          <span class="post-handle">@mx_dev_99</span>
+          <div class="post-time">Aug 14, 2026 · 11:22 AM</div>
+        </div>
+      </div>
+      <div class="post-body">
+        <span class="mention">@kent_w_false</span> "WASM replaces JS rendering" is the "Rust replaces JavaScript" of 2024. WASM is amazing for computation, terrible for DOM manipulation (you still need JS glue). The rendering pipeline isn't the bottleneck — network and serialization are.
+        <br><br>
+        Source: <a href="#">my blog post with benchmarks</a>
+      </div>
+      <div class="engagement-bar">
+        <a href="#">💬 45</a>
+        <a href="#">🔁 67</a>
+        <a href="#">❤️ 567</a>
+        <a href="#">📊 12K</a>
+      </div>
+    </div>
+
+    <div class="thread-post" style="margin-bottom:4px;">
+      <div class="post-header">
+        <div class="avatar" style="background:#fd7e14;color:#fff;">EH</div>
+        <div class="post-meta">
+          <span class="post-author">Edge Hacker</span>
+          <span class="post-handle">@edge_hacker</span>
+          <div class="post-time">Aug 14, 2026 · 11:38 AM</div>
+        </div>
+      </div>
+      <div class="post-body">
+        Everyone's talking about the fancy new architectures but sleeping on the boring stuff that actually matters:
+        <br><br>
+        1/ Proper HTTP caching headers (Cache-Control, ETags, Stale-While-Revalidate)
+        <br>2/ Brotli compression
+        <br>3/ Image optimization (WebP/AVIF, responsive sizes, lazy loading)
+        <br>4/ Font subsetting
+        <br><br>
+        A vanilla site with these optimizations beats 90% of "modern" frameworks on raw performance. The architecture doesn't matter if you're shipping 2MB of unoptimized images.
+        <div class="reactions">
+          <span class="reaction">💯 <span class="count">567</span></span>
+          <span class="reaction">❤️ <span class="count">234</span></span>
+          <span class="reaction">🙌 <span class="count">89</span></span>
+        </div>
+      </div>
+      <div class="engagement-bar">
+        <a href="#">💬 67</a>
+        <a href="#">🔁 890</a>
+        <a href="#">❤️ 3,456</a>
+        <a href="#">📊 67K</a>
+      </div>
+    </div>
+
+    <div class="thread-post" style="margin-bottom:4px;">
+      <div class="post-header">
+        <div class="avatar blue">WS</div>
+        <div class="post-meta">
+          <span class="post-author">Web Standards Watch</span>
+          <span class="post-handle">@webstandards</span>
+          <div class="post-time">Aug 14, 2026 · 11:45 AM</div>
+        </div>
+      </div>
+      <div class="post-body">
+        <span class="mention">@edge_hacker</span> 100% agree. The "boring" fundamentals are the foundation. Frameworks are tools, not goals. Ship fast, measure everything, optimize what matters.
+        <br><br>
+        The blog post this weekend will include a "boring checklist" of the 10 performance fundamentals that work regardless of your stack.
+      </div>
+      <div class="engagement-bar">
+        <a href="#">💬 23</a>
+        <a href="#">🔁 134</a>
+        <a href="#">❤️ 890</a>
+        <a href="#">📊 18K</a>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Thread stats                                    -->
+    <!-- ============================================= -->
+    <div style="background:#f7f9f9;border:1px solid #eff3f4;border-radius:16px;padding:16px;margin-top:16px;">
+      <div style="font-weight:700;font-size:0.9em;margin-bottom:8px;">Thread Stats</div>
+      <div style="font-size:0.85em;color:#536471;line-height:1.8;">
+        14 posts · 247 replies · 1,893 reposts · 8,421 likes · 2.1M views
+        <br>First post: Aug 14, 2026, 9:42 AM · Last activity: 6 hours ago
+        <br>Most replied-to: OP's beginner advice (124 replies)
+        <br>Most reposted: Edge rendering convergence (2,341 reposts)
+        <br>Most liked: Beginner learning path (4,521 likes)
+        <br><br>
+        <strong>Top repliers:</strong>
+        <br>• <span class="mention">@kent_w_false</span> — 8 replies (mostly controversial takes)
+        <br>• <span class="mention">@mx_dev_99</span> — 6 replies (WASM + Rust advocacy)
+        <br>• <span class="mention">@edge_hacker</span> — 5 replies (performance fundamentals)
+        <br>• <span class="mention">@tailwindconf</span> — 4 replies (real-world case studies)
+        <br>• <span class="mention">@rn_dev_sara</span> — 3 replies (DX perspective)
+      </div>
+    </div>
+
+    <footer>
+      © 2026 Chirp (fictional) · All usernames, metrics, and content are fictional and for testing purposes only · <a href="#">Terms</a> · <a href="#">Privacy</a>
+    </footer>
+  </main>
+</body>
+</html>

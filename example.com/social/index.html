@@ -4,62 +4,462 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chirp — Testville Parks (@testvilleparks)</title>
+  <meta name="description" content="Social media feed with threaded posts, reply chains, images, polls, trending topics.">
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; color: #222; background: #f7f9fa; }
-    header { background: #1d9bf0; color: #fff; padding: 12px 20px; }
-    main { max-width: 640px; margin: 20px auto; background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 18px; }
-    .profile-head { display: flex; gap: 16px; align-items: center; }
-    .avatar { width: 84px; height: 84px; border-radius: 50%; background: #1d9bf0; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 32px; }
-    h1 { margin: 0; font-size: 1.5em; }
-    .handle { color: #777; }
-    .bio { margin-top: 10px; }
-    .stats { display: flex; gap: 18px; margin: 12px 0; }
-    .stats b { margin-right: 4px; }
-    .post { border-top: 1px solid #eee; padding: 12px 0; }
-    .post .name { font-weight: bold; }
-    .post .time { color: #888; font-size: 0.85em; }
-    .actions { color: #888; font-size: 0.85em; margin-top: 6px; }
-    footer { text-align: center; color: #999; font-size: 12px; padding: 14px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; color: #0f1419; background: #f7f9fa; line-height: 1.5; }
+    header { background: #1d9bf0; color: #fff; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; }
+    header nav a { color: #fff; text-decoration: none; margin-left: 18px; font-size: 0.9em; }
+    .layout { max-width: 1080px; margin: 0 auto; display: flex; gap: 24px; padding: 16px 20px; }
+    .feed { flex: 1; max-width: 600px; }
+    .sidebar { width: 300px; flex-shrink: 0; }
+    .profile-card { background: #fff; border: 1px solid #e1e8ed; border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+    .profile-header { display: flex; gap: 12px; align-items: center; }
+    .avatar { width: 56px; height: 56px; border-radius: 50%; background: #1d9bf0; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+    .avatar.sm { width: 36px; height: 36px; font-size: 14px; }
+    .avatar.xs { width: 24px; height: 24px; font-size: 10px; }
+    h1 { margin: 0; font-size: 1.1em; font-weight: 700; }
+    .handle { color: #536471; font-size: 0.85em; }
+    .bio { margin-top: 8px; font-size: 0.9em; }
+    .stats-row { display: flex; gap: 16px; margin: 10px 0; font-size: 0.85em; color: #536471; }
+    .stats-row strong { color: #0f1419; }
+    .follow-btn { background: #0f1419; color: #fff; border: none; border-radius: 9999px; padding: 6px 18px; font-weight: 700; font-size: 0.85em; cursor: pointer; }
+    .post { background: #fff; border: 1px solid #e1e8ed; border-radius: 16px; padding: 14px 16px; margin-bottom: 4px; }
+    .post.thread { border-left: 2px solid #e1e8ed; margin-left: 18px; }
+    .post.op { border-left: 3px solid #1d9bf0; }
+    .post-header { display: flex; gap: 10px; align-items: flex-start; }
+    .post-meta { flex: 1; }
+    .post-meta .name { font-weight: 700; font-size: 0.9em; }
+    .post-meta .verified { color: #1d9bf0; }
+    .post-meta .handle { color: #536471; font-size: 0.85em; }
+    .post-meta .time { color: #536471; font-size: 0.85em; }
+    .post-body { margin: 6px 0 8px; font-size: 0.95em; line-height: 1.5; }
+    .post-body a { color: #1d9bf0; text-decoration: none; }
+    .post-image { border-radius: 12px; overflow: hidden; margin: 8px 0; border: 1px solid #e1e8ed; }
+    .post-image .placeholder { background: #e1e8ed; height: 240px; display: flex; align-items: center; justify-content: center; color: #536471; font-size: 14px; }
+    .post-actions { display: flex; justify-content: space-between; max-width: 420px; color: #536471; font-size: 0.85em; margin-top: 6px; }
+    .post-actions span { cursor: pointer; }
+    .post-actions .liked { color: #f91880; }
+    .post-actions .retweeted { color: #00ba7c; }
+    .poll { margin: 8px 0; }
+    .poll-option { border: 1px solid #e1e8ed; border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; position: relative; overflow: hidden; }
+    .poll-bar { position: absolute; left: 0; top: 0; bottom: 0; background: #e8f5fe; }
+    .poll-pct { font-weight: 700; font-size: 0.9em; position: relative; z-index: 1; }
+    .poll-label { font-size: 0.85em; color: #536471; position: relative; z-index: 1; }
+    .poll-info { font-size: 0.8em; color: #536471; margin-top: 4px; }
+    .quote-tweet { border: 1px solid #e1e8ed; border-radius: 12px; padding: 10px 12px; margin-top: 8px; background: #f7f9fa; }
+    .quote-tweet .qt-header { font-size: 0.85em; color: #536471; }
+    .quote-tweet .qt-body { font-size: 0.9em; margin-top: 4px; }
+    .thread-line { border-left: 2px solid #e1e8ed; margin-left: 18px; padding-left: 18px; }
+    .reply-indicator { font-size: 0.85em; color: #536471; margin-bottom: 4px; }
+    .trending-card { background: #fff; border: 1px solid #e1e8ed; border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; }
+    .trending-card h2 { font-size: 1.1em; margin: 0 0 10px; }
+    .trend-item { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+    .trend-item:last-child { border-bottom: none; }
+    .trend-item .trend-category { font-size: 0.75em; color: #536471; }
+    .trend-item .trend-name { font-weight: 700; font-size: 0.9em; }
+    .trend-item .trend-count { font-size: 0.8em; color: #536471; }
+    .who-to-follow { background: #fff; border: 1px solid #e1e8ed; border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; }
+    .who-to-follow h2 { font-size: 1.1em; margin: 0 0 10px; }
+    .follow-suggestion { display: flex; gap: 10px; align-items: center; padding: 8px 0; }
+    .follow-suggestion .info { flex: 1; }
+    .follow-suggestion .info .name { font-weight: 700; font-size: 0.9em; }
+    .follow-suggestion .info .handle { color: #536471; font-size: 0.85em; }
+    .follow-suggestion button { background: #eff3f4; border: none; border-radius: 9999px; padding: 4px 14px; font-weight: 700; font-size: 0.8em; cursor: pointer; }
+    .list-item { background: #fff; border: 1px solid #e1e8ed; border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; }
+    .list-item h2 { font-size: 1em; margin: 0; }
+    .list-item p { font-size: 0.85em; color: #536471; margin: 4px 0; }
+    .hashtag { color: #1d9bf0; text-decoration: none; }
+    .media-grid { display: grid; gap: 4px; border-radius: 12px; overflow: hidden; margin: 8px 0; }
+    .media-grid.g2 { grid-template-columns: 1fr 1fr; }
+    .media-grid .placeholder { background: #e1e8ed; height: 140px; display: flex; align-items: center; justify-content: center; color: #536471; font-size: 12px; }
+    footer { text-align: center; padding: 20px; font-size: 12px; color: #536471; }
   </style>
 </head>
 <body>
-  <header><strong>Chirp</strong></header>
-  <main>
-    <div class="profile-head">
-      <div class="avatar">🌳</div>
-      <div>
-        <h1>Testville Parks</h1>
-        <p class="handle">@testvilleparks · joined March 2021</p>
+  <header>
+    <strong style="font-size:1.2em;">🐦 Chirp</strong>
+    <nav>
+      <a href="/">Home</a>
+      <a href="#">Explore</a>
+      <a href="#">Notifications</a>
+      <a href="#">Messages</a>
+      <a href="#">Bookmarks</a>
+    </nav>
+  </header>
+
+  <div class="layout">
+    <div class="feed">
+
+      <!-- Profile card -->
+      <div class="profile-card">
+        <div class="profile-header">
+          <div class="avatar">🌳</div>
+          <div>
+            <h1>Testville Parks <span class="verified">✓</span></h1>
+            <div class="handle">@testvilleparks</div>
+          </div>
+          <button class="follow-btn">Following</button>
+        </div>
+        <p class="bio">Official account of the Testville Parks Department. 230 parks, 1,400 trees, and counting. Report a fallen branch @ 311. 🌿</p>
+        <div class="stats-row">
+          <span><strong>1,247</strong> posts</span>
+          <span><strong>12,400</strong> followers</span>
+          <span><strong>186</strong> following</span>
+          <span>Joined March 2021</span>
+        </div>
+      </div>
+
+      <!-- Post: Image post with replies -->
+      <div class="post">
+        <div class="post-header">
+          <div class="avatar sm">🌳</div>
+          <div class="post-meta">
+            <span class="name">Testville Parks</span> <span class="verified">✓</span>
+            <span class="handle">@testvilleparks</span> · <span class="time">3h</span>
+          </div>
+        </div>
+        <div class="post-body">
+          The new playground at Riverfront Park is officially open! 🎉 Three acres of climbing structures, splash pads, and a zip line that the city council almost vetoed. Open daily 8am–8pm.
+        </div>
+        <div class="post-image">
+          <div class="placeholder">📸 Riverfront Playground — wide aerial view of the new play structures</div>
+        </div>
+        <div class="post-actions">
+          <span>💬 47</span>
+          <span class="retweeted">🔁 128</span>
+          <span class="liked">❤️ 1,842</span>
+          <span>📊</span>
+        </div>
+      </div>
+
+      <!-- Thread: Reply chain -->
+      <div class="thread-line">
+        <div class="post thread">
+          <div class="reply-indicator">Replying to <a href="#" class="hashtag">@testvilleparks</a></div>
+          <div class="post-header">
+            <div class="avatar xs" style="background:#7856ff;">RK</div>
+            <div class="post-meta">
+              <span class="name">Ravi Kumar</span> <span class="handle">@ravi_k · 2h</span>
+            </div>
+          </div>
+          <div class="post-body">Is the zip line actually safe? Asking for my 7-year-old who has zero fear.</div>
+          <div class="post-actions">
+            <span>💬 3</span>
+            <span>🔁 2</span>
+            <span>❤️ 24</span>
+            <span>📊</span>
+          </div>
+        </div>
+
+        <div class="post thread">
+          <div class="reply-indicator">Replying to <a href="#">@ravi_k</a></div>
+          <div class="post-header">
+            <div class="avatar xs">🌳</div>
+            <div class="post-meta">
+              <span class="name">Testville Parks</span> <span class="verified">✓</span>
+              <span class="handle">@testvilleparks</span> · <span class="time">1h</span>
+            </div>
+          </div>
+          <div class="post-body">It passed a full safety inspection last week. Harness required for kids under 12. The zero-fear part is between you and the lifeguard 😅</div>
+          <div class="post-actions">
+            <span>💬 1</span>
+            <span>🔁 5</span>
+            <span>❤️ 89</span>
+            <span>📊</span>
+          </div>
+        </div>
+
+        <div class="post thread">
+          <div class="reply-indicator">Replying to <a href="#">@testvilleparks</a></div>
+          <div class="post-header">
+            <div class="avatar xs" style="background:#e87d2f;">DM</div>
+            <div class="post-meta">
+              <span class="name">Dana Miller</span> <span class="handle">@dana_miller · 45m</span>
+            </div>
+          </div>
+          <div class="post-body">Went there this morning. The splash pad is fantastic. My toddler didn't want to leave.</div>
+          <div class="post-actions">
+            <span>💬 0</span>
+            <span>🔁 1</span>
+            <span>❤️ 12</span>
+            <span>📊</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Post: Poll -->
+      <div class="post">
+        <div class="post-header">
+          <div class="avatar sm">🌳</div>
+          <div class="post-meta">
+            <span class="name">Testville Parks</span> <span class="verified">✓</span>
+            <span class="handle">@testvilleparks</span> · <span class="time">8h</span>
+          </div>
+        </div>
+        <div class="post-body">Should we add a dog park to the Riverfront expansion? 🐕</div>
+        <div class="poll">
+          <div class="poll-option" style="position:relative;overflow:hidden;">
+            <div class="poll-bar" style="width:62%;"></div>
+            <span class="poll-pct">62%</span> <span class="poll-label">Yes, with separate areas for big/small dogs</span>
+          </div>
+          <div class="poll-option" style="position:relative;overflow:hidden;">
+            <div class="poll-bar" style="width:24%;"></div>
+            <span class="poll-pct">24%</span> <span class="poll-label">Yes, one big area</span>
+          </div>
+          <div class="poll-option" style="position:relative;overflow:hidden;">
+            <div class="poll-bar" style="width:9%;"></div>
+            <span class="poll-pct">9%</span> <span class="poll-label">No, keep it as green space</span>
+          </div>
+          <div class="poll-option" style="position:relative;overflow:hidden;">
+            <div class="poll-bar" style="width:5%;"></div>
+            <span class="poll-pct">5%</span> <span class="poll-label">Something else (reply below)</span>
+          </div>
+          <div class="poll-info">4,218 votes · 6 hours left</div>
+        </div>
+        <div class="post-actions">
+          <span>💬 89</span>
+          <span>🔁 56</span>
+          <span class="liked">❤️ 412</span>
+          <span>📊</span>
+        </div>
+      </div>
+
+      <!-- Post: Quote tweet -->
+      <div class="post">
+        <div class="post-header">
+          <div class="avatar sm">🌳</div>
+          <div class="post-meta">
+            <span class="name">Testville Parks</span> <span class="verified">✓</span>
+            <span class="handle">@testvilleparks</span> · <span class="time">1d</span>
+          </div>
+        </div>
+        <div class="post-body">Tree planting day is Saturday! Sign up at testville.gov/volunteer. 200 saplings to plant. Last year we planted 150 — let's beat that record 🌱</div>
+        <div class="quote-tweet">
+          <div class="qt-header">
+            <span class="name" style="font-weight:700;">Testville Times</span> <span class="verified">✓</span> <span class="handle">@testvilletimes · Aug 5</span>
+          </div>
+          <div class="qt-body">City Completes Solar Streetlight Rollout on River Avenue — the final 340 lights went live this week, finishing the pilot phase six weeks early.</div>
+        </div>
+        <div class="post-actions">
+          <span>💬 12</span>
+          <span class="retweeted">🔁 204</span>
+          <span class="liked">❤️ 1,128</span>
+          <span>📊</span>
+        </div>
+      </div>
+
+      <!-- Post: Multi-image -->
+      <div class="post">
+        <div class="post-header">
+          <div class="avatar sm">🌳</div>
+          <div class="post-meta">
+            <span class="name">Testville Parks</span> <span class="verified">✓</span>
+            <span class="handle">@testvilleparks</span> · <span class="time">2d</span>
+          </div>
+        </div>
+        <div class="post-body">Before and after: Central Park pond restoration. The turtles are back 🐢</div>
+        <div class="media-grid g2">
+          <div class="placeholder">📸 Before: murky pond, no vegetation</div>
+          <div class="placeholder">📸 After: clear water, lily pads, turtles on a log</div>
+        </div>
+        <div class="post-actions">
+          <span>💬 34</span>
+          <span class="retweeted">🔁 156</span>
+          <span class="liked">❤️ 2,340</span>
+          <span>📊</span>
+        </div>
+      </div>
+
+      <!-- Post: Long thread (5 tweets) -->
+      <div class="post">
+        <div class="post-header">
+          <div class="avatar sm">🌳</div>
+          <div class="post-meta">
+            <span class="name">Testville Parks</span> <span class="verified">✓</span>
+            <span class="handle">@testvilleparks</span> · <span class="time">3d</span>
+          </div>
+        </div>
+        <div class="post-body">🧵 THREAD: The story of the Testville Geese. A thread. 🧵<br><br>1/7 — In 2019, three Canada geese landed in Central Park pond. We named them Harold, Kevin, and Nancy. They were supposed to stay two weeks.</div>
+        <div class="post-actions">
+          <span>💬 67</span>
+          <span class="retweeted">🔁 412</span>
+          <span class="liked">❤️ 3,200</span>
+          <span>📊</span>
+        </div>
+      </div>
+      <div class="thread-line">
+        <div class="post thread">
+          <div class="post-body" style="font-size:0.9em;">2/7 — By month two, they had claimed the entire pond. Harold bit a jogger. Nancy laid three eggs. Kevin just stared at people.</div>
+          <div class="post-actions"><span>💬 8</span><span>🔁 34</span><span class="liked">❤️ 456</span><span>📊</span></div>
+        </div>
+        <div class="post thread">
+          <div class="post-body" style="font-size:0.9em;">3/7 — We hired a wildlife consultant. She said, "You don't remove geese. The geese remove you." We didn't understand then.</div>
+          <div class="post-actions"><span>💬 12</span><span>🔁 45</span><span class="liked">❤️ 523</span><span>📊</span></div>
+        </div>
+        <div class="post thread">
+          <div class="post-body" style="font-size:0.9em;">4/7 — In 2020, the geese population exploded. 12 geese. Then 30. They held a "meeting" near the fountain every morning at 6am. We have no evidence of agenda.</div>
+          <div class="post-actions"><span>💬 19</span><span>🔁 78</span><span class="liked">❤️ 890</span><span>📊</span></div>
+        </div>
+        <div class="post thread">
+          <div class="post-body" style="font-size:0.9em;">5/7 — The council debated removing them. The motion failed 5-4 after Harold showed up to the meeting and sat in the gallery. No one could focus.</div>
+          <div class="post-actions"><span>💬 23</span><span>🔁 112</span><span class="liked">❤️ 1,340</span><span>📊</span></div>
+        </div>
+        <div class="post thread">
+          <div class="post-body" style="font-size:0.9em;">6/7 — By 2023, we gave up and built them a proper habitat. A pond island, native grasses, a sign that says "Goose Crossing." They seemed pleased.</div>
+          <div class="post-actions"><span>💬 8</span><span>🔁 56</span><span class="liked">❤️ 678</span><span>📊</span></div>
+        </div>
+        <div class="post thread">
+          <div class="post-body" style="font-size:0.9em;">7/7 — Today there are 47 geese in Central Park. They outnumber the staff 3:1. Harold is still biting joggers. Nancy is a grandmother. Kevin still just stares. 🪿</div>
+          <div class="post-actions"><span>💬 45</span><span class="retweeted">🔁 1,200</span><span class="liked">❤️ 5,400</span><span>📊</span></div>
+        </div>
+      </div>
+
+      <!-- Post: Normal -->
+      <div class="post">
+        <div class="post-header">
+          <div class="avatar sm">🌳</div>
+          <div class="post-meta">
+            <span class="name">Testville Parks</span> <span class="verified">✓</span>
+            <span class="handle">@testvilleparks</span> · <span class="time">4d</span>
+          </div>
+        </div>
+        <div class="post-body">Reminder: the fountain in Central Park turns on every day at 9am. Bring your kids and a towel. Or just bring yourself. No judgment.</div>
+        <div class="post-actions">
+          <span>💬 14</span>
+          <span class="retweeted">🔁 38</span>
+          <span class="liked">❤️ 341</span>
+          <span>📊</span>
+        </div>
+      </div>
+
+      <!-- Post: Community request with replies -->
+      <div class="post">
+        <div class="post-header">
+          <div class="avatar sm">🌳</div>
+          <div class="post-meta">
+            <span class="name">Testville Parks</span> <span class="verified">✓</span>
+            <span class="handle">@testvilleparks</span> · <span class="time">5d</span>
+          </div>
+        </div>
+        <div class="post-body">New benches installed along River Avenue promenade. The oak ones, as promised. 🪑</div>
+        <div class="post-image">
+          <div class="placeholder">📸 Row of new oak benches along a tree-lined promenade</div>
+        </div>
+        <div class="post-actions">
+          <span>💬 22</span>
+          <span class="retweeted">🔁 64</span>
+          <span class="liked">❤️ 508</span>
+          <span>📊</span>
+        </div>
+      </div>
+
+      <div class="thread-line">
+        <div class="post thread">
+          <div class="reply-indicator">Replying to <a href="#" class="hashtag">@testvilleparks</a></div>
+          <div class="post-header">
+            <div class="avatar xs" style="background:#2ea44f;">LW</div>
+            <div class="post-meta"><span class="name">Lisa Wong</span> <span class="handle">@lisa_w · 4d</span></div>
+          </div>
+          <div class="post-body">These are beautiful but can we get a bench near the playground too? Parents are standing for 45 min during soccer practice.</div>
+          <div class="post-actions"><span>💬 5</span><span>🔁 2</span><span class="liked">❤️ 34</span><span>📊</span></div>
+        </div>
+        <div class="post thread">
+          <div class="reply-indicator">Replying to <a href="#">@lisa_w</a></div>
+          <div class="post-header">
+            <div class="avatar xs">🌳</div>
+            <div class="post-meta"><span class="name">Testville Parks</span> <span class="verified">✓</span> <span class="handle">@testvilleparks</span> · <span class="time">4d</span></div>
+          </div>
+          <div class="post-body">Great point — we have 12 benches on order for the playground area. Expected in 3 weeks. We'll post photos when they're in.</div>
+          <div class="post-actions"><span>💬 1</span><span>🔁 3</span><span class="liked">❤️ 28</span><span>📊</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <!-- Trending -->
+      <div class="trending-card">
+        <h2>Trending in Testville</h2>
+        <div class="trend-item">
+          <div class="trend-category">Trending</div>
+          <div class="trend-name">#FountainGate</div>
+          <div class="trend-count">8,420 posts</div>
+        </div>
+        <div class="trend-item">
+          <div class="trend-category">Politics · Trending</div>
+          <div class="trend-name">Council Vote</div>
+          <div class="trend-count">3,210 posts</div>
+        </div>
+        <div class="trend-item">
+          <div class="trend-category">Trending in Testville</div>
+          <div class="trend-name">#DroneBread</div>
+          <div class="trend-count">1,890 posts</div>
+        </div>
+        <div class="trend-item">
+          <div class="trend-category">Sports · Trending</div>
+          <div class="trend-name">Geese FC</div>
+          <div class="trend-count">942 posts</div>
+        </div>
+        <div class="trend-item">
+          <div class="trend-category">Technology · Trending</div>
+          <div class="trend-name">#SolarAvenue</div>
+          <div class="trend-count">654 posts</div>
+        </div>
+      </div>
+
+      <!-- Who to follow -->
+      <div class="who-to-follow">
+        <h2>Who to follow</h2>
+        <div class="follow-suggestion">
+          <div class="avatar sm" style="background:#1d4ed8;">TT</div>
+          <div class="info">
+            <div class="name">Testville Times <span class="verified" style="color:#1d9bf0;">✓</span></div>
+            <div class="handle">@testvilletimes</div>
+          </div>
+          <button>Follow</button>
+        </div>
+        <div class="follow-suggestion">
+          <div class="avatar sm" style="background:#c0392b;">MV</div>
+          <div class="info">
+            <div class="name">Mayor Voter</div>
+            <div class="handle">@mayor_voter</div>
+          </div>
+          <button>Follow</button>
+        </div>
+        <div class="follow-suggestion">
+          <div class="avatar sm" style="background:#27ae60;">WR</div>
+          <div class="info">
+            <div class="name">Wildlife Rescue</div>
+            <div class="handle">@testville_wildlife</div>
+          </div>
+          <button>Follow</button>
+        </div>
+      </div>
+
+      <!-- Lists -->
+      <div class="list-item">
+        <h2>Testville Parks Lists</h2>
+        <p>3 lists · 48 accounts</p>
+        <ul style="font-size:0.85em;color:#536471;margin:6px 0 0;padding-left:18px;">
+          <li>City Services (14 accounts)</li>
+          <li>Local Journalists (22 accounts)</li>
+          <li>Park Volunteers (12 accounts)</li>
+        </ul>
+      </div>
+
+      <div style="font-size:0.8em;color:#536471;text-align:center;padding:10px;">
+        <a href="#" style="color:#536471;">Terms</a> ·
+        <a href="#" style="color:#536471;">Privacy</a> ·
+        <a href="#" style="color:#536471;">Cookies</a> ·
+        <a href="#" style="color:#536471;">Accessibility</a> ·
+        <a href="#" style="color:#536471;">Ads info</a> ·
+        <a href="#" style="color:#536471;">More</a>
+        <br>© 2026 Chirp, Inc.
       </div>
     </div>
+  </div>
 
-    <p class="bio">Official account of the Testville Parks Department. 230 parks, 1,400 trees, and counting. Report a fallen branch @ 311.</p>
-
-    <div class="stats">
-      <span><b>412</b> posts</span>
-      <span><b>8,930</b> followers</span>
-      <span><b>96</b> following</span>
-    </div>
-
-    <p class="handle">📍 Testville · <a href="#">testville.gov/parks</a></p>
-
-    <h2>Recent posts</h2>
-    <div class="post">
-      <span class="name">Testville Parks</span> <span class="time">· 2h</span>
-      <p>New benches installed along River Avenue promenade. The oak ones, as promised. 🪑</p>
-      <div class="actions">♥ 214 · 🔁 32 · 💬 11</div>
-    </div>
-    <div class="post">
-      <span class="name">Testville Parks</span> <span class="time">· 6h</span>
-      <p>Reminder: the fountain in Central Park turns on every day at 9am. Bring your kids and a towel.</p>
-      <div class="actions">♥ 341 · 🔁 58 · 💬 27</div>
-    </div>
-    <div class="post">
-      <span class="name">Testville Parks</span> <span class="time">· 1d</span>
-      <p>Tree planting day is Saturday! Sign up at testville.gov/volunteer. 200 saplings to plant.</p>
-      <div class="actions">♥ 508 · 🔁 120 · 💬 44</div>
-    </div>
-  </main>
   <footer>Chirp, Inc. — a fictional social network for testing.</footer>
 </body>
 </html>

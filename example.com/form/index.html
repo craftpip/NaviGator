@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Start your free trial — CloudStack</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #f8f9fb; line-height: 1.6; }
+    a { color: #4f46e5; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Header */
+    .topbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .topbar-left { display: flex; align-items: center; gap: 32px; }
+    .logo { font-size: 1.15em; font-weight: 700; color: #4f46e5; display: flex; align-items: center; gap: 6px; }
+    .logo svg { width: 24px; height: 24px; }
+    .topbar nav a { color: #374151; font-size: 0.88em; font-weight: 500; padding: 16px 0; display: inline-block; }
+    .topbar nav a:hover { color: #4f46e5; text-decoration: none; }
+    .topbar-right { display: flex; align-items: center; gap: 16px; }
+    .btn-ghost { background: none; border: none; color: #374151; font-size: 0.88em; font-weight: 500; cursor: pointer; padding: 6px 12px; border-radius: 6px; }
+    .btn-ghost:hover { background: #f3f4f6; }
+    .btn-primary { background: #4f46e5; color: #fff; border: none; padding: 8px 18px; border-radius: 8px; font-size: 0.88em; font-weight: 600; cursor: pointer; }
+    .btn-primary:hover { background: #4338ca; }
+
+    /* Layout */
+    .page { max-width: 1120px; margin: 0 auto; padding: 40px 24px 80px; display: grid; grid-template-columns: 1fr 420px; gap: 60px; align-items: start; }
+    @media (max-width: 840px) { .page { grid-template-columns: 1fr; gap: 32px; } }
+
+    /* Left: benefits */
+    .benefits h1 { font-size: 2em; font-weight: 800; line-height: 1.2; margin-bottom: 12px; color: #111827; }
+    .benefits .subtitle { font-size: 1.1em; color: #6b7280; margin-bottom: 32px; }
+    .benefit-list { list-style: none; }
+    .benefit-list li { display: flex; gap: 12px; margin-bottom: 20px; }
+    .benefit-icon { width: 36px; height: 36px; border-radius: 8px; background: #eef2ff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #4f46e5; font-size: 1.1em; }
+    .benefit-text strong { display: block; font-size: 0.95em; color: #111827; }
+    .benefit-text span { font-size: 0.85em; color: #6b7280; }
+    .social-proof { margin-top: 36px; padding-top: 24px; border-top: 1px solid #e5e7eb; }
+    .social-proof p { font-size: 0.85em; color: #6b7280; margin-bottom: 8px; }
+    .avatars { display: flex; }
+    .avatars span { width: 32px; height: 32px; border-radius: 50%; background: #d1d5db; border: 2px solid #fff; margin-left: -8px; display: flex; align-items: center; justify-content: center; font-size: 0.6em; font-weight: 700; color: #374151; }
+    .avatars span:first-child { margin-left: 0; }
+    .avatars .av1 { background: #c7d2fe; }
+    .avatars .av2 { background: #a7f3d0; }
+    .avatars .av3 { background: #fde68a; }
+    .avatars .av4 { background: #fecaca; }
+    .avatars .av5 { background: #ddd6fe; }
+    .rating-stars { color: #f59e0b; font-size: 0.9em; margin-top: 4px; }
+
+    /* Right: form card */
+    .form-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .form-card h2 { font-size: 1.25em; font-weight: 700; margin-bottom: 4px; }
+    .form-card .form-sub { font-size: 0.88em; color: #6b7280; margin-bottom: 24px; }
+    .social-buttons { display: flex; gap: 10px; margin-bottom: 20px; }
+    .social-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 0.85em; font-weight: 500; cursor: pointer; color: #374151; }
+    .social-btn:hover { background: #f9fafb; border-color: #9ca3af; }
+    .social-btn svg { width: 18px; height: 18px; }
+    .divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; font-size: 0.8em; color: #9ca3af; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #e5e7eb; }
+
+    /* Form fields */
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 0.85em; font-weight: 600; color: #374151; margin-bottom: 5px; }
+    .field label .required { color: #ef4444; }
+    .field input, .field select, .field textarea { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9em; color: #111827; background: #fff; transition: border-color 0.15s; }
+    .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+    .field input::placeholder, .field textarea::placeholder { color: #9ca3af; }
+    .field .hint { font-size: 0.78em; color: #6b7280; margin-top: 4px; }
+    .field .error { font-size: 0.78em; color: #ef4444; margin-top: 4px; display: none; }
+    .field.has-error input { border-color: #ef4444; }
+    .field.has-error .error { display: block; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* Checkboxes / radios */
+    .check-group { display: flex; flex-direction: column; gap: 8px; }
+    .check-label { display: flex; align-items: flex-start; gap: 8px; font-size: 0.85em; color: #374151; cursor: pointer; }
+    .check-label input[type="checkbox"], .check-label input[type="radio"] { margin-top: 2px; accent-color: #4f46e5; }
+
+    /* Plan selector */
+    .plan-selector { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+    .plan-option { border: 2px solid #e5e7eb; border-radius: 10px; padding: 14px 10px; text-align: center; cursor: pointer; transition: all 0.15s; position: relative; }
+    .plan-option:hover { border-color: #c7d2fe; }
+    .plan-option.selected { border-color: #4f46e5; background: #eef2ff; }
+    .plan-option input { position: absolute; opacity: 0; }
+    .plan-option .plan-name { font-size: 0.85em; font-weight: 700; color: #111827; }
+    .plan-option .plan-price { font-size: 1.2em; font-weight: 800; color: #4f46e5; margin: 4px 0; }
+    .plan-option .plan-period { font-size: 0.72em; color: #6b7280; }
+    .plan-option .plan-badge { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: #4f46e5; color: #fff; font-size: 0.65em; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+
+    /* Submit */
+    .submit-btn { width: 100%; padding: 12px; background: #4f46e5; color: #fff; border: none; border-radius: 8px; font-size: 0.95em; font-weight: 700; cursor: pointer; margin-top: 8px; }
+    .submit-btn:hover { background: #4338ca; }
+    .submit-btn:disabled { background: #a5b4fc; cursor: not-allowed; }
+    .form-footer { text-align: center; font-size: 0.78em; color: #9ca3af; margin-top: 16px; line-height: 1.5; }
+    .form-footer a { color: #6b7280; }
+
+    /* Terms checkbox row */
+    .terms-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; font-size: 0.82em; color: #6b7280; }
+    .terms-row input { margin-top: 2px; accent-color: #4f46e5; }
+
+    /* Success state */
+    .form-success { display: none; text-align: center; padding: 40px 20px; }
+    .form-success.show { display: block; }
+    .form-success .check-circle { width: 64px; height: 64px; border-radius: 50%; background: #ecfdf5; color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 2em; margin: 0 auto 16px; }
+    .form-success h3 { font-size: 1.2em; margin-bottom: 8px; }
+    .form-success p { font-size: 0.9em; color: #6b7280; }
+
+    footer { border-top: 1px solid #e5e7eb; padding: 24px; text-align: center; font-size: 0.78em; color: #9ca3af; background: #fff; }
+    footer a { color: #6b7280; }
+  </style>
+</head>
+<body>
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        CloudStack
+      </div>
+      <nav>
+        <a href="#">Product</a>
+        <a href="#">Solutions</a>
+        <a href="#">Pricing</a>
+        <a href="#">Docs</a>
+      </nav>
+    </div>
+    <div class="topbar-right">
+      <button class="btn-ghost">Log in</button>
+      <button class="btn-primary">Start free trial</button>
+    </div>
+  </header>
+
+  <div class="page">
+    <!-- Left: Benefits -->
+    <div class="benefits">
+      <h1>Ship faster with <br>CloudStack Pro</h1>
+      <p class="subtitle">Join 12,000+ teams deploying 50% faster with zero-downtime infrastructure.</p>
+
+      <ul class="benefit-list">
+        <li>
+          <div class="benefit-icon">🚀</div>
+          <div class="benefit-text">
+            <strong>Deploy in seconds, not hours</strong>
+            <span>Push to production with one click. Automatic rollbacks if anything breaks.</span>
+          </div>
+        </li>
+        <li>
+          <div class="benefit-icon">🔒</div>
+          <div class="benefit-text">
+            <strong>SOC 2 Type II compliant</strong>
+            <span>Enterprise-grade security out of the box. Audit logs, RBAC, SSO included.</span>
+          </div>
+        </li>
+        <li>
+          <div class="benefit-icon">📊</div>
+          <div class="benefit-text">
+            <strong>Real-time observability</strong>
+            <span>Logs, metrics, and traces in one place. Alert on any threshold.</span>
+          </div>
+        </li>
+        <li>
+          <div class="benefit-icon">🌍</div>
+          <div class="benefit-text">
+            <strong>38 regions worldwide</strong>
+            <span>Deploy close to your users. Automatic failover across regions.</span>
+          </div>
+        </li>
+        <li>
+          <div class="benefit-icon">🔗</div>
+          <div class="benefit-text">
+            <strong>Git-native workflow</strong>
+            <span>Preview deployments on every PR. Branch-based environments.</span>
+          </div>
+        </li>
+      </ul>
+
+      <div class="social-proof">
+        <p>Trusted by engineering teams at</p>
+        <div style="display:flex;gap:24px;align-items:center;font-weight:700;color:#9ca3af;font-size:0.85em;flex-wrap:wrap;">
+          <span>Acme Corp</span>
+          <span>Globex</span>
+          <span>Initech</span>
+          <span>Hooli</span>
+          <span>Pied Piper</span>
+        </div>
+        <div class="avatars" style="margin-top:12px;">
+          <span class="av1">JK</span>
+          <span class="av2">ML</span>
+          <span class="av3">AS</span>
+          <span class="av4">RW</span>
+          <span class="av5">TT</span>
+          <span style="background:#f3f4f6;">+11,995</span>
+        </div>
+        <div class="rating-stars">★★★★★ <span style="color:#6b7280;font-size:0.85em;">4.9/5 on G2 · 2,400+ reviews</span></div>
+      </div>
+    </div>
+
+    <!-- Right: Form card -->
+    <div>
+      <div class="form-card" id="signupForm">
+        <h2>Create your account</h2>
+        <p class="form-sub">14-day free trial · No credit card required</p>
+
+        <!-- Social login -->
+        <div class="social-buttons">
+          <button type="button" class="social-btn">
+            <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            Google
+          </button>
+          <button type="button" class="social-btn">
+            <svg viewBox="0 0 24 24" fill="#181717"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            GitHub
+          </button>
+        </div>
+
+        <div class="divider">or</div>
+
+        <form id="signup" novalidate>
+          <!-- Plan selector -->
+          <div class="field">
+            <label>Choose your plan</label>
+            <div class="plan-selector" id="planSelector">
+              <label class="plan-option" data-plan="starter">
+                <input type="radio" name="plan" value="starter">
+                <div class="plan-name">Starter</div>
+                <div class="plan-price">$0</div>
+                <div class="plan-period">forever free</div>
+              </label>
+              <label class="plan-option selected" data-plan="pro">
+                <input type="radio" name="plan" value="pro" checked>
+                <div class="plan-badge">MOST POPULAR</div>
+                <div class="plan-name">Pro</div>
+                <div class="plan-price">$29</div>
+                <div class="plan-period">per user / month</div>
+              </label>
+              <label class="plan-option" data-plan="enterprise">
+                <input type="radio" name="plan" value="enterprise">
+                <div class="plan-name">Enterprise</div>
+                <div class="plan-price">$79</div>
+                <div class="plan-period">per user / month</div>
+              </label>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="field">
+              <label for="firstName">First name <span class="required">*</span></label>
+              <input type="text" id="firstName" name="firstName" placeholder="Ada" required>
+              <div class="error">First name is required</div>
+            </div>
+            <div class="field">
+              <label for="lastName">Last name <span class="required">*</span></label>
+              <input type="text" id="lastName" name="lastName" placeholder="Lovelace" required>
+              <div class="error">Last name is required</div>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="email">Work email <span class="required">*</span></label>
+            <input type="email" id="email" name="email" placeholder="ada@example.com" required>
+            <div class="error">Please enter a valid email address</div>
+          </div>
+
+          <div class="field">
+            <label for="password">Password <span class="required">*</span></label>
+            <input type="password" id="password" name="password" placeholder="Min. 12 characters" required minlength="12">
+            <div class="hint">Must be at least 12 characters with one number and one special character</div>
+            <div class="error">Password must be at least 12 characters</div>
+          </div>
+
+          <div class="field">
+            <label for="company">Company name</label>
+            <input type="text" id="company" name="company" placeholder="Acme Inc.">
+          </div>
+
+          <div class="row">
+            <div class="field">
+              <label for="role">Your role</label>
+              <select id="role" name="role">
+                <option value="">Select a role</option>
+                <option value="engineer">Software Engineer</option>
+                <option value="lead">Engineering Lead</option>
+                <option value="devops">DevOps / Platform</option>
+                <option value="cto">CTO / VP Engineering</option>
+                <option value="founder">Founder</option>
+                <option value="student">Student</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="teamSize">Team size</label>
+              <select id="teamSize" name="teamSize">
+                <option value="">Select size</option>
+                <option value="1">Just me</option>
+                <option value="2-5">2–5</option>
+                <option value="6-20">6–20</option>
+                <option value="21-100">21–100</option>
+                <option value="101+">101+</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="useCase">What will you use CloudStack for?</label>
+            <textarea id="useCase" name="useCase" rows="3" placeholder="Tell us about your project — helps us tailor your experience..."></textarea>
+          </div>
+
+          <!-- Checkboxes -->
+          <div class="field">
+            <label>Notifications</label>
+            <div class="check-group">
+              <label class="check-label">
+                <input type="checkbox" name="notifyProduct" checked>
+                Product updates and changelog
+              </label>
+              <label class="check-label">
+                <input type="checkbox" name="notifySecurity" checked>
+                Security advisories
+              </label>
+              <label class="check-label">
+                <input type="checkbox" name="notifyMarketing">
+                Tips, tutorials, and best practices (weekly)
+              </label>
+            </div>
+          </div>
+
+          <div class="terms-row">
+            <input type="checkbox" id="terms" name="terms" required>
+            <label for="terms">I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>. I understand CloudStack will process my data as described therein.</label>
+          </div>
+
+          <button type="submit" class="submit-btn">Create account</button>
+
+          <p class="form-footer">
+            Already have an account? <a href="#">Log in</a><br>
+            By signing up, you agree to receive product-related emails. You can unsubscribe anytime.
+          </p>
+        </form>
+
+        <!-- Success state (hidden) -->
+        <div class="form-success" id="formSuccess">
+          <div class="check-circle">✓</div>
+          <h3>Account created!</h3>
+          <p>Check your email for a verification link. You'll be up and running in 2 minutes.</p>
+        </div>
+      </div>
+
+      <!-- Trust badges -->
+      <div style="display:flex;gap:16px;margin-top:16px;justify-content:center;flex-wrap:wrap;">
+        <span style="background:#f3f4f6;padding:6px 12px;border-radius:6px;font-size:0.72em;color:#6b7280;font-weight:600;">🔒 SSL Encrypted</span>
+        <span style="background:#f3f4f6;padding:6px 12px;border-radius:6px;font-size:0.72em;color:#6b7280;font-weight:600;">✓ SOC 2 Type II</span>
+        <span style="background:#f3f4f6;padding:6px 12px;border-radius:6px;font-size:0.72em;color:#6b7280;font-weight:600;">🛡️ GDPR Compliant</span>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <a href="#">Status</a> · <a href="#">Security</a> · <a href="#">Privacy</a> · <a href="#">Terms</a> · <a href="#">Contact</a><br>
+    © 2026 CloudStack, Inc. All rights reserved. (Fictional company for testing purposes)
+  </footer>
+
+  <script>
+    // Plan selector
+    document.querySelectorAll('.plan-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        document.querySelectorAll('.plan-option').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        opt.querySelector('input').checked = true;
+      });
+    });
+
+    // Form validation
+    const form = document.getElementById('signup');
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      let valid = true;
+      form.querySelectorAll('[required]').forEach(field => {
+        const fieldWrap = field.closest('.field') || field.closest('.terms-row');
+        if (!field.value.trim() || (field.type === 'email' && !field.value.includes('@'))) {
+          fieldWrap?.classList.add('has-error');
+          valid = false;
+        } else {
+          fieldWrap?.classList.remove('has-error');
+        }
+      });
+      if (valid) {
+        form.style.display = 'none';
+        document.getElementById('formSuccess').classList.add('show');
+      }
+    });
+  </script>
+</body>
+</html>

@@ -35,7 +35,11 @@ function compileGlob(pattern) {
 function parsePathPattern(raw) {
   if (!raw || raw === "/**") return () => true;
   if (raw === "/*/**") return (p) => p.startsWith("/") && p !== "/";
-  return compileGlob(raw);
+  let normalized = raw;
+  if (normalized.length > 1 && normalized.endsWith("/") && !normalized.endsWith("/**")) {
+    normalized = normalized.slice(0, -1);
+  }
+  return compileGlob(normalized);
 }
 
 function getPathname(urlStr) {

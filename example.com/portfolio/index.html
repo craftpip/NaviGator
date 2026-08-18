@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mira Solano — Creative Developer</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #faf8f5;
+      --fg: #1a1714;
+      --muted: #8a8078;
+      --accent: #c45d3e;
+      --accent-light: #fdf0ec;
+      --card-bg: #fff;
+      --card-border: #ebe6e0;
+      --tag-bg: #f3efe9;
+      --serif: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    }
+
+    body {
+      font-family: var(--serif);
+      color: var(--fg);
+      background: var(--bg);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+
+    /* ─── Hero ─── */
+    .hero {
+      padding: 80px 0 60px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .hero-name {
+      font-size: 0.82em;
+      font-family: var(--mono);
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-size: 2.4em;
+      font-weight: 700;
+      line-height: 1.15;
+      margin-bottom: 24px;
+      letter-spacing: -0.02em;
+    }
+    .hero h1 .name-highlight {
+      color: var(--accent);
+      position: relative;
+    }
+    .hero h1 .name-highlight::after {
+      content: '';
+      position: absolute;
+      bottom: 2px;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--accent);
+      opacity: 0.25;
+      border-radius: 2px;
+    }
+    .hero-bio {
+      font-size: 1.05em;
+      color: var(--muted);
+      max-width: 600px;
+      line-height: 1.7;
+    }
+    .hero-bio strong { color: var(--fg); font-weight: 500; }
+    .hero-bio a { color: var(--accent); font-weight: 500; }
+    .hero-meta {
+      display: flex;
+      gap: 24px;
+      margin-top: 28px;
+      font-size: 0.82em;
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+    .hero-meta span::before {
+      content: '→';
+      margin-right: 6px;
+      opacity: 0.4;
+    }
+
+    /* ─── Section ─── */
+    .section { padding: 56px 0; }
+    .section-title {
+      font-size: 0.78em;
+      font-family: var(--mono);
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--card-border);
+    }
+    .section-count {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* ─── Project cards ─── */
+    .project-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 640px) {
+      .project-grid { grid-template-columns: 1fr; }
+    }
+    .project-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 22px 24px;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--fg);
+    }
+    .project-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 4px 20px rgba(196, 93, 62, 0.08);
+      transform: translateY(-2px);
+      text-decoration: none;
+    }
+    .project-card .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .project-card .card-name {
+      font-weight: 700;
+      font-size: 1em;
+      color: var(--fg);
+    }
+    .project-card .card-arrow {
+      color: var(--muted);
+      font-size: 0.85em;
+      transition: color 0.2s, transform 0.2s;
+    }
+    .project-card:hover .card-arrow {
+      color: var(--accent);
+      transform: translate(2px, -2px);
+    }
+    .project-card .card-desc {
+      font-size: 0.88em;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .project-card .card-tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: auto;
+    }
+    .project-card .tag {
+      font-size: 0.72em;
+      font-family: var(--mono);
+      background: var(--tag-bg);
+      color: var(--muted);
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .project-card .tag.lang {
+      background: var(--accent-light);
+      color: var(--accent);
+    }
+
+    /* ─── Writing / blog ─── */
+    .writing-list { list-style: none; }
+    .writing-list li {
+      border-bottom: 1px solid var(--card-border);
+    }
+    .writing-list li:last-child { border-bottom: none; }
+    .writing-list a {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0;
+      color: var(--fg);
+      text-decoration: none;
+      gap: 16px;
+    }
+    .writing-list a:hover { text-decoration: none; }
+    .writing-list .post-title {
+      font-weight: 500;
+      font-size: 0.95em;
+    }
+    .writing-list .post-date {
+      font-size: 0.78em;
+      font-family: var(--mono);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .writing-list .post-excerpt {
+      font-size: 0.85em;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ─── Talks / speaking ─── */
+    .talk-item {
+      display: flex;
+      gap: 16px;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--card-border);
+      align-items: flex-start;
+    }
+    .talk-item:last-child { border-bottom: none; }
+    .talk-year {
+      font-family: var(--mono);
+      font-size: 0.78em;
+      color: var(--accent);
+      font-weight: 500;
+      min-width: 44px;
+      padding-top: 2px;
+    }
+    .talk-info .talk-title {
+      font-weight: 600;
+      font-size: 0.92em;
+    }
+    .talk-info .talk-venue {
+      font-size: 0.82em;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ─── Stack ─── */
+    .stack-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    @media (max-width: 640px) {
+      .stack-grid { grid-template-columns: 1fr 1fr; }
+    }
+    .stack-item {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+    .stack-item .stack-label {
+      font-size: 0.72em;
+      font-family: var(--mono);
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+    .stack-item .stack-value {
+      font-weight: 600;
+      font-size: 0.92em;
+    }
+
+    /* ─── Footer ─── */
+    footer {
+      border-top: 1px solid var(--card-border);
+      padding: 40px 0 60px;
+    }
+    .footer-links {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      font-size: 0.88em;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .footer-links a:hover { color: var(--accent); }
+    .footer-copy {
+      margin-top: 20px;
+      font-size: 0.78em;
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+    .footer-copy .heart { color: var(--accent); }
+
+    /* ─── Subtle entrance animation ─── */
+    .fade-in {
+      opacity: 0;
+      transform: translateY(12px);
+      animation: fadeUp 0.5s ease forwards;
+    }
+    .fade-in:nth-child(2) { animation-delay: 0.08s; }
+    .fade-in:nth-child(3) { animation-delay: 0.16s; }
+    .fade-in:nth-child(4) { animation-delay: 0.24s; }
+    .fade-in:nth-child(5) { animation-delay: 0.32s; }
+    .fade-in:nth-child(6) { animation-delay: 0.40s; }
+    .fade-in:nth-child(7) { animation-delay: 0.48s; }
+    .fade-in:nth-child(8) { animation-delay: 0.56s; }
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- Hero -->
+    <header class="hero">
+      <div class="hero-name">mira solano</div>
+      <h1>I build things for the <span class="name-highlight">web</span> and sometimes <span class="name-highlight">print</span> receipts.</h1>
+      <p class="hero-bio">
+        Hi, I'm <strong>Mira Solano</strong>, a creative developer based in <strong>Lisbon, Portugal</strong>. I work across the full stack — <strong>React</strong>, <strong>Node.js</strong>, <strong>TypeScript</strong>, and <strong>Go</strong> — with a soft spot for design systems, generative art, and tools that make other developers' lives easier. I'm currently building <a href="#">Lumen</a>, an open-source design token platform.
+      </p>
+      <div class="hero-meta">
+        <span>Lisbon, PT</span>
+        <span>Available for freelance</span>
+        <span>Since 2018</span>
+      </div>
+    </header>
+
+    <!-- Projects -->
+    <section class="section">
+      <div class="section-title">
+        Open-source &amp; projects <span class="section-count">(9)</span>
+      </div>
+      <div class="project-grid">
+
+        <a href="#" class="project-card fade-in">
+          <div class="card-top">
+            <span class="card-name">Lumen Tokens</span>
+            <span class="card-arrow">↗</span>
+          </div>
+          <div class="card-desc">Design token pipeline — Figma to code in one command. Supports CSS, Tailwind, iOS, Android.</div>
+          <div class="card-tags">
+            <span class="tag lang">TypeScript</span>
+            <span class="tag">figma api</span>
+            <span class="tag">cli</span>
+          </div>
+        </a>
+
+        <a href="#" class="project-card fade-in">
+          <div class="card-top">
+            <span class="card-name">hotkey.dev</span>
+            <span class="card-arrow">↗</span>
+          </div>
+          <div class="card-desc">Visual keyboard shortcut editor for web apps. Export to Electron, Tauri, or browser extension.</div>
+          <div class="card-tags">
+            <span class="tag lang">React</span>
+            <span class="tag">tauri</span>
+            <span class="tag">editor</span>
+          </div>
+        </a>
+
+        <a href="#" class="project-card fade-in">
+          <div class="card-top">
+            <span class="card-name">Pico CSS</span>
+            <span class="card-arrow">↗</span>
+          </div>
+          <div class="card-desc">Minimal classless CSS framework for semantic HTML. 12KB gzipped. No utility classes, ever.</div>
+          <div class="card-tags">
+            <span class="tag lang">CSS</span>
+            <span class="tag">design system</span>
+            <span class="tag">8.2k ★</span>
+          </div>
+        </a>
+
+        <a href="#" class="project-card fade-in">
+          <div class="card-top">
+            <span class="card-name">noise-canvas</span>
+            <span class="card-arrow">↗</span>
+          </div>
+          <div class="card-desc">Generative art toolkit — Perlin noise, simplex, flow fields. Renders to Canvas or SVG.</div>
+          <div class="card-tags">
+            <span class="tag lang">JavaScript</span>
+            <span class="tag">canvas</span>
+            <span class="tag">generative</span>
+          </div>
+        </a>
+
+        <a href="#" class="project-card fade-in">
+          <div class="card-top">
+            <span class="card-name">go-proxy-pool</span>
+            <span class="card-arrow">↗</span>
+          </div>
+          <div class="card-desc">Rotating proxy pool with health checks. Fetches, validates, and rotates — zero config.</div>
+          <div class="card-tags">
+            <span class="tag lang">Go</span>
+            <span class="tag">networking</span>
+            <span class="tag">cli</span>
+          </div>
+        </a>
+
+        <a href="#" class="project-card fade-in">
+          <div class="card-top">
+            <span class="card-name">react-split-pane</span>
+            <span class="card-arrow">↗</span>
+          </div>
+          <div class="card-desc">Resizable split pane component. Keyboard accessible, SSR safe, zero dependencies.</div>
+          <div class="card-tags">
+            <span class="tag lang">React</span>
+            <span class="tag">a11y</span>
+            <span class="tag">4.1k ★</span>
+          </div>
+        </a>
+
+        <a href="#" class="project-card fade-in">
+          <div class="card-top">
+            <span class="card-name">ink-markdown</span>
+            <span class="card-arrow">↗</span>
+          </div>
+          <div class="card-desc">Render Markdown in the terminal using Ink. Syntax-highlighted, interactive, scrollable.</div>
+          <div class="card-tags">
+            <span class="tag lang">Node.js</span>
+            <span class="tag">terminal</span>
+            <span class="tag">ink</span>
+          </div>
+        </a>
+
+        <a href="#" class="project-card fade-in">
+          <div class="card-top">
+            <span class="card-name">figma-export</span>
+            <span class="card-arrow">↗</span>
+          </div>
+          <div class="card-desc">Export Figma components as React, Vue, or Svelte. Picks up variants, props, and events.</div>
+          <div class="card-tags">
+            <span class="tag lang">TypeScript</span>
+            <span class="tag">figma</span>
+            <span class="tag">codegen</span>
+          </div>
+        </a>
+
+        <a href="#" class="project-card fade-in">
+          <div class="card-top">
+            <span class="card-name">dotfiles</span>
+            <span class="card-arrow">↗</span>
+          </div>
+          <div class="card-desc">My terminal setup — tmux, neovim, zsh, starship. One script to rule them all.</div>
+          <div class="card-tags">
+            <span class="tag lang">Shell</span>
+            <span class="tag">dotfiles</span>
+            <span class="tag">nvim</span>
+          </div>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- Writing -->
+    <section class="section">
+      <div class="section-title">
+        Writing <span class="section-count">(5)</span>
+      </div>
+      <ul class="writing-list">
+        <li>
+          <a href="#">
+            <div>
+              <div class="post-title">Design tokens are not CSS variables</div>
+              <div class="post-excerpt">Why your token pipeline needs a build step, and how to think about tokens at the platform level.</div>
+            </div>
+            <span class="post-date">2026-06-12</span>
+          </a>
+        </li>
+        <li>
+          <a href="#">
+            <div>
+              <div class="post-title">Building a Figma plugin in 2026</div>
+              <div class="post-excerpt">The new plugin API, what changed, and how to ship a plugin that doesn't break every quarter.</div>
+            </div>
+            <span class="post-date">2026-03-28</span>
+          </a>
+        </li>
+        <li>
+          <a href="#">
+            <div>
+              <div class="post-title">Go is my favorite scripting language now</div>
+              <div class="post-excerpt">How I stopped worrying and learned to love go run for one-off scripts and CLI tools.</div>
+            </div>
+            <span class="post-date">2025-11-04</span>
+          </a>
+        </li>
+        <li>
+          <a href="#">
+            <div>
+              <div class="post-title">The case for classless CSS</div>
+              <div class="post-excerpt">Semantic HTML deserves semantic styling. A deep dive into classless frameworks and when they work.</div>
+            </div>
+            <span class="post-date">2025-08-17</span>
+          </a>
+        </li>
+        <li>
+          <a href="#">
+            <div>
+              <div class="post-title">Generative art with noise functions</div>
+              <div class="post-excerpt">From Perlin to Simplex: a visual guide to noise-based art generation in the browser.</div>
+            </div>
+            <span class="post-date">2025-04-02</span>
+          </a>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Speaking -->
+    <section class="section">
+      <div class="section-title">
+        Speaking <span class="section-count">(4)</span>
+      </div>
+      <div class="talk-item">
+        <span class="talk-year">2026</span>
+        <div class="talk-info">
+          <div class="talk-title">Design Tokens at Scale</div>
+          <div class="talk-venue">React Lisbon · Lightning talk</div>
+        </div>
+      </div>
+      <div class="talk-item">
+        <span class="talk-year">2025</span>
+        <div class="talk-info">
+          <div class="talk-title">Figma to Code: The Full Pipeline</div>
+          <div class="talk-venue">Web Summit · Workshop</div>
+        </div>
+      </div>
+      <div class="talk-item">
+        <span class="talk-year">2025</span>
+        <div class="talk-info">
+          <div class="talk-title">Why I Rewrote My CSS Framework</div>
+          <div class="talk-venue">JSConf EU · Talk</div>
+        </div>
+      </div>
+      <div class="talk-item">
+        <span class="talk-year">2024</span>
+        <div class="talk-info">
+          <div class="talk-title">Generative Art for Web Developers</div>
+          <div class="talk-venue">NodeConf Portugal · Talk</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stack -->
+    <section class="section">
+      <div class="section-title">
+        Current stack <span class="section-count">(6)</span>
+      </div>
+      <div class="stack-grid">
+        <div class="stack-item">
+          <div class="stack-label">Language</div>
+          <div class="stack-value">TypeScript</div>
+        </div>
+        <div class="stack-item">
+          <div class="stack-label">Frontend</div>
+          <div class="stack-value">React / Next.js</div>
+        </div>
+        <div class="stack-item">
+          <div class="stack-label">Backend</div>
+          <div class="stack-value">Node.js / Go</div>
+        </div>
+        <div class="stack-item">
+          <div class="stack-label">Styling</div>
+          <div class="stack-value">CSS / Tailwind</div>
+        </div>
+        <div class="stack-item">
+          <div class="stack-label">Database</div>
+          <div class="stack-value">PostgreSQL / SQLite</div>
+        </div>
+        <div class="stack-item">
+          <div class="stack-label">Editor</div>
+          <div class="stack-value">Neovim + tmux</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <div class="footer-links">
+        <a href="#">GitHub</a>
+        <a href="#">LinkedIn</a>
+        <a href="#">Twitter</a>
+        <a href="#">Dribbble</a>
+        <a href="#">RSS</a>
+        <a href="mailto:hello@mira.dev">Email</a>
+      </div>
+      <div class="footer-copy">
+        Built with <span class="heart">♥</span> and too much coffee · Lisbon, 2026
+      </div>
+    </footer>
+
+  </div>
+</body>
+</html>

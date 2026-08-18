@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Step 3: Deploy your first project — CloudStack Onboarding</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #f8f9fb; line-height: 1.6; min-height: 100vh; display: flex; flex-direction: column; }
+    a { color: #4f46e5; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .topbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-size: 1.1em; font-weight: 700; color: #4f46e5; }
+    .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 0.85em; color: #6b7280; }
+    .topbar-right a { color: #6b7280; }
+    .progress-wrap { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 20px 24px; }
+    .progress-inner { max-width: 720px; margin: 0 auto; }
+    .progress-steps { display: flex; justify-content: space-between; margin-bottom: 12px; }
+    .progress-step { display: flex; align-items: center; gap: 8px; font-size: 0.82em; color: #9ca3af; }
+    .progress-step.active { color: #4f46e5; font-weight: 600; }
+    .progress-step.done { color: #10b981; }
+    .step-circle { width: 28px; height: 28px; border-radius: 50%; border: 2px solid #d1d5db; display: flex; align-items: center; justify-content: center; font-size: 0.78em; font-weight: 700; }
+    .progress-step.active .step-circle { border-color: #4f46e5; background: #4f46e5; color: #fff; }
+    .progress-step.done .step-circle { border-color: #10b981; background: #10b981; color: #fff; }
+    .progress-bar { height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #4f46e5; border-radius: 2px; transition: width 0.3s; }
+    .main { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 40px 24px; gap: 24px; max-width: 860px; margin: 0 auto; width: 100%; }
+    @media (max-width: 768px) { .main { flex-direction: column; } .sidebar { display: none; } }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 36px; width: 100%; max-width: 560px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .card h1 { font-size: 1.5em; font-weight: 700; margin-bottom: 4px; }
+    .card .subtitle { font-size: 0.9em; color: #6b7280; margin-bottom: 24px; }
+
+    .sidebar { width: 280px; flex-shrink: 0; padding-top: 8px; }
+    .sidebar-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+    .sidebar-box h3 { font-size: 0.82em; font-weight: 700; color: #374151; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .sidebar-box p, .sidebar-box li { font-size: 0.82em; color: #6b7280; line-height: 1.5; }
+    .sidebar-box ul { padding-left: 16px; margin: 0; }
+    .sidebar-box li { margin-bottom: 4px; }
+    .region-grid { display: grid; gap: 6px; }
+    .region-row { display: flex; justify-content: space-between; font-size: 0.78em; padding: 4px 0; border-bottom: 1px solid #f3f4f6; }
+    .region-row span:last-child { color: #10b981; font-weight: 500; }
+    .deploy-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-box { background: #f9fafb; border-radius: 8px; padding: 10px 12px; text-align: center; }
+    .stat-box .num { font-size: 1.2em; font-weight: 700; color: #4f46e5; }
+    .stat-box .label { font-size: 0.72em; color: #9ca3af; margin-top: 2px; }
+
+    .template-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 24px; }
+    .template-card { border: 2px solid #e5e7eb; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.15s; }
+    .template-card:hover { border-color: #c7d2fe; }
+    .template-card.selected { border-color: #4f46e5; background: #eef2ff; }
+    .template-card input { display: none; }
+    .template-card .tpl-icon { font-size: 1.4em; margin-bottom: 4px; }
+    .template-card .tpl-name { font-size: 0.85em; font-weight: 700; color: #111827; }
+    .template-card .tpl-desc { font-size: 0.75em; color: #6b7280; margin-top: 2px; }
+    .template-card .tpl-badge { display: inline-block; background: #dbeafe; color: #1d4ed8; font-size: 0.62em; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-top: 4px; }
+
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 0.85em; font-weight: 600; color: #374151; margin-bottom: 5px; }
+    .field input, .field select { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9em; color: #111827; background: #fff; }
+    .field input:focus, .field select:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+    .field .hint { font-size: 0.78em; color: #6b7280; margin-top: 4px; }
+
+    .deploy-btn { width: 100%; padding: 14px; background: #10b981; color: #fff; border: none; border-radius: 8px; font-size: 1em; font-weight: 700; cursor: pointer; margin-top: 8px; }
+    .deploy-btn:hover { background: #059669; }
+    .deploy-btn:disabled { background: #6ee7b7; cursor: not-allowed; }
+
+    .btn-row { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; }
+    .btn-back { background: none; border: 1px solid #d1d5db; padding: 10px 20px; border-radius: 8px; font-size: 0.88em; color: #374151; cursor: pointer; font-weight: 500; text-decoration: none; }
+    .btn-back:hover { background: #f9fafb; }
+
+    .deploy-success { display: none; text-align: center; padding: 40px 20px; }
+    .deploy-success.show { display: block; }
+    .deploy-success .check { font-size: 3em; margin-bottom: 12px; }
+    .deploy-success h2 { font-size: 1.3em; margin-bottom: 8px; }
+    .deploy-success p { font-size: 0.9em; color: #6b7280; margin-bottom: 20px; }
+    .deploy-success .url-box { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 0.85em; margin-bottom: 20px; word-break: break-all; }
+    .deploy-success .url-box a { color: #4f46e5; }
+    .deploy-success .next-steps { text-align: left; background: #f9fafb; border-radius: 10px; padding: 20px; }
+    .deploy-success .next-steps h3 { font-size: 0.9em; margin-bottom: 10px; }
+    .deploy-success .next-steps ul { font-size: 0.85em; padding-left: 20px; }
+    .deploy-success .next-steps li { margin-bottom: 6px; }
+    .deploy-success .next-steps a { color: #4f46e5; font-weight: 500; }
+
+    footer { border-top: 1px solid #e5e7eb; padding: 16px 24px; text-align: center; font-size: 0.78em; color: #9ca3af; }
+    footer a { color: #6b7280; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">☁️ CloudStack</div>
+    <div class="topbar-right">
+      <span>Step 3 of 3</span>
+      <a href="#">Exit onboarding</a>
+    </div>
+  </header>
+
+  <div class="progress-wrap">
+    <div class="progress-inner">
+      <div class="progress-steps">
+        <div class="progress-step done">
+          <div class="step-circle">✓</div>
+          <span>Your profile</span>
+        </div>
+        <div class="progress-step done">
+          <div class="step-circle">✓</div>
+          <span>Team setup</span>
+        </div>
+        <div class="progress-step active">
+          <div class="step-circle">3</div>
+          <span>Deploy project</span>
+        </div>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:100%"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="card" id="deployCard">
+      <h1>Deploy your first project</h1>
+      <p class="subtitle">Choose a starter template, name your project, and pick a region. You'll be live in under 30 seconds.</p>
+
+      <form id="step3" novalidate>
+        <div class="field">
+          <label>Project template</label>
+          <div class="template-grid" id="templateGrid">
+            <label class="template-card selected" data-tpl="nextjs">
+              <input type="radio" name="template" value="nextjs" checked>
+              <div class="tpl-icon">⚡</div>
+              <div class="tpl-name">Next.js</div>
+              <div class="tpl-desc">React + SSR + API routes</div>
+              <div class="tpl-badge">RECOMMENDED</div>
+            </label>
+            <label class="template-card" data-tpl="astro">
+              <input type="radio" name="template" value="astro">
+              <div class="tpl-icon">🚀</div>
+              <div class="tpl-name">Astro</div>
+              <div class="tpl-desc">Content-first, island architecture</div>
+            </label>
+            <label class="template-card" data-tpl="svelte">
+              <input type="radio" name="template" value="svelte">
+              <div class="tpl-icon">🔥</div>
+              <div class="tpl-name">SvelteKit</div>
+              <div class="tpl-desc">Less code, more joy</div>
+            </label>
+            <label class="template-card" data-tpl="remix">
+              <input type="radio" name="template" value="remix">
+              <div class="tpl-icon">💿</div>
+              <div class="tpl-name">Remix</div>
+              <div class="tpl-desc">Full-stack web framework</div>
+            </label>
+            <label class="template-card" data-tpl="vue">
+              <input type="radio" name="template" value="vue">
+              <div class="tpl-icon">💚</div>
+              <div class="tpl-name">Nuxt 4</div>
+              <div class="tpl-desc">Vue 3 + auto-imports + SSR</div>
+            </label>
+            <label class="template-card" data-tpl="blank">
+              <input type="radio" name="template" value="blank">
+              <div class="tpl-icon">📦</div>
+              <div class="tpl-name">Blank project</div>
+              <div class="tpl-desc">Start from scratch</div>
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="projectName">Project name</label>
+          <input type="text" id="projectName" name="projectName" placeholder="my-awesome-app" required>
+          <div class="hint">Lowercase letters, numbers, and hyphens only. This becomes part of your deploy URL.</div>
+        </div>
+
+        <div class="field">
+          <label for="region">Deploy region</label>
+          <select id="region" name="region">
+            <option value="us-east">US East (Virginia)</option>
+            <option value="us-west">US West (Oregon)</option>
+            <option value="eu-west">EU West (Ireland)</option>
+            <option value="eu-central">EU Central (Frankfurt)</option>
+            <option value="ap-south">Asia Pacific (Mumbai)</option>
+            <option value="ap-east">Asia Pacific (Tokyo)</option>
+          </select>
+        </div>
+
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:0.82em;color:#1e40af;">
+          <strong>Free deploy:</strong> Your Pro trial includes 100 GB bandwidth/month, 1 GB storage, and 100k serverless invocations. No credit card needed.
+        </div>
+
+        <button type="submit" class="deploy-btn">🚀 Deploy now</button>
+
+        <div class="btn-row">
+          <a href="/flow/step2/" class="btn-back">← Back</a>
+          <span style="font-size:0.8em;color:#9ca3af;">Takes ~30 seconds</span>
+        </div>
+      </form>
+
+      <!-- Success state -->
+      <div class="deploy-success" id="deploySuccess">
+        <div class="check">🎉</div>
+        <h2>You're live!</h2>
+        <p>Your project is deployed and ready. Here's what happened:</p>
+        <div class="url-box">
+          <a href="#">https://my-awesome-app.cloudstack.app</a>
+        </div>
+        <div class="next-steps">
+          <h3>What's next?</h3>
+          <ul>
+            <li><a href="#">Open the dashboard</a> — see real-time metrics, logs, and performance</li>
+            <li><a href="#">Connect a domain</a> — add your custom domain with one-click DNS setup</li>
+            <li><a href="#">Set up CI/CD</a> — link your GitHub/GitLab repo for automatic deploys on push</li>
+            <li><a href="#">Configure environment variables</a> — add API keys, database URLs, and secrets</li>
+            <li><a href="#">Add serverless functions</a> — extend your project with API endpoints</li>
+            <li><a href="#">Invite more teammates</a> — they're waiting in <a href="#">Team settings</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <div class="sidebar-box">
+        <h3>Region latency</h3>
+        <div class="region-grid">
+          <div class="region-row"><span>US East (Virginia)</span><span>12ms</span></div>
+          <div class="region-row"><span>US West (Oregon)</span><span>18ms</span></div>
+          <div class="region-row"><span>EU West (Ireland)</span><span>22ms</span></div>
+          <div class="region-row"><span>EU Central (Frankfurt)</span><span>25ms</span></div>
+          <div class="region-row"><span>Asia Pacific (Mumbai)</span><span>38ms</span></div>
+          <div class="region-row"><span>Asia Pacific (Tokyo)</span><span>42ms</span></div>
+        </div>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>What gets deployed</h3>
+        <ul>
+          <li>Static assets served via global CDN (38 PoPs)</li>
+          <li>Serverless API routes (Node.js 20 runtime)</li>
+          <li>Automatic HTTPS + HTTP/3</li>
+          <li>Preview deployments on every push</li>
+          <li>Instant rollbacks (one-click)</li>
+          <li>Built-in analytics (page views, API calls)</li>
+        </ul>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>Deploy history</h3>
+        <div style="font-size:0.82em;color:#9ca3af;">
+          <p style="margin:0 0 8px;text-align:center;">No previous deploys</p>
+          <p style="margin:0;">This will be your first deployment. After the onboarding, you'll see a full history with rollback options in your dashboard.</p>
+        </div>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>CloudStack by the numbers</h3>
+        <div class="deploy-stats">
+          <div class="stat-box"><div class="num">4.2M</div><div class="label">Deployments shipped</div></div>
+          <div class="stat-box"><div class="num">99.99%</div><div class="label">Uptime SLA</div></div>
+          <div class="stat-box"><div class="num">38</div><div class="label">Edge locations</div></div>
+          <div class="stat-box"><div class="num">< 30s</div><div class="label">Average deploy time</div></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    <a href="#">Help</a> · <a href="#">Privacy</a> · <a href="#">Terms</a> · © 2026 CloudStack, Inc. (Fictional)
+  </footer>
+
+  <script>
+    document.querySelectorAll('.template-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        card.querySelector('input').checked = true;
+      });
+    });
+    document.getElementById('step3').addEventListener('submit', (e) => {
+      e.preventDefault();
+      document.getElementById('step3').style.display = 'none';
+      document.getElementById('deploySuccess').classList.add('show');
+    });
+  </script>
+</body>
+</html>

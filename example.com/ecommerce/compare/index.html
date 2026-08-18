@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compare: ProMax Ultra vs NovaLite 5 vs PixelFold — ShopTest</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; color: #1a1a2e; background: #f5f6fa; }
+    header { background: linear-gradient(135deg, #0d1b2a 0%, #1b263b 100%); color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 20px; }
+    header nav a { color: #adb5bd; text-decoration: none; font-size: 0.85em; margin-right: 16px; }
+    header nav a:hover { color: #fff; }
+    .breadcrumb { padding: 10px 20px; font-size: 0.82em; color: #6c757d; max-width: 1100px; margin: 0 auto; }
+    .breadcrumb a { color: #0d6efd; text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    main { max-width: 1100px; margin: 0 auto; padding: 0 20px 40px; }
+    h1 { font-size: 1.6em; margin: 10px 0 4px; }
+    .subtitle { color: #6c757d; font-size: 0.9em; margin-bottom: 20px; }
+    .hero-products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
+    .product-hero { background: #fff; border-radius: 10px; padding: 20px; text-align: center; border: 2px solid #e9ecef; position: relative; }
+    .product-hero.recommended { border-color: #0d6efd; }
+    .product-hero.recommended::before { content: "BEST VALUE"; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: #0d6efd; color: #fff; font-size: 0.7em; font-weight: 700; padding: 3px 10px; border-radius: 10px; letter-spacing: 0.5px; }
+    .product-hero .price { font-size: 1.8em; font-weight: 700; color: #0d6efd; }
+    .product-hero .price .cents { font-size: 0.5em; vertical-align: super; }
+    .product-hero .price-sub { font-size: 0.75em; color: #6c757d; }
+    .product-hero h3 { margin: 8px 0; font-size: 1.1em; }
+    .rating { color: #ffc107; font-size: 0.9em; }
+    .rating .num { color: #333; font-weight: 600; margin-left: 4px; }
+    .rating .count { color: #6c757d; font-weight: normal; font-size: 0.85em; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7em; font-weight: 600; margin: 4px 2px; }
+    .badge-new { background: #198754; color: #fff; }
+    .badge-sale { background: #dc3545; color: #fff; }
+    .badge-popular { background: #6f42c1; color: #fff; }
+    .badge-refurbished { background: #fd7e14; color: #fff; }
+    h2 { font-size: 1.3em; border-bottom: 2px solid #dee2e6; padding-bottom: 6px; margin-top: 36px; }
+    h3 { font-size: 1.05em; margin-top: 20px; color: #495057; }
+
+    /* Comparison table */
+    .comparison-wrap { overflow-x: auto; margin: 16px 0; }
+    .comparison-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .comparison-table th { background: #f8f9fa; padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #dee2e6; position: sticky; top: 0; }
+    .comparison-table td { padding: 8px 12px; border-bottom: 1px solid #e9ecef; vertical-align: top; }
+    .comparison-table tr:hover td { background: #f8f9fa; }
+    .comparison-table .highlight { background: #fff3cd; font-weight: 600; }
+    .comparison-table .check { color: #198754; font-weight: bold; }
+    .comparison-table .cross { color: #dc3545; }
+    .comparison-table .partial { color: #fd7e14; }
+    .comparison-table td img { max-width: 100%; }
+    .section-label { background: #e9ecef; font-weight: 700; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.5px; color: #495057; }
+
+    .pros-cons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 16px 0; }
+    .pros-cons ul { list-style: none; padding: 0; margin: 0; font-size: 0.9em; }
+    .pros-cons li { padding: 4px 0; padding-left: 20px; position: relative; }
+    .pros-cons .pro li::before { content: "✓"; color: #198754; position: absolute; left: 0; font-weight: bold; }
+    .pros-cons .con li::before { content: "✗"; color: #dc3545; position: absolute; left: 0; font-weight: bold; }
+
+    .verdict { background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%); border-radius: 10px; padding: 20px; margin: 30px 0; border-left: 4px solid #0d6efd; }
+    .verdict h3 { margin-top: 0; color: #0d6efd; }
+    .user-reviews { background: #fff; border-radius: 10px; padding: 20px; border: 1px solid #e9ecef; margin: 20px 0; }
+    .review { border-bottom: 1px solid #e9ecef; padding: 12px 0; }
+    .review:last-child { border-bottom: none; }
+    .review-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .review-author { font-weight: 600; font-size: 0.9em; }
+    .review-verified { color: #198754; font-size: 0.75em; }
+    .review-body { font-size: 0.9em; line-height: 1.5; }
+    .review-helpful { font-size: 0.8em; color: #6c757d; margin-top: 4px; }
+    footer { border-top: 1px solid #dee2e6; padding: 16px 20px; color: #6c757d; font-size: 0.8em; text-align: center; background: #fff; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong style="font-size:1.1em;">🛒 ShopTest</strong>
+    <nav>
+      <a href="#">Home</a>
+      <a href="#">Phones</a>
+      <a href="#">Laptops</a>
+      <a href="#">Compare</a>
+      <a href="#">Deals</a>
+    </nav>
+  </header>
+
+  <div class="breadcrumb">
+    <a href="#">Home</a> › <a href="#">Phones</a> › <a href="#">Smartphones</a> › Compare
+  </div>
+
+  <main>
+    <h1>Compare Smartphones</h1>
+    <p class="subtitle">ProMax Ultra vs NovaLite 5 vs PixelFold — side-by-side specs, pricing, and reviews</p>
+
+    <!-- ============================================= -->
+    <!-- Hero product cards                             -->
+    <!-- ============================================= -->
+    <div class="hero-products">
+      <div class="product-hero">
+        <span class="badge badge-new">NEW 2026</span>
+        <h3>ProMax Ultra</h3>
+        <div class="rating">★★★★☆ <span class="num">4.3</span> <span class="count">(1,247)</span></div>
+        <div class="price">$1,199<span class="cents">.99</span></div>
+        <div class="price-sub">or $49.99/mo × 24 months</div>
+        <p style="font-size:0.85em;color:#6c757d;margin-top:10px;">256 GB · Midnight Black</p>
+      </div>
+      <div class="product-hero recommended">
+        <span class="badge badge-popular">MOST POPULAR</span>
+        <h3>NovaLite 5</h3>
+        <div class="rating">★★★★★ <span class="num">4.7</span> <span class="count">(3,891)</span></div>
+        <div class="price">$849<span class="cents">.00</span></div>
+        <div class="price-sub">or $35.37/mo × 24 months</div>
+        <p style="font-size:0.85em;color:#6c757d;margin-top:10px;">128 GB · Arctic White</p>
+      </div>
+      <div class="product-hero">
+        <span class="badge badge-sale">SAVE $150</span>
+        <h3>PixelFold</h3>
+        <div class="rating">★★★★☆ <span class="num">4.1</span> <span class="count">(876)</span></div>
+        <div class="price">$949<span class="cents">.99</span></div>
+        <div class="price-sub">or $39.58/mo × 24 months</div>
+        <p style="font-size:0.85em;color:#6c757d;margin-top:10px;">256 GB · Storm Grey</p>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Detailed specs comparison                      -->
+    <!-- ============================================= -->
+    <h2>Detailed Specifications</h2>
+    <div class="comparison-wrap">
+      <table class="comparison-table">
+        <thead>
+          <tr><th style="width:28%;">Feature</th><th style="width:24%;">ProMax Ultra</th><th style="width:24%;">NovaLite 5</th><th style="width:24%;">PixelFold</th></tr>
+        </thead>
+        <tbody>
+          <!-- Display -->
+          <tr class="section-label"><td colspan="4">Display</td></tr>
+          <tr><td>Screen size</td><td>6.8″ AMOLED</td><td class="highlight">6.7″ AMOLED</td><td>7.6″ OLED (foldable)</td></tr>
+          <tr><td>Resolution</td><td>2400 × 1080 (423 PPI)</td><td class="highlight">2560 × 1440 (512 PPI)</td><td>2208 × 1840 (380 PPI)</td></tr>
+          <tr><td>Refresh rate</td><td>120 Hz</td><td class="highlight">144 Hz</td><td>120 Hz</td></tr>
+          <tr><td>Peak brightness</td><td>2000 nits</td><td>2200 nits</td><td class="highlight">1800 nits</td></tr>
+          <tr><td>Always-on display</td><td class="check">Yes</td><td class="check">Yes</td><td class="check">Yes</td></tr>
+          <tr><td>HDR support</td><td>HDR10+</td><td>HDR10+ / Dolby Vision</td><td>HDR10+</td></tr>
+
+          <!-- Performance -->
+          <tr class="section-label"><td colspan="4">Performance</td></tr>
+          <tr><td>Processor</td><td>Snapdragon 8 Gen 4</td><td class="highlight">Snapdragon 8 Gen 4</td><td>Tensor G4</td></tr>
+          <tr><td>RAM</td><td>12 GB</td><td class="highlight">16 GB</td><td>12 GB</td></tr>
+          <tr><td>Storage options</td><td>256 / 512 GB / 1 TB</td><td>128 / 256 / 512 GB</td><td>256 / 512 GB</td></tr>
+          <tr><td>MicroSD expansion</td><td class="cross">No</td><td class="cross">No</td><td class="cross">No</td></tr>
+          <tr><td>AnTuTu score</td><td>1,450,000</td><td class="highlight">1,520,000</td><td>1,180,000</td></tr>
+          <tr><td>RAM management</td><td>Up to 8 background apps</td><td>Up to 12 background apps</td><td>Up to 8 background apps</td></tr>
+
+          <!-- Camera -->
+          <tr class="section-label"><td colspan="4">Camera</td></tr>
+          <tr><td>Main sensor</td><td>200 MP (f/1.7)</td><td>108 MP (f/1.8)</td><td class="highlight">50 MP (f/1.5)</td></tr>
+          <tr><td>Ultrawide</td><td>50 MP (f/2.2)</td><td>12 MP (f/2.2)</td><td>12 MP (f/2.2)</td></tr>
+          <tr><td>Telephoto</td><td class="highlight">50 MP (5× optical)</td><td>10 MP (3× optical)</td><td>48 MP (5× optical)</td></tr>
+          <tr><td>Front camera</td><td>32 MP</td><td>32 MP</td><td>10.5 MP</td></tr>
+          <tr><td>Video max</td><td>8K @ 30fps</td><td>8K @ 30fps</td><td>4K @ 60fps</td></tr>
+          <tr><td>OIS</td><td class="check">Yes (all lenses)</td><td class="partial">Main only</td><td class="check">Yes (all lenses)</td></tr>
+          <tr><td>Night mode</td><td class="check">Yes</td><td class="check">Yes</td><td class="check">Yes</td></tr>
+
+          <!-- Battery -->
+          <tr class="section-label"><td colspan="4">Battery & Charging</td></tr>
+          <tr><td>Battery capacity</td><td>5000 mAh</td><td class="highlight">5200 mAh</td><td>4500 mAh</td></tr>
+          <tr><td>Wired charging</td><td>65W</td><td class="highlight">120W</td><td>30W</td></tr>
+          <tr><td>Wireless charging</td><td class="check">Yes (50W)</td><td class="check">Yes (50W)</td><td class="check">Yes (15W)</td></tr>
+          <tr><td>Reverse wireless</td><td class="check">Yes (10W)</td><td class="check">Yes (5W)</td><td class="cross">No</td></tr>
+          <tr><td>0→100% time</td><td>38 min</td><td class="highlight">18 min</td><td>65 min</td></tr>
+
+          <!-- Software -->
+          <tr class="section-label"><td colspan="4">Software & AI</td></tr>
+          <tr><td>OS</td><td>Android 15</td><td>Android 15</td><td>Android 15</td></tr>
+          <tr><td>AI assistant</td><td>Pro Assistant</td><td>Nova AI</td><td class="highlight">Gemini Nano</td></tr>
+          <tr><td>On-device AI features</td><td class="partial">Photo enhance, summarize</td><td class="check">Photo enhance, summarize, translate, write</td><td class="check">Photo enhance, summarize, translate, call screen</td></tr>
+          <tr><td>Update guarantee</td><td>4 years OS / 5 years security</td><td class="highlight">5 years OS / 6 years security</td><td>7 years OS / 7 years security</td></tr>
+
+          <!-- Connectivity -->
+          <tr class="section-label"><td colspan="4">Connectivity</td></tr>
+          <tr><td>5G bands</td><td>Sub-6 + mmWave</td><td>Sub-6 only</td><td class="highlight">Sub-6 + mmWave</td></tr>
+          <tr><td>Wi-Fi</td><td>Wi-Fi 7</td><td>Wi-Fi 7</td><td>Wi-Fi 6E</td></tr>
+          <tr><td>Bluetooth</td><td>5.4</td><td>5.4</td><td>5.3</td></tr>
+          <tr><td>Satellite SOS</td><td class="check">Yes</td><td class="cross">No</td><td class="check">Yes</td></tr>
+          <tr><td>USB-C speed</td><td>USB 3.2 Gen 2</td><td>USB 3.2 Gen 1</td><td>USB 3.2 Gen 2</td></tr>
+
+          <!-- Physical -->
+          <tr class="section-label"><td colspan="4">Physical</td></tr>
+          <tr><td>Weight</td><td>228 g</td><td class="highlight">189 g</td><td>253 g</td></tr>
+          <tr><td>Dimensions</td><td>162.3 × 76.1 × 8.6 mm</td><td class="highlight">158.2 × 73.1 × 7.8 mm</td><td>150.2 × 145.3 × 5.8 mm (unfolded)</td></tr>
+          <tr><td>Water resistance</td><td>IP68</td><td>IP68</td><td>IPX8</td></tr>
+          <tr><td>Materials</td><td>Titanium frame, Gorilla Glass Victus 3</td><td>Aluminum frame, Gorilla Glass 7</td><td>Steel frame, UTG glass</td></tr>
+          <tr><td>Colors available</td><td>Midnight Black, Ocean Blue, Lavender</td><td>Arctic White, Midnight, Sage Green, Coral Pink</td><td>Storm Grey, Porcelain</td></tr>
+
+          <!-- Price -->
+          <tr class="section-label"><td colspan="4">Pricing</td></tr>
+          <tr><td>Starting price</td><td>$1,199.99</td><td class="highlight">$849.00</td><td>$949.99</td></tr>
+          <tr><td>128 GB</td><td class="cross">N/A</td><td class="highlight">$849.00</td><td class="cross">N/A</td></tr>
+          <tr><td>256 GB</td><td>$1,199.99</td><td>$949.00</td><td class="highlight">$949.99</td></tr>
+          <tr><td>512 GB</td><td>$1,399.99</td><td>$1,049.00</td><td>$1,149.99</td></tr>
+          <tr><td>1 TB</td><td>$1,599.99</td><td class="cross">N/A</td><td class="cross">N/A</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Pros and Cons                                   -->
+    <!-- ============================================= -->
+    <h2>Pros & Cons</h2>
+    <div class="pros-cons">
+      <div class="pro">
+        <h3>ProMax Ultra</h3>
+        <ul>
+          <li>Industry-leading 200 MP camera sensor</li>
+          <li>5× optical zoom with OIS on all lenses</li>
+          <li>Titanium build — premium feel, lighter than expected</li>
+          <li>8K video recording</li>
+          <li>mmWave 5G + satellite SOS</li>
+          <li>Up to 1 TB storage option</li>
+        </ul>
+        <div class="con" style="margin-top:8px;">
+          <ul>
+            <li>Most expensive at $1,199 starting</li>
+            <li>Heaviest at 228 g</li>
+            <li>Slower 65W charging vs competitors</li>
+            <li>Only 4 years of OS updates</li>
+            <li>No microSD slot</li>
+          </ul>
+        </div>
+      </div>
+      <div class="pro">
+        <h3>NovaLite 5 <span class="badge badge-popular" style="font-size:0.6em;">RECOMMENDED</span></h3>
+        <ul>
+          <li>Best value — $849 starting with flagship specs</li>
+          <li>120W charging: 0–100% in 18 minutes</li>
+          <li>Lightest at 189 g, thinnest at 7.8 mm</li>
+          <li>144 Hz display — smoothest in class</li>
+          <li>16 GB RAM for superior multitasking</li>
+          <li>5 years OS + 6 years security updates</li>
+          <li>Most on-device AI features</li>
+          <li>4 color options (most in this comparison)</li>
+        </ul>
+        <div class="con" style="margin-top:8px;">
+          <ul>
+            <li>No mmWave 5G</li>
+            <li>No satellite SOS</li>
+            <li>Only main lens has OIS</li>
+            <li>128 GB base storage (no microSD)</li>
+            <li>No 1 TB option</li>
+          </ul>
+        </div>
+      </div>
+      <div class="pro">
+        <h3>PixelFold</h3>
+        <ul>
+          <li>Foldable: 7.6″ tablet-sized display</li>
+          <li>Best camera software (Google computational photography)</li>
+          <li>Longest update support: 7 years OS + security</li>
+          <li>Gemini Nano — best on-device AI</li>
+          <li>Satellite SOS + mmWave 5G</li>
+          <li>Thinnest phone (unfolded) at 5.8 mm</li>
+        </ul>
+        <div class="con" style="margin-top:8px;">
+          <ul>
+            <li>Heaviest at 253 g</li>
+            <li>Weakest charging: 30W wired, 65 min to full</li>
+            <li>Lowest AnTuTu score (1.18M)</li>
+            <li>No reverse wireless charging</li>
+            <li>No 8K video</li>
+            <li>Most expensive per GB</li>
+            <li>Foldable durability concerns</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Benchmark results                              -->
+    <!-- ============================================= -->
+    <h2>Real-World Performance Tests</h2>
+    <div class="comparison-wrap">
+      <table class="comparison-table">
+        <thead>
+          <tr><th>Benchmark</th><th>ProMax Ultra</th><th>NovaLite 5</th><th>PixelFold</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Geekbench 6 Single-Core</td><td>2,245</td><td class="highlight">2,310</td><td>1,987</td></tr>
+          <tr><td>Geekbench 6 Multi-Core</td><td>6,890</td><td class="highlight">7,120</td><td>5,650</td></tr>
+          <tr><td>GFXBench Aztec Ruins (offscreen)</td><td class="highlight">112 fps</td><td>108 fps</td><td>82 fps</td></tr>
+          <tr><td>3DMark Wild Life Extreme</td><td>3,890</td><td class="highlight">3,950</td><td>3,120</td></tr>
+          <tr><td>PCMark Work 3.0</td><td>14,200</td><td class="highlight">15,100</td><td>11,800</td></tr>
+          <tr><td>Wi-Fi download speed (avg)</td><td>1,240 Mbps</td><td>1,180 Mbps</td><td class="highlight">1,310 Mbps</td></tr>
+          <tr><td>App launch time (cold)</td><td>1.2s</td><td class="highlight">0.9s</td><td>1.5s</td></tr>
+          <tr><td>Camera shutter-to-shot</td><td class="highlight">0.3s</td><td>0.4s</td><td>0.5s</td></tr>
+          <tr><td>Video export (10 min 4K)</td><td>28s</td><td class="highlight">24s</td><td>42s</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Battery life comparison                         -->
+    <!-- ============================================= -->
+    <h2>Battery Life (Screen-On Time)</h2>
+    <div class="comparison-wrap">
+      <table class="comparison-table">
+        <thead>
+          <tr><th>Usage pattern</th><th>ProMax Ultra</th><th>NovaLite 5</th><th>PixelFold</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Web browsing</td><td>11.2 hours</td><td class="highlight">12.8 hours</td><td>9.4 hours</td></tr>
+          <tr><td>Video streaming</td><td>13.5 hours</td><td class="highlight">14.2 hours</td><td>11.8 hours</td></tr>
+          <tr><td>Gaming (heavy)</td><td>5.8 hours</td><td class="highlight">6.4 hours</td><td>4.2 hours</td></tr>
+          <tr><td>Mixed usage (realistic)</td><td>8.6 hours</td><td class="highlight">9.8 hours</td><td>7.1 hours</td></tr>
+          <tr><td>Standby drain (24h)</td><td>3.2%</td><td class="highlight">2.8%</td><td>4.1%</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Camera comparison                               -->
+    <!-- ============================================= -->
+    <h2>Camera Specs Deep Dive</h2>
+    <div class="comparison-wrap">
+      <table class="comparison-table">
+        <thead>
+          <tr><th>Camera feature</th><th>ProMax Ultra</th><th>NovaLite 5</th><th>PixelFold</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Sensor size (main)</td><td class="highlight">1/1.3″</td><td>1/1.33″</td><td>1/1.31″</td></tr>
+          <tr><td>Pixel size (main)</td><td>0.6 µm (binned: 1.2 µm)</td><td>0.64 µm (binned: 1.28 µm)</td><td class="highlight">1.2 µm (binned: 2.4 µm)</td></tr>
+          <tr><td>Aperture (main)</td><td>f/1.7</td><td>f/1.8</td><td class="highlight">f/1.5</td></tr>
+          <tr><td>Telephoto focal length</td><td>125mm (5×)</td><td>70mm (3×)</td><td class="highlight">125mm (5×)</td></tr>
+          <tr><td>Periscope lens</td><td class="check">Yes</td><td class="cross">No</td><td class="check">Yes</td></tr>
+          <tr><td>Macro mode</td><td class="check">Yes (via ultrawide)</td><td class="cross">No</td><td class="check">Yes (via ultrawide)</td></tr>
+          <tr><td>ProRAW / ProMP4</td><td class="check">Yes</td><td class="check">Yes</td><td class="cross">No (RAW only)</td></tr>
+          <tr><td>DxOMark score (overall)</td><td class="highlight">152</td><td>145</td><td>141</td></tr>
+          <tr><td>DxOMark photo</td><td class="highlight">158</td><td>148</td><td>143</td></tr>
+          <tr><td>DxOMark video</td><td class="highlight">145</td><td>140</td><td>135</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- User reviews                                    -->
+    <!-- ============================================= -->
+    <h2>Selected User Reviews</h2>
+    <div class="user-reviews">
+      <div class="review">
+        <div class="review-header">
+          <span class="review-author">TechReviewer42</span>
+          <span class="review-verified">✓ Verified Purchase</span>
+          <span class="rating">★★★★★</span>
+        </div>
+        <div class="review-body">
+          <strong>NovaLite 5 — Best phone I've ever owned</strong><br>
+          Upgraded from a 3-year-old mid-range phone. The 120W charging is a game-changer — I go from 15% to full while I shower. The 144Hz display is buttery smooth. Only gripe: I miss mmWave 5G when I'm at the stadium, but for $849 this is unbeatable value.
+        </div>
+        <div class="review-helpful">47 people found this helpful · <a href="#">Helpful</a> · <a href="#">Report</a></div>
+      </div>
+      <div class="review">
+        <div class="review-header">
+          <span class="review-author">PhotographyPro</span>
+          <span class="review-verified">✓ Verified Purchase</span>
+          <span class="rating">★★★★☆</span>
+        </div>
+        <div class="review-body">
+          <strong>ProMax Ultra camera is incredible, but the price stings</strong><br>
+          The 200MP sensor captures insane detail. Telephoto at 5× is sharp. 8K video is a nice future-proofing feature. But $1,200 for a phone? And only 4 years of updates when Google offers 7? Also, it's heavy — my wrist hurts after a long phone call. If you're a camera-first buyer, this is it. Otherwise, NovaLite 5 is 80% of this phone for 70% of the price.
+        </div>
+        <div class="review-helpful">112 people found this helpful · <a href="#">Helpful</a> · <a href="#">Report</a></div>
+      </div>
+      <div class="review">
+        <div class="review-header">
+          <span class="review-author">FoldableFan</span>
+          <span class="review-verified">✓ Verified Purchase</span>
+          <span class="rating">★★★☆☆</span>
+        </div>
+        <div class="review-body">
+          <strong>PixelFold is ambitious but compromised</strong><br>
+          Love the concept — a phone that unfolds into a mini tablet. The inner display is gorgeous for reading and split-screen. But the 30W charging is painfully slow (I timed 68 minutes to full). It's also 253g, which is noticeable. And while the camera software is great (Google magic), the hardware can't match the NovaLite's speed. Battery life is the weakest of the three. I'd recommend waiting for gen 2 unless you absolutely need foldable today.
+        </div>
+        <div class="review-helpful">89 people found this helpful · <a href="#">Helpful</a> · <a href="#">Report</a></div>
+      </div>
+      <div class="review">
+        <div class="review-header">
+          <span class="review-author">BudgetBuyer</span>
+          <span class="review-verified">✓ Verified Purchase</span>
+          <span class="rating">★★★★☆</span>
+        </div>
+        <div class="review-body">
+          <strong>Price-to-performance king: NovaLite 5</strong><br>
+          Did extensive research before buying. The NovaLite 5 has the Snapdragon 8 Gen 4, 16GB RAM, and 120W charging for $849. The ProMax Ultra costs $350 more for a slightly better camera and titanium frame. The PixelFold costs $100 more but has slower charging, worse battery life, and lower benchmark scores. NovaLite is the rational choice.
+        </div>
+        <div class="review-helpful">203 people found this helpful · <a href="#">Helpful</a> · <a href="#">Report</a></div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Verdict                                         -->
+    <!-- ============================================= -->
+    <div class="verdict">
+      <h3>Our Verdict</h3>
+      <p><strong>Best overall: NovaLite 5</strong> — It leads in benchmarks, charging speed, battery life, display refresh rate, and RAM, while costing $350 less than the ProMax Ultra. The 5-year update guarantee and full AI feature suite make it future-proof. The only real gaps are mmWave 5G and satellite SOS, which most users won't miss.</p>
+      <p><strong>Best for photographers: ProMax Ultra</strong> — If camera quality is your top priority, the 200MP sensor with 5× optical zoom and OIS on every lens is unmatched. The titanium build is also more durable. But you pay a premium for these advantages.</p>
+      <p><strong>Best for early adopters: PixelFold</strong> — The foldable form factor is genuinely useful for multitasking and media consumption. The 7-year update guarantee and Gemini Nano AI are best-in-class. But the battery life, charging speed, and performance compromises are significant. Worth it only if the foldable form factor is non-negotiable.</p>
+      <p style="font-size:0.9em;color:#495057;margin-top:12px;"><em>Disclaimer: All prices, specifications, and test results are fictional and for testing purposes only. Products, benchmarks, and brands depicted are entirely made up.</em></p>
+    </div>
+
+    <footer>
+      © 2026 ShopTest (fictional) · All specifications are fictional and for testing purposes only · <a href="#">Privacy</a> · <a href="#">Terms</a>
+    </footer>
+  </main>
+</body>
+</html>

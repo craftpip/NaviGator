@@ -1144,5 +1144,20 @@
       "format": "html",
       "postProcessor": "reader-lm"
     }
+  },
+  {
+    "domain": "bseindia.com",
+    "pathPattern": "/markets/**",
+    "comment": "",
+    "testUrls": [
+      "https://www.bseindia.com/markets/Derivatives/DeriReports/DeriOptionchain"
+    ],
+    "default": {
+      "waitForSelector": [],
+      "stabilizeStrategy": "network_idle",
+      "waitForContent": [],
+      "skipSelectors": [],
+      "format": "table"
+    }
   }
 ]

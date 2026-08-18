@@ -14,6 +14,8 @@ This page helps maintainers locate the implementation behind each documented beh
 | Domain hints and Markdown | `src/domain-hints.js`, `src/markdown.js` | Hint matching/validation/persistence and HTML-to-Markdown conversion |
 | Durable state and activity | `src/db.js`, `src/activity.js`, `src/ref-memory.js` | SQLite schema, retention, API keys, usage, activity feed, durable references |
 | Configuration | `src/config.js`, `src/config-schema.js`, `src/config-manager.js`, `src/env-file.js` | Environment parsing, editable schema, hot configuration, `.env` writes/backups |
+| MCP authentication | `src/mcp-api-auth.js` | API key validation, tool allow-lists, authentication middleware |
+| Post-processors | `src/post-processor.js` | AI-model post-processing pipeline, reader-lm/MinerU-HTML dispatch, fallback |
 | Screenshots and visual output | `src/pixel-sampler.js`, `src/ascii.js` | Screenshot sampling, ANSI/plain ASCII rendering, annotation legend |
 | Desktop/VNC | `src/vnc-manager.js` | Xvfb/noVNC lifecycle and browser headful transitions |
 | CLI and console | `navigator.js`, `src/web-console/` | Host monitoring CLI and management UI |

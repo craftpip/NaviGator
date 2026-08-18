@@ -5,16 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Why Test Pages Matter — Blog Post</title>
   <meta name="author" content="Test Author">
-  <meta name="description" content="A sample blog post for extraction testing.">
+  <meta name="description" content="A sample blog post for extraction testing — with definition lists, nested lists, code, math, and complex inline elements.">
   <style>
     body { font-family: Georgia, serif; margin: 0; color: #222; line-height: 1.6; }
     header { background: #33475b; color: #fff; padding: 20px 30px; }
     nav a { color: #ffd166; margin-right: 14px; text-decoration: none; }
     main { max-width: 720px; margin: 30px auto; padding: 0 20px; }
     article h1 { font-size: 2em; }
-    .meta { color: #777; font-style: italic; }
+    h2 { margin-top: 28px; }
+    h3 { margin-top: 20px; }
+    .meta { color: #777; font-style: italic; font-size: 0.95em; }
     blockquote { border-left: 4px solid #ffd166; margin: 20px 0; padding: 10px 20px; background: #faf7ef; }
+    code { font-family: 'SF Mono', Consolas, monospace; background: #f0eee6; padding: 2px 5px; border-radius: 3px; font-size: 0.88em; }
+    pre { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 13px; }
+    pre code { background: none; padding: 0; color: inherit; }
+    dl { margin: 14px 0; }
+    dt { font-weight: bold; margin-top: 12px; }
+    dd { margin: 2px 0 0 24px; }
+    table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 0.9em; }
+    th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; }
+    th { background: #f6f6f6; }
     aside { background: #eef4fb; padding: 15px; border-radius: 8px; margin-top: 30px; }
+    abbr { text-decoration: underline dotted #999; cursor: help; }
+    .math { font-family: 'Cambria Math', serif; font-style: italic; }
+    .fn { font-size: 0.8em; vertical-align: super; }
     footer { background: #f2f2f2; padding: 15px 30px; margin-top: 40px; font-size: 14px; }
   </style>
 </head>
@@ -35,49 +49,249 @@
   <main>
     <article>
       <h1>Why Test Pages Matter</h1>
-      <p class="meta">By Test Author · Published 2026-08-01 · 4 min read</p>
+      <p class="meta">By Test Author · Published 2026-08-01 · 8 min read</p>
 
-      <p>When you build a web extraction tool, the very first thing you need is a page you control completely. No ads, no paywalls, no JavaScript frameworks, no bot protection. Just clean semantic HTML.</p>
+      <p>When you build a web extraction tool, the very first thing you need is a page you control completely. No ads, no paywalls, no <abbr title="JavaScript Frameworks">JS frameworks</abbr>, no bot protection. Just clean semantic <abbr title="HyperText Markup Language">HTML</abbr>.</p>
 
-      <h2>What this page exercises</h2>
-      <p>This article contains the typical building blocks an extractor should handle:</p>
-      <ul>
-        <li>Headings at multiple levels (h1, h2, h3)</li>
-        <li>Paragraphs of running text</li>
-        <li>Ordered and unordered lists</li>
-        <li>Blockquotes</li>
-        <li>Inline links and emphasis</li>
-        <li>A small aside with extra context</li>
-      </ul>
+      <p>This article contains every HTML building block an extractor should handle: headings, paragraphs, lists, tables, blockquotes, code, definitions, abbreviations, footnotes, and complex inline formatting.</p>
 
-      <h3>A nested heading</h3>
-      <p>Sub-sections like this one test whether the extractor keeps document structure. The hierarchy matters — a good extractor preserves the outline.</p>
+      <!-- ============================================= -->
+      <!-- SECTION: The building blocks                   -->
+      <!-- ============================================= -->
+      <h2>The building blocks</h2>
+      <p>Every serious article on the web uses a combination of these elements. An extractor that handles all of them cleanly is an extractor that handles most of the real web.</p>
 
+      <h3>Headings</h3>
+      <p>The hierarchy matters. A good extractor preserves the outline:</p>
       <ol>
-        <li>Create a controlled test page.</li>
-        <li>Run the extractor on it.</li>
-        <li>Compare the output with what you see in a browser.</li>
+        <li><code>&lt;h1&gt;</code> — the page title (one per page)</li>
+        <li><code>&lt;h2&gt;</code> — major sections</li>
+        <li><code>&lt;h3&gt;</code> through <code>&lt;h6&gt;</code> — subsections</li>
       </ol>
 
+      <h3>Inline elements</h3>
+      <p>Text can contain <strong>bold</strong>, <em>italic</em>, <a href="https://example.com/link-target">links</a>, <code>inline code</code>, <abbr title="abbreviation with title">abbreviations</abbr>, <mark>highlighted text</mark>, <del>deleted text</del>, <ins>inserted text</ins>, <sub>subscript</sub>, and <sup>superscript</sup>. A good extractor preserves the <em>meaning</em> of these elements, not just the text.</p>
+
+      <!-- ============================================= -->
+      <!-- SECTION: Lists                                 -->
+      <!-- ============================================= -->
+      <h2>Lists</h2>
+      <p>Lists come in many forms. Here is an unordered list:</p>
+      <ul>
+        <li>Unordered item one</li>
+        <li>Unordered item two
+          <ul>
+            <li>Nested item A</li>
+            <li>Nested item B
+              <ul>
+                <li>Deeply nested item</li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+        <li>Unordered item three</li>
+      </ul>
+
+      <p>Here is an ordered list:</p>
+      <ol>
+        <li>First step</li>
+        <li>Second step
+          <ol>
+            <li>Sub-step A</li>
+            <li>Sub-step B</li>
+          </ol>
+        </li>
+        <li>Third step</li>
+      </ol>
+
+      <p>Here is a mixed list (ordered inside unordered):</p>
+      <ul>
+        <li>Bullet one</li>
+        <li>Bullet two
+          <ol>
+            <li>Numbered sub-item</li>
+            <li>Another numbered sub-item</li>
+          </ol>
+        </li>
+        <li>Bullet three</li>
+      </ul>
+
+      <!-- ============================================= -->
+      <!-- SECTION: Definition list                       -->
+      <!-- ============================================= -->
+      <h2>Definition lists</h2>
+      <p>Definition lists (<code>&lt;dl&gt;</code>) are used for glossaries, metadata, and key-value pairs. Many extractors ignore them entirely.</p>
+
+      <dl>
+        <dt><strong>Extractor</strong></dt>
+        <dd>A tool that pulls structured content from web pages, removing navigation, ads, and other non-content elements.</dd>
+
+        <dt><strong>Readability</strong></dt>
+        <dd>An open-source content extraction algorithm (<a href="#">mozilla/readability</a>) that scores DOM nodes based on text density and structural signals.</dd>
+
+        <dt><strong>DOM</strong></dt>
+        <dd>The Document Object Model — a tree representation of an HTML document that browsers and extractors parse into nodes.</dd>
+
+        <dt><strong>Selector</strong></dt>
+        <dd>A CSS pattern used to identify specific elements in the DOM. Example: <code>article &gt; h2</code> selects all <code>&lt;h2&gt;</code> elements that are direct children of <code>&lt;article&gt;</code>.</dd>
+
+        <dt><strong>Content score</strong></dt>
+        <dd>A heuristic value assigned to each DOM node by extraction algorithms. Higher scores indicate more likely content. Calculated from text length, paragraph count, and class/ID patterns.</dd>
+
+        <dt><strong>Signal-to-noise ratio</strong></dt>
+        <dd>The proportion of meaningful content vs. structural noise (nav, footer, ads) on a page. Higher is better for extraction. A typical news page has a ratio of about <span class="math">0.3</span> to <span class="math">0.6</span>.</dd>
+      </dl>
+
+      <!-- ============================================= -->
+      <!-- SECTION: Blockquotes and nested quotes         -->
+      <!-- ============================================= -->
+      <h2>Blockquotes and nested quotes</h2>
+      <p>Blockquotes can contain anything — paragraphs, lists, even other blockquotes:</p>
+
       <blockquote>
-        "A test page you control is worth a thousand pages you don't." — someone, probably
+        <p>"A test page you control is worth a thousand pages you don't."</p>
+        <p>This is a two-paragraph blockquote. Extractors should keep both paragraphs together under the same blockquote.</p>
+        <blockquote>
+          <p>This is a nested blockquote. It's common in interview-style articles where the interviewee quotes someone else.</p>
+        </blockquote>
       </blockquote>
 
-      <p>Finally, a paragraph with <strong>bold text</strong>, <em>italic text</em>, and a <a href="https://example.com/link-target">link to an external site</a> to make sure inline elements survive extraction.</p>
+      <p>Here's another blockquote with a list inside:</p>
+      <blockquote>
+        <p>The five principles of good extraction:</p>
+        <ul>
+          <li>Preserve document structure (headings, lists, sections)</li>
+          <li>Remove non-content elements (nav, footer, ads)</li>
+          <li>Maintain inline formatting (bold, italic, links)</li>
+          <li>Handle tables as structured data</li>
+          <li>Respect the author's intended reading order</li>
+        </ul>
+      </blockquote>
 
-      <h2>Conclusion</h2>
-      <p>If the extractor handles everything on this page cleanly, it will probably handle most real-world articles too. Now go test.</p>
+      <!-- ============================================= -->
+      <!-- SECTION: Code blocks                           -->
+      <!-- ============================================= -->
+      <h2>Code blocks</h2>
+      <p>Technical articles are full of code. Here's a JavaScript example:</p>
+
+      <pre><code>// A simple content extractor
+function extractContent(doc) {
+  const article = doc.querySelector('article') || doc.querySelector('main');
+  if (!article) return null;
+
+  const headings = [...article.querySelectorAll('h1, h2, h3')];
+  const paragraphs = [...article.querySelectorAll('p')];
+
+  return {
+    title: headings[0]?.textContent || '',
+    sections: headings.map(h => ({
+      heading: h.textContent,
+      content: getNextSiblings(h, 'p')
+    })),
+    wordCount: paragraphs.reduce((sum, p) =>
+      sum + p.textContent.split(/\s+/).length, 0)
+  };
+}</code></pre>
+
+      <p>And here's a Python example with a different syntax style:</p>
+
+      <pre><code>import requests
+from bs4 import BeautifulSoup
+
+def fetch_and_extract(url: str) -> dict:
+    """Fetch a URL and extract readable content."""
+    response = requests.get(url, timeout=30)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # Remove non-content elements
+    for tag in soup.select('nav, footer, aside, .ad, .sidebar'):
+        tag.decompose()
+
+    article = soup.find('article') or soup.find('main')
+    return {
+        'title': article.find('h1').text if article else None,
+        'text': article.get_text(separator='\n', strip=True),
+    }</code></pre>
+
+      <p>Inline code like <code>document.querySelector()</code> and <code>BeautifulSoup</code> should be distinguished from regular text.</p>
+
+      <!-- ============================================= -->
+      <!-- SECTION: Tables                                -->
+      <!-- ============================================= -->
+      <h2>Tables</h2>
+      <p>Tables are the hardest element to extract cleanly. Here's a simple example:</p>
+
+      <table>
+        <thead>
+          <tr><th>Element</th><th>Tag</th><th>Purpose</th><th>Extractor difficulty</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Heading</td><td><code>&lt;h1&gt;–&lt;h6&gt;</code></td><td>Section titles</td><td>Easy</td></tr>
+          <tr><td>Paragraph</td><td><code>&lt;p&gt;</code></td><td>Body text</td><td>Easy</td></tr>
+          <tr><td>List</td><td><code>&lt;ul&gt;, &lt;ol&gt;</code></td><td>Bulleted/numbered items</td><td>Easy</td></tr>
+          <tr><td>Table</td><td><code>&lt;table&gt;</code></td><td>Tabular data</td><td>Hard</td></tr>
+          <tr><td>Blockquote</td><td><code>&lt;blockquote&gt;</code></td><td>Quoted material</td><td>Medium</td></tr>
+          <tr><td>Code block</td><td><code>&lt;pre&gt;</code></td><td>Preformatted text</td><td>Medium</td></tr>
+          <tr><td>Definition list</td><td><code>&lt;dl&gt;</code></dt><td>Key-value pairs</td><td>Hard (often ignored)</td></tr>
+          <tr><td>Figure</td><td><code>&lt;figure&gt;</code></td><td>Images with captions</td><td>Medium</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ============================================= -->
+      <!-- SECTION: Mathematical expressions              -->
+      <!-- ============================================= -->
+      <h2>Mathematical expressions</h2>
+      <p>Some articles contain inline math. Here's the formula for content score:</p>
+
+      <p style="text-align:center;font-size:1.1em;">
+        <span class="math">S(node) = w<sub>text</sub> · L(node) + w<sub>para</sub> · P(node) + w<sub>struct</sub> · C(node)</span>
+      </p>
+
+      <p>Where:</p>
+      <dl>
+        <dt><span class="math">L(node)</span></dt>
+        <dd>The text length of the node (in characters)</dd>
+        <dt><span class="math">P(node)</span></dt>
+        <dd>The number of paragraph-like child elements</dd>
+        <dt><span class="math">C(node)</span></dt>
+        <dd>A structural complexity score based on nesting depth</dd>
+        <dt><span class="math">w<sub>text</sub>, w<sub>para</sub>, w<sub>struct</sub></span></dt>
+        <dd>Weighting factors (typically 0.5, 0.3, 0.2)</dd>
+      </dl>
+
+      <!-- ============================================= -->
+      <!-- SECTION: Complex inline content                -->
+      <!-- ============================================= -->
+      <h2>Complex inline content</h2>
+      <p>This paragraph contains <strong>bold <em>bold-italic</em> text</strong>, <a href="https://example.com">links <em>with emphasis inside</em></a>, <code>code <strong>with bold</strong></code>, and <a href="https://example.com"><code>code inside links</code></a>. These nested combinations test whether extractors preserve the full inline structure.</p>
+
+      <p>Here's a sentence with <abbr title="HyperText Markup Language">HTML</abbr>, <abbr title="Cascading Style Sheets">CSS</abbr>, and <abbr title="JavaScript">JS</abbr> abbreviations, some <mark>highlighted</mark> text, a <del>deleted</del> and <ins>inserted</ins> word, a chemical formula (H<sub>2</sub>O), and an exponent (E = mc<sup>2</sup>).</p>
+
+      <p>And here's a sentence with <a href="https://example.com/page?q=search&amp;lang=en&amp;page=2#section3">a URL with query parameters, fragments, and encoded characters</a> — extractors should preserve the full href.</p>
+
+      <!-- ============================================= -->
+      <!-- SECTION: Footnotes                             -->
+      <!-- ============================================= -->
+      <h2>Footnotes</h2>
+      <p>Footnotes are common in academic and long-form writing.<sup class="fn"><a href="#fn1">[1]</a></sup> They create a cross-reference between the text and the notes section.<sup class="fn"><a href="#fn2">[2]</a></sup></p>
+
+      <p>Some extractors strip footnotes entirely. Others keep them inline. The best approach is to preserve them as numbered references and keep the notes section at the bottom.</p>
+
+      <aside>
+        <h3>About the author</h3>
+        <p>Test Author is a fictional persona who writes test content for testing tools. They have no opinions, no social media, and no preferences about cookie banners.</p>
+        <p><a href="/profile/">View profile</a></p>
+      </aside>
     </article>
-
-    <aside>
-      <h3>About the author</h3>
-      <p>Test Author is a fictional persona who writes test content for testing tools.</p>
-      <p><a href="/profile/">View profile</a></p>
-    </aside>
   </main>
 
   <footer>
     <p>Example Test Site — made for extraction testing.</p>
+    <p><strong>Footnotes:</strong></p>
+    <ol style="font-size:13px;">
+      <li id="fn1">The first footnote. Some extractors strip these entirely. <a href="#">↩</a></li>
+      <li id="fn2">The second footnote, which is longer and contains a <a href="https://example.com/citation">link to a citation</a>. <a href="#">↩</a></li>
+    </ol>
   </footer>
 </body>
 </html>

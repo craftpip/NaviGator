@@ -3,128 +3,660 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Interactive Demo — Button-Revealed Content</title>
-  <meta name="description" content="A page where content is hidden and revealed by button clicks, for extraction testing.">
+  <title>Help Center — CloudStack</title>
   <style>
-    body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #222; }
-    header { background: #33475b; color: #fff; padding: 20px 30px; }
-    nav a { color: #ffd166; margin-right: 14px; text-decoration: none; }
-    main { max-width: 800px; margin: 30px auto; padding: 0 20px; }
-    button { background: #33475b; color: #fff; border: 0; border-radius: 6px; padding: 10px 18px; font-size: 15px; cursor: pointer; }
-    button:hover { background: #466080; }
-    .hidden { display: none; }
-    .card { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 20px 0; }
-    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-    th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
-    th { background: #33475b; color: #fff; }
-    li.comment { border-bottom: 1px solid #eee; padding: 8px 0; }
-    footer { background: #f2f2f2; padding: 15px 30px; margin-top: 40px; font-size: 14px; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #f8f9fb; line-height: 1.6; }
+    a { color: #4f46e5; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .topbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .logo { font-size: 1.1em; font-weight: 700; color: #4f46e5; }
+    .topbar nav a { color: #374151; font-size: 0.88em; font-weight: 500; margin-right: 20px; }
+    .topbar nav a:hover { color: #4f46e5; text-decoration: none; }
+    .topbar-right { display: flex; gap: 12px; align-items: center; }
+    .search-box { border: 1px solid #d1d5db; border-radius: 8px; padding: 7px 12px 7px 32px; font-size: 0.85em; width: 240px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%239ca3af' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85zm-5.242.156a5 5 0 110-10 5 5 0 010 10z'/%3E%3C/svg%3E") no-repeat 10px center; }
+    .search-box:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+
+    main { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+
+    /* Hero */
+    .hero { text-align: center; margin-bottom: 40px; }
+    .hero h1 { font-size: 2em; font-weight: 800; margin-bottom: 8px; }
+    .hero p { font-size: 1.05em; color: #6b7280; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; border-bottom: 2px solid #e5e7eb; margin-bottom: 32px; }
+    .tab-btn { background: none; border: none; padding: 12px 20px; font-size: 0.9em; font-weight: 600; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; }
+    .tab-btn:hover { color: #374151; }
+    .tab-btn.active { color: #4f46e5; border-bottom-color: #4f46e5; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Section */
+    .section { margin-bottom: 36px; }
+    .section h2 { font-size: 1.2em; font-weight: 700; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #e5e7eb; }
+
+    /* Accordion (details/summary) */
+    details { border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 8px; background: #fff; }
+    details[open] { border-color: #c7d2fe; }
+    summary { padding: 14px 16px; font-weight: 600; font-size: 0.92em; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: "▸"; font-size: 0.8em; color: #9ca3af; transition: transform 0.2s; }
+    details[open] summary::before { transform: rotate(90deg); }
+    summary:hover { background: #f9fafb; border-radius: 10px; }
+    .details-body { padding: 0 16px 16px; font-size: 0.9em; color: #374151; line-height: 1.7; }
+    .details-body code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: 0.88em; }
+    .details-body pre { background: #1e1e2e; color: #cdd6f4; padding: 14px; border-radius: 8px; overflow-x: auto; font-size: 0.82em; margin: 10px 0; }
+    .details-body ul { padding-left: 20px; margin: 8px 0; }
+    .details-body li { margin-bottom: 4px; }
+
+    /* Toggle switches */
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; margin-bottom: 8px; }
+    .toggle-row .toggle-label strong { display: block; font-size: 0.92em; }
+    .toggle-row .toggle-label span { font-size: 0.82em; color: #6b7280; }
+    .toggle-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: #d1d5db; border-radius: 24px; transition: 0.2s; }
+    .toggle-slider::before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.2s; }
+    .toggle-switch input:checked + .toggle-slider { background: #4f46e5; }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+    /* Collapsible sections (JS-driven) */
+    .collapse-trigger { display: flex; align-items: center; justify-content: space-between; width: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; font-size: 0.92em; font-weight: 600; cursor: pointer; margin-bottom: 8px; color: #111827; }
+    .collapse-trigger:hover { background: #f9fafb; }
+    .collapse-trigger .arrow { transition: transform 0.2s; color: #9ca3af; }
+    .collapse-trigger.open .arrow { transform: rotate(180deg); }
+    .collapse-content { display: none; padding: 0 16px 16px; font-size: 0.9em; color: #374151; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px; margin-top: -9px; margin-bottom: 8px; background: #fff; padding-top: 12px; }
+    .collapse-content.open { display: block; }
+
+    /* Modal trigger */
+    .modal-btn { background: #4f46e5; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-size: 0.88em; font-weight: 600; cursor: pointer; margin-right: 8px; margin-bottom: 8px; }
+    .modal-btn:hover { background: #4338ca; }
+    .modal-btn-outline { background: #fff; color: #374151; border: 1px solid #d1d5db; padding: 10px 20px; border-radius: 8px; font-size: 0.88em; font-weight: 500; cursor: pointer; margin-bottom: 8px; }
+    .modal-btn-outline:hover { background: #f9fafb; }
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #fff; border-radius: 16px; padding: 32px; max-width: 480px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+    .modal h2 { font-size: 1.2em; margin-bottom: 8px; }
+    .modal p { font-size: 0.9em; color: #6b7280; margin-bottom: 20px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+    /* Tooltip */
+    .tooltip-wrap { position: relative; display: inline-block; }
+    .tooltip-trigger { border-bottom: 1px dashed #9ca3af; cursor: help; }
+    .tooltip-text { visibility: hidden; opacity: 0; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: #1e1e2e; color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 0.78em; white-space: nowrap; transition: opacity 0.2s; z-index: 50; }
+    .tooltip-text::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #1e1e2e; }
+    .tooltip-wrap:hover .tooltip-text { visibility: visible; opacity: 1; }
+
+    /* Dropdown */
+    .dropdown { position: relative; display: inline-block; }
+    .dropdown-menu { display: none; position: absolute; top: calc(100% + 4px); left: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); min-width: 180px; z-index: 50; overflow: hidden; }
+    .dropdown-menu.open { display: block; }
+    .dropdown-menu a { display: block; padding: 10px 16px; font-size: 0.85em; color: #374151; }
+    .dropdown-menu a:hover { background: #f3f4f6; text-decoration: none; }
+    .dropdown-menu .separator { height: 1px; background: #e5e7eb; margin: 4px 0; }
+
+    /* Progress indicator */
+    .progress-track { height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin: 8px 0; }
+    .progress-fill { height: 100%; background: #4f46e5; border-radius: 4px; transition: width 0.5s ease; }
+
+    footer { border-top: 1px solid #e5e7eb; padding: 16px 24px; text-align: center; font-size: 0.78em; color: #9ca3af; }
+    footer a { color: #6b7280; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Example Test Site</h1>
-    <nav>
-      <a href="/">Home</a>
-      <a href="/post/">Blog Post</a>
-      <a href="/profile/">Profile</a>
-      <a href="/news/">News</a>
-      <a href="/table/">Tables</a>
-      <a href="/interactive/">Interactive</a>
-      <a href="/chaos/">Chaos</a>
-    </nav>
+  <header class="topbar">
+    <div style="display:flex;align-items:center;gap:24px;">
+      <div class="logo">☁️ CloudStack</div>
+      <nav>
+        <a href="#">Docs</a>
+        <a href="#">API</a>
+        <a href="#">Status</a>
+        <a href="#">Community</a>
+      </nav>
+    </div>
+    <div class="topbar-right">
+      <input type="text" class="search-box" placeholder="Search help articles...">
+    </div>
   </header>
 
   <main>
-    <h1>Interactive Demo</h1>
-    <p>This page simulates a button-click flow. Nothing below the first paragraph is visible until you click the buttons — content is revealed step by step via JavaScript, like a real web app.</p>
+    <div class="hero">
+      <h1>How can we help?</h1>
+      <p>Browse topics or search for specific questions below.</p>
+    </div>
 
-    <div class="card">
-      <h2>Step 1: Show overview</h2>
-      <p>The overview below is hidden until the button is clicked.</p>
-      <button id="show-overview">Show overview</button>
-      <div id="overview" class="hidden" data-testid="revealed-overview">
-        <h3>Project overview</h3>
-        <p>The Widget Framework is a lightweight toolkit for building test pages. It was created to give extraction tools a predictable target that still behaves like real interactive software.</p>
-        <ul>
-          <li>Written in plain HTML, CSS and JavaScript</li>
-          <li>No external dependencies</li>
-          <li>Content appears only after user interaction</li>
-        </ul>
+    <!-- Tabs -->
+    <div class="tabs" role="tablist">
+      <button class="tab-btn active" data-tab="faq" role="tab">FAQ</button>
+      <button class="tab-btn" data-tab="settings" role="tab">Account Settings</button>
+      <button class="tab-btn" data-tab="billing" role="tab">Billing</button>
+      <button class="tab-btn" data-tab="contact" role="tab">Contact Us</button>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Tab: FAQ                                       -->
+    <!-- ============================================= -->
+    <div class="tab-panel active" id="tab-faq" role="tabpanel">
+      <div class="section">
+        <h2>Getting Started</h2>
+
+        <details>
+          <summary>What is CloudStack and how does it work?</summary>
+          <div class="details-body">
+            <p>CloudStack is a modern deployment platform that lets you ship web applications in seconds. Connect your Git repository, and we handle building, deploying, and scaling your app across 38 regions worldwide.</p>
+            <p>Key features:</p>
+            <ul>
+              <li><strong>Zero-config deploys</strong> — push to main, we deploy automatically</li>
+              <li><strong>Preview deployments</strong> — every pull request gets its own URL</li>
+              <li><strong>Edge functions</strong> — run server-side logic at the CDN edge</li>
+              <li><strong>Real-time logs</strong> — debug production issues without SSH</li>
+            </ul>
+          </div>
+        </details>
+
+        <details>
+          <summary>How do I deploy my first project?</summary>
+          <div class="details-body">
+            <p>Three steps:</p>
+            <ol style="padding-left:20px;">
+              <li>Click <strong>"New Project"</strong> in your dashboard</li>
+              <li>Connect your GitHub/GitLab repository</li>
+              <li>Select a framework preset (or use our auto-detection)</li>
+            </ol>
+            <p>That's it. CloudStack detects your framework, installs dependencies, builds, and deploys. Average deploy time: 28 seconds.</p>
+            <pre># Or deploy from CLI
+npm install -g cloudstack-cli
+cloudstack deploy --project my-app</pre>
+          </div>
+        </details>
+
+        <details>
+          <summary>Which frameworks are supported?</summary>
+          <div class="details-body">
+            <p>We have first-class support for:</p>
+            <ul>
+              <li><strong>React</strong> — Next.js, Remix, Gatsby, Vite</li>
+              <li><strong>Vue</strong> — Nuxt, Vite, Quasar</li>
+              <li><strong>Svelte</strong> — SvelteKit</li>
+              <li><strong>Astro</strong> — full SSR + SSG</li>
+              <li><strong>Static</strong> — any HTML/CSS/JS site</li>
+              <li><strong>Backend</strong> — Node.js, Python, Go, Ruby</li>
+            </ul>
+            <p>We also support custom build commands via <code>cloudstack.json</code> for any framework.</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>Can I use my own domain name?</summary>
+          <div class="details-body">
+            <p>Yes. Add your domain in <strong>Project Settings → Domains</strong>. We'll provision an SSL certificate automatically (Let's Encrypt) and give you DNS records to point to CloudStack.</p>
+            <p>For advanced setups, you can use:</p>
+            <ul>
+              <li>CNAME pointing (recommended)</li>
+              <li>A record pointing (requires IP allocation)</li>
+              <li>Wildcard domains for multi-tenant apps</li>
+            </ul>
+          </div>
+        </details>
+      </div>
+
+      <div class="section">
+        <h2>Deployment & Configuration</h2>
+
+        <details>
+          <summary>How do environment variables work?</summary>
+          <div class="details-body">
+            <p>Set environment variables in <strong>Project Settings → Environment</strong>. They're available during build and runtime.</p>
+            <p>We support three scopes:</p>
+            <ul>
+              <li><strong>Production</strong> — available on the production URL</li>
+              <li><strong>Preview</strong> — available on preview deployments</li>
+              <li><strong>Development</strong> — available in local dev via <code>cloudstack env pull</code></li>
+            </ul>
+            <p>Secrets are encrypted at rest and never exposed in logs or client-side code.</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>What happens if my build fails?</summary>
+          <div class="details-body">
+            <p>You'll get an email and a dashboard notification with the full build log. Common causes:</p>
+            <ul>
+              <li>Missing <code>package.json</code> or <code>build</code> script</li>
+              <li>Node.js version mismatch (we default to LTS; override with <code>"engines": {"node": "20.x"}</code>)</li>
+              <li>Out-of-memory during build (upgrade to Pro for 4GB build RAM)</li>
+              <li>Dependency install failure (check your lock file)</li>
+            </ul>
+            <p>The previous successful deployment stays live until you push a new one.</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>How do I set up a custom build pipeline?</summary>
+          <div class="details-body">
+            <p>Create a <code>cloudstack.json</code> in your repo root:</p>
+            <pre>{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm ci",
+  "framework": null,
+  "regions": ["us-east", "eu-west"]
+}</pre>
+            <p>You can also use <code>prebuild</code> and <code>postbuild</code> hooks for database migrations, asset generation, etc.</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>Can I deploy Docker containers?</summary>
+          <div class="details-body">
+            <p>Yes. Add a <code>Dockerfile</code> to your repo and set <code>"framework": "docker"</code> in <code>cloudstack.json</code>. We'll build your image and deploy it on our managed infrastructure.</p>
+            <p>Multi-stage builds are supported and recommended for smaller images. We cache build layers automatically.</p>
+          </div>
+        </details>
+      </div>
+
+      <div class="section">
+        <h2>Troubleshooting</h2>
+
+        <button class="collapse-trigger" onclick="toggleCollapse(this)">
+          <span>Why is my site showing a 502 error?</span>
+          <span class="arrow">▼</span>
+        </button>
+        <div class="collapse-content">
+          <p>A 502 means your server-side code is crashing or not responding. Check:</p>
+          <ul>
+            <li><strong>Function logs</strong> — go to your project → Logs → filter by "function"</li>
+            <li><strong>Memory usage</strong> — free tier has 256MB; upgrade if you're hitting limits</li>
+            <li><strong>Timeout</strong> — serverless functions have a 10s timeout (30s on Pro)</li>
+            <li><strong>Crash loop</strong> — check for unhandled promise rejections or missing env vars</li>
+          </ul>
+        </div>
+
+        <button class="collapse-trigger" onclick="toggleCollapse(this)">
+          <span>My deployment is slow — how do I speed it up?</span>
+          <span class="arrow">▼</span>
+        </button>
+        <div class="collapse-content">
+          <p>Common optimizations:</p>
+          <ul>
+            <li>Use <code>npm ci</code> instead of <code>npm install</code> (frozen lockfile)</li>
+            <li>Enable build caching in Project Settings → Build</li>
+            <li>Exclude dev dependencies: set <code>NODE_ENV=production</code></li>
+            <li>Use our <strong>Incremental Builds</strong> feature (Pro) — only rebuilds changed pages</li>
+          </ul>
+        </div>
+
+        <button class="collapse-trigger" onclick="toggleCollapse(this)">
+          <span>How do I debug client-side JavaScript errors?</span>
+          <span class="arrow">▼</span>
+        </button>
+        <div class="collapse-content">
+          <p>For preview deployments, use the browser console directly. For production:</p>
+          <ul>
+            <li><strong>Source maps</strong> — upload them in Project Settings → Debugging</li>
+            <li><strong>Error tracking</strong> — we integrate with Sentry, Datadog, and LogRocket</li>
+            <li><strong>Analytics</strong> — our Web Vitals dashboard shows real-user performance data</li>
+          </ul>
+        </div>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Step 2: Load the monthly report table</h2>
-      <p>This table's rows are generated by JavaScript and inserted into the DOM when the button is clicked.</p>
-      <button id="load-table">Load monthly report</button>
-      <div id="report" class="hidden" data-testid="revealed-table">
-        <h3>Monthly report</h3>
-        <table id="report-table">
+    <!-- ============================================= -->
+    <!-- Tab: Settings                                  -->
+    <!-- ============================================= -->
+    <div class="tab-panel" id="tab-settings" role="tabpanel">
+      <div class="section">
+        <h2>Notification Preferences</h2>
+        <p style="font-size:0.9em;color:#6b7280;margin-bottom:16px;">Control what emails and alerts you receive.</p>
+
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <strong>Deploy notifications</strong>
+            <span>Get notified when a deployment succeeds or fails</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" checked data-setting="deploy-notifications">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <strong>Build failure alerts</strong>
+            <span>Immediate email when a build breaks</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" checked data-setting="build-failure">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <strong>Weekly usage summary</strong>
+            <span>Bandwidth, function invocations, and storage usage</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" data-setting="weekly-summary">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <strong>Security alerts</strong>
+            <span>Critical: new login, password change, team member removed</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" checked data-setting="security-alerts" disabled>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <strong>Marketing emails</strong>
+            <span>Product updates, new features, and tips</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" data-setting="marketing">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Account Actions</h2>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="modal-btn" onclick="openModal('transferModal')">Transfer ownership</button>
+          <button class="modal-btn-outline" onclick="openModal('deleteModal')">Delete account</button>
+          <button class="modal-btn-outline" onclick="openModal('exportModal')">Export data</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Two-Factor Authentication</h2>
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <strong>Enable 2FA</strong>
+            <span>Add an extra layer of security with TOTP authenticator apps</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" data-setting="2fa">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div id="2fa-progress" style="display:none;margin-top:12px;">
+          <p style="font-size:0.88em;margin-bottom:8px;">Scanning QR code...</p>
+          <div class="progress-track">
+            <div class="progress-fill" style="width:0%" id="progressBar"></div>
+          </div>
+          <p style="font-size:0.8em;color:#6b7280;" id="progressText">0%</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Tab: Billing                                   -->
+    <!-- ============================================= -->
+    <div class="tab-panel" id="tab-billing" role="tabpanel">
+      <div class="section">
+        <h2>Current Plan</h2>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-size:0.82em;color:#6b7280;">Pro Plan</div>
+            <div style="font-size:1.5em;font-weight:800;">$29<span style="font-size:0.5em;font-weight:400;color:#6b7280;">/user/month</span></div>
+            <div style="font-size:0.82em;color:#6b7280;">3 seats · renews Aug 30, 2026</div>
+          </div>
+          <div>
+            <button class="modal-btn-outline">Change plan</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Usage this period</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:0.88em;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
           <thead>
-            <tr><th>Product</th><th>Units</th><th>Revenue (USD)</th></tr>
+            <tr style="background:#f9fafb;">
+              <th style="text-align:left;padding:12px 16px;border-bottom:1px solid #e5e7eb;">Resource</th>
+              <th style="text-align:left;padding:12px 16px;border-bottom:1px solid #e5e7eb;">Used</th>
+              <th style="text-align:left;padding:12px 16px;border-bottom:1px solid #e5e7eb;">Included</th>
+              <th style="text-align:left;padding:12px 16px;border-bottom:1px solid #e5e7eb;">Status</th>
+            </tr>
           </thead>
-          <tbody></tbody>
+          <tbody>
+            <tr>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">Bandwidth</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">42.3 GB</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">500 GB</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;"><span style="color:#10b981;font-weight:600;font-size:0.85em;">● On track</span></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">Function invocations</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">892,100</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">1,000,000</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;"><span style="color:#f59e0b;font-weight:600;font-size:0.85em;">● 89% used</span></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">Build minutes</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">1,240 min</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">6,000 min</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;"><span style="color:#10b981;font-weight:600;font-size:0.85em;">● On track</span></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;">Storage</td>
+              <td style="padding:12px 16px;">2.1 GB</td>
+              <td style="padding:12px 16px;">100 GB</td>
+              <td style="padding:12px 16px;"><span style="color:#10b981;font-weight:600;font-size:0.85em;">● On track</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>Billing history</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:0.88em;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+          <thead>
+            <tr style="background:#f9fafb;">
+              <th style="text-align:left;padding:12px 16px;border-bottom:1px solid #e5e7eb;">Date</th>
+              <th style="text-align:left;padding:12px 16px;border-bottom:1px solid #e5e7eb;">Description</th>
+              <th style="text-align:right;padding:12px 16px;border-bottom:1px solid #e5e7eb;">Amount</th>
+              <th style="text-align:left;padding:12px 16px;border-bottom:1px solid #e5e7eb;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">Jul 30, 2026</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">Pro Plan — 3 seats</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;text-align:right;">$87.00</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;"><span style="color:#10b981;font-size:0.85em;">Paid</span></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">Jun 30, 2026</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;">Pro Plan — 3 seats</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;text-align:right;">$87.00</td>
+              <td style="padding:12px 16px;border-bottom:1px solid #f3f4f6;"><span style="color:#10b981;font-size:0.85em;">Paid</span></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;">May 30, 2026</td>
+              <td style="padding:12px 16px;">Pro Plan — 2 seats</td>
+              <td style="padding:12px 16px;text-align:right;">$58.00</td>
+              <td style="padding:12px 16px;"><span style="color:#10b981;font-size:0.85em;">Paid</span></td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Step 3: Load comments</h2>
-      <p>Comments are fetched (simulated) and appended one by one after the button is clicked.</p>
-      <button id="load-comments">Load comments</button>
-      <div id="comments" class="hidden" data-testid="revealed-comments">
-        <h3>Comments</h3>
-        <ul id="comment-list"></ul>
+    <!-- ============================================= -->
+    <!-- Tab: Contact                                   -->
+    <!-- ============================================= -->
+    <div class="tab-panel" id="tab-contact" role="tabpanel">
+      <div class="section">
+        <h2>Contact Support</h2>
+        <p style="font-size:0.9em;color:#6b7280;margin-bottom:20px;">Our support team typically responds within 4 hours during business hours.</p>
+
+        <form id="contactForm" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+            <div>
+              <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:4px;">Name</label>
+              <input type="text" placeholder="Your name" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:0.9em;">
+            </div>
+            <div>
+              <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:4px;">Email</label>
+              <input type="email" placeholder="you@company.com" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:0.9em;">
+            </div>
+          </div>
+          <div style="margin-bottom:16px;">
+            <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:4px;">Category</label>
+            <select style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:0.9em;background:#fff;">
+              <option>Deployment issue</option>
+              <option>Billing question</option>
+              <option>Feature request</option>
+              <option>Bug report</option>
+              <option>Account access</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div style="margin-bottom:16px;">
+            <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:4px;">Priority</label>
+            <select id="prioritySelect" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:0.9em;background:#fff;">
+              <option value="low">Low — general question</option>
+              <option value="medium" selected>Medium — something isn't working right</option>
+              <option value="high">High — production is down</option>
+              <option value="critical">Critical — data loss or security issue</option>
+            </select>
+          </div>
+          <div id="priorityWarning" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:0.85em;color:#991b1b;margin-bottom:16px;">
+            ⚠️ <strong>High priority</strong> — Please include your project URL, deployment ID, and exact error messages for fastest resolution.
+          </div>
+          <div style="margin-bottom:16px;">
+            <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:4px;">Message</label>
+            <textarea rows="5" placeholder="Describe your issue in detail..." style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:0.9em;resize:vertical;"></textarea>
+          </div>
+          <div style="margin-bottom:16px;">
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:0.85em;color:#6b7280;cursor:pointer;">
+              <input type="checkbox" style="margin-top:2px;" id="attachLogs">
+              Attach recent deployment logs (helps us diagnose faster)
+            </label>
+          </div>
+          <button type="submit" style="background:#4f46e5;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:0.9em;font-weight:600;cursor:pointer;">Send message</button>
+        </form>
       </div>
     </div>
   </main>
 
+  <!-- Modals -->
+  <div class="modal-overlay" id="transferModal">
+    <div class="modal">
+      <h2>Transfer ownership</h2>
+      <p>This will transfer all projects, billing, and team management to another user. This action cannot be undone.</p>
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:4px;">New owner email</label>
+        <input type="email" placeholder="new-owner@company.com" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:0.9em;">
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn-outline" onclick="closeModal('transferModal')">Cancel</button>
+        <button class="modal-btn" style="background:#dc3545;">Transfer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal">
+      <h2>Delete account</h2>
+      <p>This will permanently delete your account, all projects, and all data. This cannot be undone.</p>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;font-size:0.85em;color:#991b1b;margin-bottom:16px;">
+        Type <strong>DELETE</strong> to confirm.
+      </div>
+      <div style="margin-bottom:16px;">
+        <input type="text" placeholder="Type DELETE" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:0.9em;">
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn-outline" onclick="closeModal('deleteModal')">Cancel</button>
+        <button class="modal-btn" style="background:#dc3545;" disabled>Delete account</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="exportModal">
+    <div class="modal">
+      <h2>Export your data</h2>
+      <p>We'll prepare a zip file with your projects, deployments, and account data. You'll receive a download link via email within 24 hours.</p>
+      <div class="modal-actions">
+        <button class="modal-btn-outline" onclick="closeModal('exportModal')">Cancel</button>
+        <button class="modal-btn">Request export</button>
+      </div>
+    </div>
+  </div>
+
   <footer>
-    <p>Example Test Site — made for extraction testing.</p>
+    <a href="#">Help</a> · <a href="#">Privacy</a> · <a href="#">Terms</a> · <a href="#">Status</a> · © 2026 CloudStack, Inc. (Fictional)
   </footer>
 
   <script>
-    document.getElementById('show-overview').addEventListener('click', function () {
-      document.getElementById('overview').style.display = 'block';
+    // Tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
     });
 
-    document.getElementById('load-table').addEventListener('click', function () {
-      var rows = [
-        ['Widget A', '1,240', '24,800'],
-        ['Widget B', '980', '29,400'],
-        ['Gadget X', '1,560', '78,000'],
-        ['Gadget Y', '720', '43,200'],
-        ['Gizmo Z', '2,100', '12,600']
-      ];
-      var tbody = document.querySelector('#report-table tbody');
-      rows.forEach(function (r) {
-        var tr = document.createElement('tr');
-        r.forEach(function (c) {
-          var td = document.createElement('td');
-          td.textContent = c;
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
+    // Collapse
+    function toggleCollapse(trigger) {
+      const content = trigger.nextElementSibling;
+      trigger.classList.toggle('open');
+      content.classList.toggle('open');
+    }
+
+    // Modal
+    function openModal(id) {
+      document.getElementById(id).classList.add('open');
+    }
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('open');
+    }
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.classList.remove('open');
       });
-      document.getElementById('report').style.display = 'block';
     });
 
-    document.getElementById('load-comments').addEventListener('click', function () {
-      var comments = [
-        'Great writeup, thanks for sharing!',
-        'This works well for our test harness.',
-        'Can you add a page with a video next?',
-        'The table extraction handled this perfectly.'
-      ];
-      var list = document.getElementById('comment-list');
-      comments.forEach(function (c, i) {
-        var li = document.createElement('li');
-        li.className = 'comment';
-        li.textContent = 'Commenter ' + (i + 1) + ': ' + c;
-        list.appendChild(li);
-      });
-      document.getElementById('comments').style.display = 'block';
+    // Priority warning
+    document.getElementById('prioritySelect').addEventListener('change', (e) => {
+      document.getElementById('priorityWarning').style.display = (e.target.value === 'high' || e.target.value === 'critical') ? 'block' : 'none';
+    });
+
+    // 2FA progress animation
+    document.querySelector('[data-setting="2fa"]').addEventListener('change', (e) => {
+      const prog = document.getElementById('2fa-progress');
+      const bar = document.getElementById('progressBar');
+      const text = document.getElementById('progressText');
+      if (e.target.checked) {
+        prog.style.display = 'block';
+        let pct = 0;
+        const interval = setInterval(() => {
+          pct += Math.random() * 15;
+          if (pct >= 100) { pct = 100; clearInterval(interval); text.textContent = 'Scan the QR code in your authenticator app'; }
+          bar.style.width = pct + '%';
+          if (pct < 100) text.textContent = Math.round(pct) + '%';
+        }, 200);
+      } else {
+        prog.style.display = 'none';
+        bar.style.width = '0%';
+      }
+    });
+
+    // Contact form
+    document.getElementById('contactForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      alert('Message sent! We\'ll get back to you within 4 hours.');
     });
   </script>
 </body>

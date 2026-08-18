@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tutorial: Building a Real-Time Dashboard — widgets.js Docs</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; color: #24292e; line-height: 1.6; }
+    header { background: #24292e; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 20px; }
+    header nav a { color: #ccc; text-decoration: none; font-size: 0.9em; margin-right: 16px; }
+    .layout { display: flex; max-width: 1100px; margin: 0 auto; padding: 0 20px; gap: 30px; }
+    nav.sidebar { width: 240px; flex-shrink: 0; font-size: 13px; padding: 20px 0; position: sticky; top: 0; max-height: 100vh; overflow-y: auto; }
+    nav.sidebar .group { font-weight: bold; margin-top: 16px; font-size: 0.8em; color: #6a737d; text-transform: uppercase; letter-spacing: 0.5px; }
+    nav.sidebar a { display: block; color: #0366d6; text-decoration: none; padding: 3px 0; }
+    nav.sidebar a.sub { padding-left: 14px; font-size: 0.9em; color: #586069; }
+    main { flex: 1; min-width: 0; padding: 20px 0; }
+    h1 { font-size: 1.8em; border-bottom: 1px solid #e1e4e8; padding-bottom: 8px; }
+    h2 { font-size: 1.3em; border-bottom: 1px solid #e1e4e8; padding-bottom: 4px; margin-top: 36px; }
+    h3 { font-size: 1.1em; margin-top: 24px; }
+    pre { background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px; padding: 14px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+    code { font-family: 'SF Mono', Consolas, monospace; font-size: 0.9em; }
+    :not(pre) > code { background: #f6f8fa; padding: 2px 6px; border-radius: 4px; }
+    table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+    th, td { border: 1px solid #dfe2e5; padding: 8px 12px; text-align: left; }
+    th { background: #f6f8fa; font-weight: 600; }
+    .callout { border-left: 4px solid #ffd33d; background: #fffbdd; padding: 10px 14px; border-radius: 4px; margin: 14px 0; font-size: 0.95em; }
+    .callout.info { border-left-color: #0366d6; background: #f1f8ff; }
+    .callout.danger { border-left-color: #d73a49; background: #ffeef0; }
+    .callout.success { border-left-color: #28a745; background: #f0fff4; }
+    ol ol, ul ul, ol ul, ul ol { margin-top: 4px; margin-bottom: 4px; }
+    .step-num { display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; border-radius: 50%; background: #0366d6; color: #fff; font-weight: bold; font-size: 0.85em; margin-right: 8px; }
+    footer { border-top: 1px solid #e1e4e8; padding: 16px 20px; color: #586069; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong style="font-size:1.1em;">widgets.js</strong>
+    <nav>
+      <a href="#">Guide</a>
+      <a href="#">API</a>
+      <a href="#">Examples</a>
+      <a href="#">Changelog</a>
+    </nav>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="group">Tutorial steps</div>
+      <a href="#prereqs">Prerequisites</a>
+      <a href="#setup" class="sub">Environment setup</a>
+      <a href="#step1" class="sub">Step 1: Create the project</a>
+      <a href="#step2" class="sub">Step 2: Build the data layer</a>
+      <a href="#step3" class="sub">Step 3: Add the chart widget</a>
+      <a href="#step4" class="sub">Step 4: Real-time updates</a>
+      <a href="#step5" class="sub">Step 5: Multi-widget layout</a>
+      <a href="#step6" class="sub">Step 6: Error handling</a>
+      <a href="#step7" class="sub">Step 7: Testing</a>
+      <a href="#step8" class="sub">Step 8: Deployment</a>
+      <a href="#next">Next steps</a>
+
+      <div class="group">Reference</div>
+      <a href="#">createWidget</a>
+      <a href="#">getWidget</a>
+      <a href="#">destroyWidget</a>
+      <a href="#">Event reference</a>
+
+      <div class="group">Guides</div>
+      <a href="#">Theming</a>
+      <a href="#">Accessibility</a>
+      <a href="#">Performance</a>
+      <a href="#">SSR</a>
+      <a href="#">Testing</a>
+    </nav>
+
+    <main>
+      <h1>Tutorial: Building a Real-Time Dashboard</h1>
+      <p>In this tutorial, you'll build a live dashboard that displays server metrics using widgets.js. By the end, you'll have a working app with a line chart, a data table, and a status card — all updating in real time.</p>
+
+      <div class="callout info">
+        <strong>Time estimate:</strong> 30–45 minutes. You should be comfortable with JavaScript and have Node.js 18+ installed.
+      </div>
+
+      <!-- ============================================= -->
+      <!-- Prerequisites                                  -->
+      <!-- ============================================= -->
+      <h2 id="prereqs">Prerequisites</h2>
+      <ul>
+        <li><strong>Node.js 18+</strong> — check with <code>node --version</code></li>
+        <li><strong>npm 9+</strong> — check with <code>npm --version</code></li>
+        <li>A text editor (VS Code recommended)</li>
+        <li>Basic familiarity with <abbr title="HyperText Markup Language">HTML</abbr>, <abbr title="JavaScript">JS</abbr>, and <abbr title="Asynchronous JavaScript and Data">async/await</abbr></li>
+      </ul>
+
+      <h3 id="setup">Environment setup</h3>
+      <p>Create a new directory and initialize the project:</p>
+      <pre><code>mkdir dashboard-example && cd dashboard-example
+npm init -y
+npm install widgets ws</code></pre>
+
+      <p>The <code>ws</code> package provides WebSocket support for real-time updates.</p>
+
+      <!-- ============================================= -->
+      <!-- Step 1                                         -->
+      <!-- ============================================= -->
+      <h2 id="step1"><span class="step-num">1</span> Create the project structure</h2>
+      <p>Create the following file structure:</p>
+      <pre><code>dashboard-example/
+├── index.html
+├── server.js
+├── src/
+│   ├── data-source.js
+│   ├── widgets.js
+│   └── styles.css
+├── package.json
+└── README.md</code></pre>
+
+      <p>The <code>index.html</code> file is the entry point:</p>
+      <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;Server Dashboard&lt;/title&gt;
+  &lt;link rel="stylesheet" href="src/styles.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div id="chart"&gt;&lt;/div&gt;
+  &lt;div id="table"&gt;&lt;/div&gt;
+  &lt;div id="status"&gt;&lt;/div&gt;
+
+  &lt;script src="node_modules/widgets/dist/widgets.min.js"&gt;&lt;/script&gt;
+  &lt;script src="src/widgets.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+
+      <div class="callout">
+        <strong>Tip:</strong> In production, you'd use a bundler (Vite, esbuild) instead of a direct script tag. This tutorial keeps it simple.
+      </div>
+
+      <!-- ============================================= -->
+      <!-- Step 2                                         -->
+      <!-- ============================================= -->
+      <h2 id="step2"><span class="step-num">2</span> Build the data layer</h2>
+      <p>Create <code>src/data-source.js</code>. This module fetches metrics from the server and normalizes them for the widgets:</p>
+
+      <pre><code>// src/data-source.js
+const WS_URL = `ws://${location.hostname}:8080`;
+
+export class MetricsSource {
+  constructor() {
+    this.ws = null;
+    this.listeners = new Map();
+    this.buffer = [];
+    this.MAX_BUFFER = 120; // 2 minutes at 1s intervals
+  }
+
+  connect() {
+    return new Promise((resolve, reject) => {
+      this.ws = new WebSocket(WS_URL);
+
+      this.ws.onopen = () => {
+        console.log('Connected to metrics server');
+        resolve();
+      };
+
+      this.ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        this.buffer.push(data);
+        if (this.buffer.length &gt; this.MAX_BUFFER) {
+          this.buffer.shift();
+        }
+        this.emit('data', data);
+      };
+
+      this.ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+        this.emit('error', err);
+      };
+
+      this.ws.onclose = () => {
+        console.log('Disconnected. Reconnecting in 3s...');
+        setTimeout(() =&gt; this.connect(), 3000);
+        this.emit('disconnect');
+      };
+    });
+  }
+
+  on(event, handler) {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, []);
+    }
+    this.listeners.get(event).push(handler);
+    return () =&gt; {
+      const arr = this.listeners.get(event);
+      const idx = arr.indexOf(handler);
+      if (idx &gt; -1) arr.splice(idx, 1);
+    };
+  }
+
+  emit(event, data) {
+    (this.listeners.get(event) || []).forEach(h =&gt; h(data));
+  }
+
+  getHistory() {
+    return [...this.buffer];
+  }
+}</code></pre>
+
+      <h3>Key concepts</h3>
+      <dl>
+        <dt>WebSocket connection</dt>
+        <dd>A persistent bidirectional connection to the server. Unlike HTTP polling, data arrives in real time with zero latency.</dd>
+
+        <dt>Ring buffer</dt>
+        <dd>The <code>buffer</code> array stores the last 120 data points (2 minutes). Older points are shifted out to prevent memory growth.</dd>
+
+        <dt>Event emitter</dt>
+        <dd>A minimal pub/sub system. Widgets subscribe to events and auto-disconnect when destroyed.</dd>
+      </dl>
+
+      <!-- ============================================= -->
+      <!-- Step 3                                         -->
+      <!-- ============================================= -->
+      <h2 id="step3"><span class="step-num">3</span> Add the chart widget</h2>
+      <p>Create <code>src/widgets.js</code> — the main entry point that initializes all widgets:</p>
+
+      <pre><code>// src/widgets.js
+import { createWidget } from 'widgets';
+import { MetricsSource } from './data-source.js';
+
+const source = new MetricsSource();
+
+// --- Line chart: CPU usage over time ---
+const cpuChart = createWidget('cpu-chart', {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'CPU %',
+      values: [],
+      color: '#0366d6',
+      fillColor: 'rgba(3, 102, 214, 0.1)'
+    }]
+  },
+  container: '#chart',
+  theme: {
+    primary: '#0366d6',
+    gridColor: '#e1e4e8',
+    fontFamily: 'system-ui, sans-serif'
+  }
+});
+
+// Subscribe to live data
+source.on('data', (point) =&gt; {
+  const state = cpuChart.getState();
+  const labels = [...(state.data.labels || []), point.time];
+  const values = [...(state.data.datasets[0].values || []), point.cpu];
+
+  // Keep last 60 points
+  if (labels.length &gt; 60) {
+    labels.shift();
+    values.shift();
+  }
+
+  cpuChart.update({
+    data: { labels, datasets: [{ values }] }
+  });
+});
+
+// --- Status card ---
+const statusCard = createWidget('status-card', {
+  type: 'card',
+  data: { status: 'connecting', cpu: 0, memory: 0, uptime: 0 },
+  container: '#status'
+});
+
+source.on('data', (point) =&gt; {
+  statusCard.update({
+    data: {
+      status: 'live',
+      cpu: point.cpu.toFixed(1) + '%',
+      memory: (point.memory / 1024 / 1024).toFixed(0) + ' MB',
+      uptime: formatUptime(point.uptime)
+    }
+  });
+});
+
+function formatUptime(seconds) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return d &gt; 0 ? `${d}d ${h}h` : h &gt; 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+// Connect
+source.connect().then(() =&gt; {
+  console.log('Dashboard live');
+});</code></pre>
+
+      <div class="callout success">
+        <strong>You should see:</strong> A line chart that updates every second, showing CPU usage over the last 60 seconds. A status card below it with current metrics.
+      </div>
+
+      <!-- ============================================= -->
+      <!-- Step 4                                         -->
+      <!-- ============================================= -->
+      <h2 id="step4"><span class="step-num">4</span> Real-time updates with throttling</h2>
+      <p>The chart above updates on every data point. For high-frequency data (100+ updates/sec), you need throttling. Here are three approaches:</p>
+
+      <table>
+        <thead>
+          <tr><th>Approach</th><th>Pros</th><th>Cons</th><th>Best for</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Debounce (300ms)</td>
+            <td>Simple, prevents rapid-fire updates</td>
+            <td>May miss peaks</td>
+            <td>User-driven updates (search, resize)</td>
+          </tr>
+          <tr>
+            <td>Throttle (1s)</td>
+            <td>Consistent update rate</td>
+            <td>Always waits, even under load</td>
+            <td>Charts, live feeds</td>
+          </tr>
+          <tr>
+            <td>requestAnimationFrame</td>
+            <td>Matches display refresh rate</td>
+            <td>Complex batching logic needed</td>
+            <td>High-FPS animations</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>For dashboards, throttling at 1 second (matching the data interval) is usually the right choice:</p>
+
+      <pre><code>let pending = null;
+
+function throttledUpdate(data) {
+  if (pending) return; // skip if update already queued
+  pending = requestAnimationFrame(() =&gt; {
+    chart.update(data);
+    pending = null;
+  });
+}</code></pre>
+
+      <!-- ============================================= -->
+      <!-- Step 5                                         -->
+      <!-- ============================================= -->
+      <h2 id="step5"><span class="step-num">5</span> Multi-widget layout</h2>
+      <p>A real dashboard has multiple widgets. Here's a responsive grid layout:</p>
+
+      <pre><code>/* src/styles.css */
+.dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+.widget-card {
+  background: #fff;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.widget-card h3 {
+  margin: 0 0 12px;
+  font-size: 0.9em;
+  color: #586069;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}</code></pre>
+
+      <p>Add a data table widget for process-level metrics:</p>
+
+      <pre><code>// Process table
+const processTable = createWidget('process-table', {
+  type: 'table',
+  data: {
+    columns: ['PID', 'Name', 'CPU %', 'Memory', 'Status'],
+    rows: []
+  },
+  container: '#processes',
+  theme: { striped: true, hoverHighlight: true }
+});
+
+source.on('data', (point) =&gt; {
+  if (point.processes) {
+    processTable.update({
+      data: { rows: point.processes }
+    });
+  }
+});</code></pre>
+
+      <!-- ============================================= -->
+      <!-- Step 6                                         -->
+      <!-- ============================================= -->
+      <h2 id="step6"><span class="step-num">6</span> Error handling</h2>
+      <p>Every widget should handle errors gracefully. Subscribe to the <code>error</code> event:</p>
+
+      <pre><code>cpuChart.on('error', ({ error, phase }) =&gt; {
+  if (phase === 'render') {
+    console.warn('Chart render failed, falling back to table view');
+    cpuChart.update({ type: 'table' }); // graceful degradation
+  } else if (phase === 'data') {
+    console.error('Invalid data received:', error);
+  }
+});</section></code></pre>
+
+      <div class="callout danger">
+        <strong>Warning:</strong> Always handle the <code>error</code> event. Unhandled widget errors propagate to the global error handler and can crash your app.
+      </div>
+
+      <h3>Connection loss handling</h3>
+      <p>The <code>MetricsSource</code> reconnects automatically, but the widgets need to know the connection state:</p>
+
+      <pre><code>source.on('disconnect', () =&gt; {
+  statusCard.update({ data: { status: 'reconnecting' } });
+  cpuChart.update({ theme: { opacity: 0.5 } }); // dim the chart
+});
+
+source.on('data', () =&gt; {
+  statusCard.update({ data: { status: 'live' } });
+  cpuChart.update({ theme: { opacity: 1.0 } }); // restore
+});</code></pre>
+
+      <!-- ============================================= -->
+      <!-- Step 7                                         -->
+      <!-- ============================================= -->
+      <h2 id="step7"><span class="step-num">7</span> Testing</h2>
+      <p>Widgets are testable in <abbr title="JavaScript Document Object Model">JSDOM</abbr> or with a headless browser. Here's a basic unit test:</p>
+
+      <pre><code>// test/widgets.test.js
+import { describe, it, expect, beforeEach } from 'vitest';
+import { createWidget, destroyWidget } from 'widgets';
+
+describe('CPU Chart', () =&gt; {
+  beforeEach(() =&gt; {
+    document.body.innerHTML = '&lt;div id="chart"&gt;&lt;/div&gt;';
+  });
+
+  it('creates and mounts', () =&gt; {
+    const chart = createWidget('test-chart', {
+      type: 'line',
+      data: { labels: [], datasets: [] },
+      container: '#chart'
+    });
+    expect(chart.getState().mounted).toBe(true);
+  });
+
+  it('updates data correctly', () =&gt; {
+    const chart = createWidget('test-chart', {
+      type: 'line',
+      data: { labels: [], datasets: [{ values: [] }] },
+      container: '#chart'
+    });
+
+    chart.update({
+      data: { labels: ['a', 'b'], datasets: [{ values: [1, 2] }] }
+    });
+
+    expect(chart.getState().data.labels).toEqual(['a', 'b']);
+  });
+
+  it('cleans up on destroy', () =&gt; {
+    createWidget('test-chart', {
+      type: 'line',
+      data: {},
+      container: '#chart'
+    });
+    destroyWidget('test-chart');
+    expect(() =&gt; destroyWidget('test-chart')).not.toThrow();
+  });
+});</code></pre>
+
+      <p>Run with: <code>npx vitest run</code></p>
+
+      <!-- ============================================= -->
+      <!-- Step 8                                         -->
+      <!-- ============================================= -->
+      <h2 id="step8"><span class="step-num">8</span> Deployment</h2>
+      <p>For production, use a bundler and serve the static files. Here's a minimal Vite config:</p>
+
+      <pre><code>// vite.config.js
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  build: {
+    outDir: 'dist',
+    minify: 'terser',
+    sourcemap: true
+  },
+  server: {
+    proxy: {
+      '/ws': {
+        target: 'ws://localhost:8080',
+        ws: true
+      }
+    }
+  }
+});</code></pre>
+
+      <p>Deploy to any static host (Vercel, Netlify, S3 + CloudFront):</p>
+
+      <pre><code>npm run build
+npx serve dist</code></pre>
+
+      <div class="callout success">
+        <strong>Congratulations!</strong> You've built a real-time dashboard with widgets.js. The final app has a line chart, a status card, a process table, error handling, and automatic reconnection.
+      </div>
+
+      <!-- ============================================= -->
+      <!-- Next steps                                     -->
+      <!-- ============================================= -->
+      <h2 id="next">Next steps</h2>
+      <ul>
+        <li><a href="#">Theming guide</a> — customize colors, fonts, and spacing</li>
+        <li><a href="#">Accessibility</a> — ARIA labels, keyboard navigation, screen reader support</li>
+        <li><a href="#">Performance</a> — virtual scrolling for large tables, lazy loading for off-screen widgets</li>
+        <li><a href="#">Plugin system</a> — add custom widget types</li>
+        <li><a href="#">SSR guide</a> — server-side rendering with Next.js or Nuxt</li>
+      </ul>
+
+      <footer>widgets.js docs · MIT license · <a href="#">Edit this page on GitHub</a></footer>
+    </main>
+  </div>
+</body>
+</html>

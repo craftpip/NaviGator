@@ -65,7 +65,7 @@ const screenshotDownloadById = new Map();
 const screenshotStorageDir = path.join(process.cwd(), "screenshots");
 const CONSOLE_API_KEY = `nvg_console_${randomBytes(32).toString("base64url")}`;
 const WEB_TOOL_NAMES = new Set(["web_search", "web_fetch", "web_page_screenshot", "web_page_links", "web_page_ascii"]);
-const TOOL_CACHE_TTL_MS = 5 * 60 * 1000;
+let toolCacheTtlMs = 5 * 60 * 1000; // updated from manager.config after boot
 const SCREENSHOT_DOWNLOAD_TTL_MS = 60 * 60 * 1000;
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 const MAX_SCREENSHOT_DOWNLOADS = 200;
@@ -202,7 +202,7 @@ function setCachedToolResult(toolName, args, value) {
   const key = getCacheKey(args);
   bucket.set(key, {
     value,
-    expiresAt: Date.now() + TOOL_CACHE_TTL_MS
+    expiresAt: Date.now() + toolCacheTtlMs
   });
   while (bucket.size > MAX_TOOL_CACHE_ENTRIES) {
     const oldestKey = bucket.keys().next().value;
@@ -3452,6 +3452,7 @@ async function maybeStartHttpServer(managerOverride) {
 logEvent("booting", { pid: process.pid });
 const manager = await getBrowserManager();
 logEvent("boot.start", { pid: process.pid });
+toolCacheTtlMs = manager.config.toolCacheTtlMs || 5 * 60 * 1000;
 logBootConfig(manager.config);
 
 const HANG_TIMEOUT_CODE = "HANG_TIMEOUT";

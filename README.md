@@ -4,6 +4,8 @@
 [![Docker](https://ghcr-badge.egpl.dev/craftpip/navigator/latest_tag?label=ghcr.io/craftpip/navigator)](https://github.com/craftpip/navigator/pkgs/container/navigator)
 [![License](https://img.shields.io/github/license/craftpip/navigator)](LICENSE)
 
+> **Last doc update:** 2026-08-18
+
 navigator gives your MCP client a real browser for:
 
 - web search
@@ -259,8 +261,7 @@ Hints live in `domain-hints.json` at the project root. You can point to a differ
     "waitForSelector": "main#content",
     "stabilizeStrategy": "content_idle",
     "skipSelectors": [".navbox", ".navbox-styles"],
-    "format": "readability_to_markdown",
-    "tables": "content"
+    "format": "readability_to_markdown"
   }
 }
 ```
@@ -273,7 +274,7 @@ Hints live in `domain-hints.json` at the project root. You can point to a differ
 | `pathPattern` | Glob pattern for URL paths (`/**` for all, `/wiki/**` for specific sections) |
 | `comment` | Authoring and console metadata that explains why the rule exists |
 | `requireSelector` | Optional CSS selector that must exist for this rule to apply |
-| `default` | Normal extraction settings: `waitForSelector`, `stabilizeStrategy`, `waitForContent`, `skipSelectors`, `format`, and `tables` |
+| `default` | Normal extraction settings: `waitForSelector`, `stabilizeStrategy`, `waitForContent`, `skipSelectors`, `format` |
 | `flow` | Ordered interactive steps (`extract`, `click`, `wait`, `type`, `navigate`) for pages that need browser interaction |
 | `flowOptions` | Optional bounds for an interactive flow |
 

@@ -51,7 +51,7 @@ Tables are extracted from the cleaned DOM by `extractTablesFromDocument()`.
 - The nearest heading becomes table context.
 - `insertTablesInline()` places rendered pipe tables under their related heading where possible, or appends them.
 
-A default extraction hint may choose table extraction mode `all`, `content`, or `disabled`.
+The extractor (`default.format`) decides how tables are rendered — `html_to_markdown` produces markdown tables, `readability_to_markdown` keeps what Readability keeps, and `table`/`table_json`/`table_csv` return tables-only output.
 
 ## Links and References
 
@@ -86,13 +86,22 @@ Hints live in `domain-hints.json` by default, or at `DOMAIN_HINTS_PATH`. `getDom
     "stabilizeStrategy": "content_idle",
     "waitForContent": ["article"],
     "skipSelectors": [".newsletter", ".advertisement"],
-    "format": "readability_to_markdown",
-    "tables": "content"
+    "format": "readability_to_markdown"
   }
 }
 ```
 
 Use a `flow` when precise selected containers or page interaction are required. Its `extract` steps carry `content.blocks`.
+
+### Wildcard Hint (No-Hint Fallback)
+
+Pages that match **no** domain hint get default extraction from the wildcard hint (`domain: "*"`). The wildcard hint is always present in `domain-hints.json` — the console auto-creates it with sensible defaults if missing. It cannot be deleted and appears with a "default" badge in the Domain hints editor.
+
+Default settings: `readability_to_markdown` extractor, `network_idle` stabilization, no skip selectors, no wait gates.
+
+The wildcard hint works the same as any other hint (format, stabilization, skip selectors, wait gates), but the `domain`/`pathPattern`/`requireSelector` fields are hidden. Both the wildcard hint and domain-specific hints can have `skipSelectors` (stacking model — both are stripped during extraction).
+
+On first load, if `DEFAULT_EXTRACT_*` environment variables are set, their values are migrated into the wildcard hint and the env vars are no longer read.
 
 ### Flow Hint
 

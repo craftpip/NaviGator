@@ -4309,7 +4309,7 @@ function HintTestPanel({ hint }) {
 function App() {
   const [mode, setMode] = useState(() => modeFromPath(location.pathname));  const [trendRange, setTrendRange] = useState(() => {
     const range = new URLSearchParams(location.search).get("range");
-    return ["minutes", "hour", "day", "week"].includes(range) ? range : "hour";
+    return ["minutes", "hour", "day", "week"].includes(range) ? range : "day";
   });
   const [trend, setTrend] = useState(null);
   const [trendError, setTrendError] = useState("");

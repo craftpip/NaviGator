@@ -3,98 +3,423 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Monthly Sales Report — Tables</title>
-  <meta name="description" content="A sample page full of HTML tables for extraction testing.">
+  <title>Q3 2026 Financial Report — Tables</title>
+  <meta name="description" content="Complex financial report with nested tables, merged cells, and dense data for extraction testing.">
   <style>
-    body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #222; }
-    header { background: #33475b; color: #fff; padding: 20px 30px; }
-    nav a { color: #ffd166; margin-right: 14px; text-decoration: none; }
-    main { max-width: 900px; margin: 30px auto; padding: 0 20px; }
-    table { border-collapse: collapse; width: 100%; margin: 20px 0; }
-    th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
-    th { background: #33475b; color: #fff; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #222; line-height: 1.5; }
+    header { background: #1a2332; color: #fff; padding: 16px 28px; }
+    nav a { color: #ffd166; margin-right: 14px; text-decoration: none; font-size: 0.9em; }
+    main { max-width: 1060px; margin: 28px auto; padding: 0 20px; }
+    h1 { font-size: 1.6em; border-bottom: 2px solid #1a2332; padding-bottom: 8px; }
+    h2 { font-size: 1.2em; color: #1a2332; margin-top: 36px; border-left: 4px solid #1a2332; padding-left: 10px; }
+    h3 { font-size: 1.05em; color: #444; margin-top: 24px; }
+    table { border-collapse: collapse; width: 100%; margin: 14px 0 24px 0; font-size: 13px; }
+    th, td { border: 1px solid #ccc; padding: 7px 10px; text-align: right; }
+    th { background: #1a2332; color: #fff; font-weight: 600; }
+    td:first-child, th:first-child { text-align: left; }
     tr:nth-child(even) { background: #f4f7fa; }
-    h2 { margin-top: 40px; }
-    footer { background: #f2f2f2; padding: 15px 30px; margin-top: 40px; font-size: 14px; }
+    .row-header { background: #e8ecf0; font-weight: bold; text-align: left !important; }
+    .subtotal { border-top: 2px solid #1a2332; font-weight: bold; }
+    .total-row { background: #1a2332 !important; color: #fff; font-weight: bold; }
+    .negative { color: #c0392b; }
+    .positive { color: #27ae60; }
+    .note { font-size: 12px; color: #666; margin-top: 6px; font-style: italic; }
+    .callout { background: #fffbdd; border-left: 4px solid #e6a700; padding: 10px 14px; margin: 16px 0; border-radius: 4px; font-size: 0.9em; }
+    .two-col { display: flex; gap: 24px; flex-wrap: wrap; }
+    .two-col > div { flex: 1; min-width: 300px; }
+    footer { background: #f2f2f2; padding: 16px 28px; margin-top: 40px; font-size: 13px; color: #666; }
   </style>
 </head>
 <body>
   <header>
-    <h1>Example Test Site</h1>
+    <strong>Consolidated Financial Report</strong> — Q3 FY2026
     <nav>
       <a href="/">Home</a>
-      <a href="/post/">Blog Post</a>
-      <a href="/profile/">Profile</a>
-      <a href="/news/">News</a>
-      <a href="/table/">Tables</a>
-      <a href="/interactive/">Interactive</a>
-      <a href="/chaos/">Chaos</a>
+      <a href="#">Income</a>
+      <a href="#">Balance Sheet</a>
+      <a href="#">Cash Flow</a>
+      <a href="#">Segments</a>
     </nav>
   </header>
 
   <main>
-    <h1>Monthly Sales Report</h1>
-    <p>July 2026 — prepared by the Data Team. This page contains several HTML tables to exercise the extractor's table parsing.</p>
+    <h1>Q3 FY2026 Consolidated Financial Statements — Globex International Inc.</h1>
+    <p>Reporting period: April 1 – June 30, 2026. All figures in USD thousands unless noted. Prepared by the Finance Division, audited by Pricewaterhouse &amp; Co.</p>
 
-    <h2>Table 1: Sales by product</h2>
+    <div class="callout">
+      <strong>Attention:</strong> This report contains tables with merged cells (colspan/rowspan), nested sub-tables, and mixed formatting — designed to exercise complex table extraction.
+    </div>
+
+    <!-- ============================================ -->
+    <!-- TABLE 1: Income Statement with subtotals     -->
+    <!-- ============================================ -->
+    <h2>1. Consolidated Statement of Operations</h2>
+    <p class="note">Three-month period ending June 30, 2026 vs. June 30, 2025</p>
     <table>
       <thead>
-        <tr><th>Product</th><th>Category</th><th>Units sold</th><th>Revenue (USD)</th></tr>
+        <tr>
+          <th rowspan="2">Line item</th>
+          <th colspan="2">Q3 2026</th>
+          <th colspan="2">Q3 2025</th>
+          <th rowspan="2">YoY Change</th>
+        </tr>
+        <tr>
+          <th>Amount</th><th>% of Rev</th>
+          <th>Amount</th><th>% of Rev</th>
+        </tr>
       </thead>
       <tbody>
-        <tr><td>Widget A</td><td>Hardware</td><td>1,240</td><td>24,800</td></tr>
-        <tr><td>Widget B</td><td>Hardware</td><td>980</td><td>29,400</td></tr>
-        <tr><td>Gadget X</td><td>Electronics</td><td>1,560</td><td>78,000</td></tr>
-        <tr><td>Gadget Y</td><td>Electronics</td><td>720</td><td>43,200</td></tr>
-        <tr><td>Gizmo Z</td><td>Accessories</td><td>2,100</td><td>12,600</td></tr>
+        <tr><td colspan="6" class="row-header">Revenue</td></tr>
+        <tr><td>Product sales</td><td>142,500</td><td>47.5%</td><td>118,200</td><td>44.8%</td><td class="positive">+20.6%</td></tr>
+        <tr><td>Service subscriptions</td><td>98,400</td><td>32.8%</td><td>82,600</td><td>31.2%</td><td class="positive">+19.1%</td></tr>
+        <tr><td>Licensing &amp; royalties</td><td>34,200</td><td>11.4%</td><td>38,100</td><td>14.4%</td><td class="negative">−10.2%</td></tr>
+        <tr><td>Advertising revenue</td><td>24,900</td><td>8.3%</td><td>25,700</td><td>9.7%</td><td class="negative">−3.1%</td></tr>
+        <tr class="subtotal"><td>Total revenue</td><td>300,000</td><td>100.0%</td><td>264,600</td><td>100.0%</td><td class="positive">+13.4%</td></tr>
+
+        <tr><td colspan="6" class="row-header">Cost of revenue</td></tr>
+        <tr><td>Cost of products</td><td>68,400</td><td>22.8%</td><td>59,100</td><td>22.3%</td><td class="negative">+15.7%</td></tr>
+        <tr><td>Cost of services</td><td>31,200</td><td>10.4%</td><td>27,800</td><td>10.5%</td><td class="negative">+12.2%</td></tr>
+        <tr><td>Server &amp; infrastructure</td><td>18,600</td><td>6.2%</td><td>15,400</td><td>5.8%</td><td class="negative">+20.8%</td></tr>
+        <tr class="subtotal"><td>Total cost of revenue</td><td>118,200</td><td>39.4%</td><td>102,300</td><td>38.7%</td><td class="negative">+15.5%</td></tr>
+
+        <tr class="subtotal"><td>Gross profit</td><td>181,800</td><td>60.6%</td><td>162,300</td><td>61.3%</td><td class="positive">+12.0%</td></tr>
+
+        <tr><td colspan="6" class="row-header">Operating expenses</td></tr>
+        <tr><td>Research &amp; development</td><td>52,300</td><td>17.4%</td><td>44,100</td><td>16.7%</td><td class="negative">+18.6%</td></tr>
+        <tr><td>Sales &amp; marketing</td><td>38,700</td><td>12.9%</td><td>35,200</td><td>13.3%</td><td class="negative">+9.9%</td></tr>
+        <tr><td>General &amp; administrative</td><td>22,400</td><td>7.5%</td><td>19,800</td><td>7.5%</td><td class="negative">+13.1%</td></tr>
+        <tr><td>Restructuring charges</td><td>4,500</td><td>1.5%</td><td>0</td><td>0.0%</td><td class="negative">N/A</td></tr>
+        <tr class="subtotal"><td>Total operating expenses</td><td>117,900</td><td>39.3%</td><td>99,100</td><td>37.5%</td><td class="negative">+19.0%</td></tr>
+
+        <tr class="subtotal"><td>Operating income</td><td>63,900</td><td>21.3%</td><td>63,200</td><td>23.9%</td><td class="positive">+1.1%</td></tr>
+
+        <tr><td>Interest income</td><td>2,100</td><td>0.7%</td><td>1,800</td><td>0.7%</td><td class="positive">+16.7%</td></tr>
+        <tr><td>Interest expense</td><td>(3,400)</td><td>−1.1%</td><td>(2,900)</td><td>−1.1%</td><td class="negative">+17.2%</td></tr>
+        <tr><td>Foreign exchange gain/(loss)</td><td>800</td><td>0.3%</td><td>(600)</td><td>−0.2%</td><td class="positive">n/m</td></tr>
+        <tr class="subtotal"><td>Income before tax</td><td>63,400</td><td>21.1%</td><td>61,500</td><td>23.2%</td><td class="positive">+3.1%</td></tr>
+        <tr><td>Income tax provision</td><td>15,850</td><td>5.3%</td><td>15,375</td><td>5.8%</td><td class="negative">+3.1%</td></tr>
+        <tr class="total-row"><td>Net income</td><td>47,550</td><td>15.9%</td><td>46,125</td><td>17.4%</td><td>+3.1%</td></tr>
       </tbody>
     </table>
 
-    <h2>Table 2: Sales by region</h2>
+    <!-- ============================================ -->
+    <!-- TABLE 2: Balance sheet with colspan/rowspan  -->
+    <!-- ============================================ -->
+    <h2>2. Condensed Consolidated Balance Sheet</h2>
+    <p class="note">As of June 30, 2026 vs. March 31, 2026 (prior quarter end)</p>
     <table>
       <thead>
-        <tr><th>Region</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th></tr>
+        <tr>
+          <th>Account</th>
+          <th>Jun 30, 2026</th>
+          <th>Mar 31, 2026</th>
+          <th>Change ($K)</th>
+          <th>Change (%)</th>
+        </tr>
       </thead>
       <tbody>
-        <tr><td>North</td><td>45,000</td><td>52,000</td><td>61,000</td><td>58,000</td></tr>
-        <tr><td>South</td><td>32,000</td><td>35,000</td><td>40,000</td><td>44,000</td></tr>
-        <tr><td>East</td><td>28,000</td><td>31,000</td><td>33,000</td><td>36,000</td></tr>
-        <tr><td>West</td><td>50,000</td><td>48,000</td><td>55,000</td><td>63,000</td></tr>
+        <tr><td colspan="5" class="row-header">Assets</td></tr>
+        <tr><td>Cash and cash equivalents</td><td>284,300</td><td>261,700</td><td class="positive">+22,600</td><td class="positive">+8.6%</td></tr>
+        <tr><td>Short-term investments</td><td>156,200</td><td>142,800</td><td class="positive">+13,400</td><td class="positive">+9.4%</td></tr>
+        <tr><td>Accounts receivable, net</td><td>89,400</td><td>76,200</td><td class="negative">+13,200</td><td class="negative">+17.3%</td></tr>
+        <tr><td>Inventories</td><td>45,600</td><td>41,300</td><td class="negative">+4,300</td><td class="negative">+10.4%</td></tr>
+        <tr><td>Prepaid expenses</td><td>12,800</td><td>11,500</td><td class="negative">+1,300</td><td class="negative">+11.3%</td></tr>
+        <tr class="subtotal"><td>Total current assets</td><td>588,300</td><td>533,500</td><td class="positive">+54,800</td><td class="positive">+10.3%</td></tr>
+
+        <tr><td colspan="5" class="row-header">Non-current assets</td></tr>
+        <tr><td>Property, plant &amp; equipment, net</td><td>198,400</td><td>194,200</td><td class="positive">+4,200</td><td class="positive">+2.2%</td></tr>
+        <tr><td>Goodwill</td><td>312,000</td><td>312,000</td><td>0</td><td>0.0%</td></tr>
+        <tr><td>Intangible assets, net</td><td>67,800</td><td>72,100</td><td class="positive">−4,300</td><td class="positive">−6.0%</td></tr>
+        <tr><td>Deferred tax assets</td><td>18,900</td><td>17,600</td><td class="negative">+1,300</td><td class="negative">+7.4%</td></tr>
+        <tr><td>Right-of-use assets</td><td>24,100</td><td>25,800</td><td class="positive">−1,700</td><td class="positive">−6.6%</td></tr>
+        <tr class="subtotal"><td>Total non-current assets</td><td>621,200</td><td>621,700</td><td class="positive">−500</td><td class="positive">−0.1%</td></tr>
+
+        <tr class="total-row"><td>Total assets</td><td>1,209,500</td><td>1,155,200</td><td>+54,300</td><td>+4.7%</td></tr>
+
+        <tr><td colspan="5" class="row-header">Liabilities</td></tr>
+        <tr><td>Accounts payable</td><td>52,300</td><td>48,900</td><td class="negative">+3,400</td><td class="negative">+6.9%</td></tr>
+        <tr><td>Accrued expenses</td><td>41,200</td><td>38,700</td><td class="negative">+2,500</td><td class="negative">+6.5%</td></tr>
+        <tr><td>Current portion of long-term debt</td><td>25,000</td><td>25,000</td><td>0</td><td>0.0%</td></tr>
+        <tr><td>Deferred revenue</td><td>67,800</td><td>58,400</td><td class="negative">+9,400</td><td class="negative">+16.1%</td></tr>
+        <tr class="subtotal"><td>Total current liabilities</td><td>186,300</td><td>171,000</td><td class="negative">+15,300</td><td class="negative">+8.9%</td></tr>
+
+        <tr><td>Long-term debt</td><td>350,000</td><td>375,000</td><td class="positive">−25,000</td><td class="positive">−6.7%</td></tr>
+        <tr><td>Lease liabilities</td><td>19,800</td><td>21,400</td><td class="positive">−1,600</td><td class="positive">−7.5%</td></tr>
+        <tr><td>Deferred tax liabilities</td><td>14,200</td><td>13,900</td><td class="negative">+300</td><td class="negative">+2.2%</td></tr>
+        <tr class="subtotal"><td>Total non-current liabilities</td><td>384,000</td><td>410,300</td><td class="positive">−26,300</td><td class="positive">−6.4%</td></tr>
+
+        <tr class="total-row"><td>Total liabilities</td><td>570,300</td><td>581,300</td><td class="positive">−11,000</td><td class="positive">−1.9%</td></tr>
+
+        <tr><td colspan="5" class="row-header">Shareholders' equity</td></tr>
+        <tr><td>Common stock</td><td>50</td><td>50</td><td>0</td><td>0.0%</td></tr>
+        <tr><td>Additional paid-in capital</td><td>285,400</td><td>278,600</td><td class="positive">+6,800</td><td class="positive">+2.4%</td></tr>
+        <tr><td>Retained earnings</td><td>392,750</td><td>335,250</td><td class="positive">+57,500</td><td class="positive">+17.1%</td></tr>
+        <tr><td>Accumulated other comprehensive loss</td><td>(39,000)</td><td>(40,000)</td><td class="positive">+1,000</td><td class="positive">−2.5%</td></tr>
+        <tr class="subtotal"><td>Total shareholders' equity</td><td>639,200</td><td>573,900</td><td class="positive">+65,300</td><td class="positive">+11.4%</td></tr>
+
+        <tr class="total-row"><td>Total liabilities &amp; equity</td><td>1,209,500</td><td>1,155,200</td><td>+54,300</td><td>+4.7%</td></tr>
       </tbody>
     </table>
 
-    <h2>Table 3: Top customers</h2>
+    <!-- ============================================ -->
+    <!-- TABLE 3: Segment reporting with rowspan      -->
+    <!-- ============================================ -->
+    <h2>3. Segment Performance</h2>
     <table>
       <thead>
-        <tr><th>Rank</th><th>Customer</th><th>Orders</th><th>Lifetime value (USD)</th></tr>
+        <tr>
+          <th>Segment</th>
+          <th>Revenue</th>
+          <th>Operating Margin</th>
+          <th>Headcount</th>
+          <th>Key Markets</th>
+        </tr>
       </thead>
       <tbody>
-        <tr><td>1</td><td>Acme Corp</td><td>48</td><td>112,000</td></tr>
-        <tr><td>2</td><td>Globex Ltd</td><td>39</td><td>96,500</td></tr>
-        <tr><td>3</td><td>Initech Inc</td><td>35</td><td>84,200</td></tr>
-        <tr><td>4</td><td>Umbrella Co</td><td>22</td><td>61,300</td></tr>
-        <tr><td>5</td><td>Stark Industries</td><td>18</td><td>54,900</td></tr>
+        <tr>
+          <td>Enterprise Software</td>
+          <td>128,400</td><td>24.8%</td><td>2,340</td>
+          <td rowspan="2">North America, EMEA</td>
+        </tr>
+        <tr>
+          <td>Cloud Platform</td>
+          <td>86,200</td><td>18.3%</td><td>1,890</td>
+        </tr>
+        <tr>
+          <td>Consumer Products</td>
+          <td>54,800</td><td>12.1%</td><td>1,120</td>
+          <td>Global</td>
+        </tr>
+        <tr>
+          <td>Professional Services</td>
+          <td>30,600</td><td>8.7%</td><td>680</td>
+          <td>N. America, APAC</td>
+        </tr>
+        <tr class="subtotal">
+          <td>Total</td>
+          <td>300,000</td><td>—</td><td>6,030</td>
+          <td>—</td>
+        </tr>
       </tbody>
     </table>
 
-    <h2>Table 4: Weekly order counts</h2>
+    <!-- ============================================ -->
+    <!-- TABLE 4: Quarterly trends (wide table)       -->
+    <!-- ============================================ -->
+    <h2>4. Quarterly Revenue Trend</h2>
+    <p class="note">Last 8 quarters, USD thousands</p>
     <table>
       <thead>
-        <tr><th>Week</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr>
+        <tr>
+          <th>Metric</th>
+          <th>Q4 '24</th><th>Q1 '25</th><th>Q2 '25</th><th>Q3 '25</th>
+          <th>Q4 '25</th><th>Q1 '26</th><th>Q2 '26</th><th>Q3 '26</th>
+        </tr>
       </thead>
       <tbody>
-        <tr><td>W1</td><td>12</td><td>15</td><td>9</td><td>18</td><td>22</td></tr>
-        <tr><td>W2</td><td>14</td><td>11</td><td>17</td><td>13</td><td>25</td></tr>
-        <tr><td>W3</td><td>10</td><td>19</td><td>8</td><td>16</td><td>20</td></tr>
-        <tr><td>W4</td><td>13</td><td>17</td><td>12</td><td>15</td><td>28</td></tr>
+        <tr><td>Revenue</td><td>228,400</td><td>241,200</td><td>256,800</td><td>264,600</td><td>278,100</td><td>289,400</td><td>295,200</td><td>300,000</td></tr>
+        <tr><td>Gross margin %</td><td>59.8%</td><td>60.1%</td><td>60.9%</td><td>61.3%</td><td>61.0%</td><td>60.8%</td><td>60.5%</td><td>60.6%</td></tr>
+        <tr><td>Operating income</td><td>48,200</td><td>52,600</td><td>58,900</td><td>63,200</td><td>66,400</td><td>61,800</td><td>64,100</td><td>63,900</td></tr>
+        <tr><td>Net income</td><td>36,100</td><td>39,400</td><td>43,200</td><td>46,125</td><td>48,900</td><td>45,200</td><td>47,800</td><td>47,550</td></tr>
+        <tr><td>Diluted EPS ($)</td><td>1.44</td><td>1.58</td><td>1.73</td><td>1.85</td><td>1.96</td><td>1.81</td><td>1.91</td><td>1.90</td></tr>
+        <tr><td>Free cash flow</td><td>42,100</td><td>48,300</td><td>55,200</td><td>58,900</td><td>61,400</td><td>52,600</td><td>57,800</td><td>60,200</td></tr>
+        <tr><td>Customers (K)</td><td>184</td><td>189</td><td>196</td><td>202</td><td>210</td><td>218</td><td>224</td><td>231</td></tr>
       </tbody>
     </table>
 
-    <p>Summary: total revenue for July 2026 was <strong>$188,000</strong> across 6,600 units. For more content, see <a href="/post/">the blog post</a> or <a href="/">the home page</a>.</p>
+    <!-- ============================================ -->
+    <!-- TABLE 5: Geo breakdown with nested header    -->
+    <!-- ============================================ -->
+    <h2>5. Revenue by Geography</h2>
+    <table>
+      <thead>
+        <tr>
+          <th rowspan="2">Region</th>
+          <th colspan="3">Revenue ($K)</th>
+          <th rowspan="2">% of Total</th>
+        </tr>
+        <tr>
+          <th>Q3 2026</th><th>Q2 2026</th><th>YoY %</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>North America</td><td>168,000</td><td>162,300</td><td class="positive">+11.2%</td><td>56.0%</td></tr>
+        <tr><td>Europe, Middle East &amp; Africa</td><td>72,600</td><td>69,800</td><td class="positive">+14.8%</td><td>24.2%</td></tr>
+        <tr><td>Asia-Pacific</td><td>42,300</td><td>39,600</td><td class="positive">+18.4%</td><td>14.1%</td></tr>
+        <tr><td>Latin America</td><td>17,100</td><td>15,500</td><td class="positive">+22.6%</td><td>5.7%</td></tr>
+        <tr class="total-row"><td>Worldwide</td><td>300,000</td><td>295,200</td><td>+13.4%</td><td>100.0%</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ============================================ -->
+    <!-- TABLE 6: Complex headcount table             -->
+    <!-- ============================================ -->
+    <h2>6. Employee Headcount by Function &amp; Region</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Function</th>
+          <th>US</th><th>UK</th><th>Germany</th><th>India</th><th>Japan</th><th>Brazil</th><th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Engineering</td><td>820</td><td>180</td><td>120</td><td>540</td><td>90</td><td>50</td><td>1,800</td></tr>
+        <tr><td>Sales</td><td>410</td><td>95</td><td>65</td><td>120</td><td>55</td><td>35</td><td>780</td></tr>
+        <tr><td>Marketing</td><td>220</td><td>48</td><td>32</td><td>60</td><td>28</td><td>18</td><td>406</td></tr>
+        <tr><td>Support</td><td>180</td><td>42</td><td>28</td><td>210</td><td>45</td><td>30</td><td>535</td></tr>
+        <tr><td>Operations</td><td>140</td><td>35</td><td>22</td><td>80</td><td>18</td><td>12</td><td>307</td></tr>
+        <tr><td>G&amp;A / Finance</td><td>95</td><td>22</td><td>15</td><td>45</td><td>10</td><td>8</td><td>195</td></tr>
+        <tr><td>Legal</td><td>28</td><td>8</td><td>6</td><td>4</td><td>3</td><td>2</td><td>51</td></tr>
+        <tr><td>HR</td><td>35</td><td>10</td><td>6</td><td>12</td><td>5</td><td>3</td><td>71</td></tr>
+        <tr class="total-row"><td>Total</td><td>1,928</td><td>440</td><td>294</td><td>1,071</td><td>254</td><td>158</td><td>4,145</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ============================================ -->
+    <!-- TABLE 7: Mixed types — order log             -->
+    <!-- ============================================ -->
+    <h2>7. Top 15 Customer Orders</h2>
+    <p class="note">Mix of numbers, dates, currency, status tags, and long text — tests extraction of heterogeneous rows</p>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Customer</th><th>Order ID</th><th>Date</th><th>Amount</th><th>Items</th><th>Status</th><th>Sales Rep</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>Acme Corp</td><td>ORD-2026-4871</td><td>2026-06-28</td><td>$284,000</td><td>48</td><td>Completed</td><td>J. Martinez</td></tr>
+        <tr><td>2</td><td>Globex Industries</td><td>ORD-2026-4820</td><td>2026-06-15</td><td>$196,500</td><td>39</td><td>Completed</td><td>S. Patel</td></tr>
+        <tr><td>3</td><td>Initech Systems</td><td>ORD-2026-4798</td><td>2026-06-10</td><td>$184,200</td><td>35</td><td>Invoiced</td><td>L. Chen</td></tr>
+        <tr><td>4</td><td>Wayne Enterprises</td><td>ORD-2026-4756</td><td>2026-05-29</td><td>$161,300</td><td>22</td><td>Completed</td><td>J. Martinez</td></tr>
+        <tr><td>5</td><td>Stark Industries</td><td>ORD-2026-4712</td><td>2026-05-18</td><td>$154,900</td><td>18</td><td>In transit</td><td>S. Patel</td></tr>
+        <tr><td>6</td><td>Hooli Inc</td><td>ORD-2026-4688</td><td>2026-05-10</td><td>$142,800</td><td>31</td><td>Completed</td><td>A. Kim</td></tr>
+        <tr><td>7</td><td>Pied Piper</td><td>ORD-2026-4654</td><td>2026-05-02</td><td>$128,400</td><td>27</td><td>Completed</td><td>L. Chen</td></tr>
+        <tr><td>8</td><td>Vandelay Industries</td><td>ORD-2026-4621</td><td>2026-04-24</td><td>$118,600</td><td>20</td><td>Returned</td><td>R. Singh</td></tr>
+        <tr><td>9</td><td>Dunder Mifflin</td><td>ORD-2026-4598</td><td>2026-04-18</td><td>$98,200</td><td>15</td><td>Completed</td><td>A. Kim</td></tr>
+        <tr><td>10</td><td>Sabre Corp</td><td>ORD-2026-4567</td><td>2026-04-12</td><td>$87,400</td><td>12</td><td>Completed</td><td>S. Patel</td></tr>
+        <tr><td>11</td><td>Kramerica Industries</td><td>ORD-2026-4534</td><td>2026-04-05</td><td>$76,100</td><td>9</td><td>Invoiced</td><td>J. Martinez</td></tr>
+        <tr><td>12</td><td>Bluth Company</td><td>ORD-2026-4501</td><td>2026-03-29</td><td>$64,800</td><td>8</td><td>Completed</td><td>L. Chen</td></tr>
+        <tr><td>13</td><td>Massive Dynamic</td><td>ORD-2026-4478</td><td>2026-03-22</td><td>$58,900</td><td>7</td><td>Cancelled</td><td>R. Singh</td></tr>
+        <tr><td>14</td><td>Oscorp Technologies</td><td>ORD-2026-4445</td><td>2026-03-15</td><td>$52,300</td><td>6</td><td>Completed</td><td>A. Kim</td></tr>
+        <tr><td>15</td><td>Cyberdyne Systems</td><td>ORD-2026-4412</td><td>2026-03-08</td><td>$45,100</td><td>5</td><td>In transit</td><td>S. Patel</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ============================================ -->
+    <!-- TABLE 8: Key ratios summary                  -->
+    <!-- ============================================ -->
+    <h2>8. Key Financial Ratios</h2>
+    <div class="two-col">
+      <div>
+        <h3>Profitability</h3>
+        <table>
+          <thead><tr><th>Ratio</th><th>Q3 '26</th><th>Q2 '26</th><th>Q3 '25</th></tr></thead>
+          <tbody>
+            <tr><td>Gross margin</td><td>60.6%</td><td>60.5%</td><td>61.3%</td></tr>
+            <tr><td>Operating margin</td><td>21.3%</td><td>21.7%</td><td>23.9%</td></tr>
+            <tr><td>Net margin</td><td>15.9%</td><td>16.2%</td><td>17.4%</td></tr>
+            <tr><td>ROE (annualized)</td><td>30.6%</td><td>33.8%</td><td>32.1%</td></tr>
+            <tr><td>ROA (annualized)</td><td>15.9%</td><td>16.7%</td><td>16.4%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3>Liquidity &amp; Leverage</h3>
+        <table>
+          <thead><tr><th>Ratio</th><th>Q3 '26</th><th>Q2 '26</th><th>Q3 '25</th></tr></thead>
+          <tbody>
+            <tr><td>Current ratio</td><td>3.16x</td><td>3.12x</td><td>2.94x</td></tr>
+            <tr><td>Quick ratio</td><td>2.92x</td><td>2.88x</td><td>2.71x</td></tr>
+            <tr><td>Debt-to-equity</td><td>0.88x</td><td>0.95x</td><td>1.02x</td></tr>
+            <tr><td>Net debt ($K)</td><td>90,700</td><td>138,300</td><td>158,400</td></tr>
+            <tr><td>Interest coverage</td><td>18.8x</td><td>22.1x</td><td>21.8x</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- TABLE 9: Empty / whitespace-only cells       -->
+    <!-- ============================================ -->
+    <h2>9. FY2026 Budget vs. Actuals</h2>
+    <p class="note">Contains cells that are empty or whitespace-only — tests how extractors handle missing data</p>
+    <table>
+      <thead>
+        <tr><th>Department</th><th>Q1 Budget</th><th>Q1 Actual</th><th>Q2 Budget</th><th>Q2 Actual</th><th>Q3 Budget</th><th>Q3 Actual</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Engineering</td><td>48,000</td><td>46,200</td><td>50,000</td><td>52,300</td><td>52,000</td><td></td></tr>
+        <tr><td>Sales</td><td>36,000</td><td>35,400</td><td>37,000</td><td></td><td>39,000</td><td></td></tr>
+        <tr><td>Marketing</td><td>28,000</td><td>27,100</td><td>30,000</td><td>31,800</td><td>32,000</td><td></td></tr>
+        <tr><td>Operations</td><td>18,000</td><td></td><td>19,000</td><td>19,200</td><td>20,000</td><td></td></tr>
+        <tr><td>G&A</td><td>14,000</td><td>13,800</td><td>14,500</td><td></td><td>15,000</td><td></td></tr>
+      </tbody>
+    </table>
+
+    <!-- ============================================ -->
+    <!-- TABLE 10: Nested HTML in cells               -->
+    <!-- ============================================ -->
+    <h2>10. Product Catalog with Embedded Formatting</h2>
+    <p class="note">Cells contain inline HTML: links, code tags, bold, images — tests content preservation</p>
+    <table>
+      <thead>
+        <tr><th>SKU</th><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Tags</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>WDG-A1</code></td>
+          <td><strong>Widget Alpha</strong></td>
+          <td>Hardware</td>
+          <td>$19.99</td>
+          <td>4,200</td>
+          <td><span style="color:#27ae60">popular</span>, <span style="color:#e67e22">backorder</span></td>
+        </tr>
+        <tr>
+          <td><code>WDG-B2</code></td>
+          <td><strong>Widget Beta</strong></td>
+          <td>Hardware</td>
+          <td>$29.99</td>
+          <td>1,850</td>
+          <td><span style="color:#27ae60">popular</span></td>
+        </tr>
+        <tr>
+          <td><code>GDT-X1</code></td>
+          <td><strong>Gadget X1</strong></td>
+          <td>Electronics</td>
+          <td>$49.99</td>
+          <td>3,120</td>
+          <td><span style="color:#e74c3c">low-stock</span></td>
+        </tr>
+        <tr>
+          <td><code>GDT-Y2</code></td>
+          <td><strong>Gadget Y2</strong></td>
+          <td>Electronics</td>
+          <td>$79.99</td>
+          <td>0</td>
+          <td><span style="color:#999">discontinued</span></td>
+        </tr>
+        <tr>
+          <td><code>ACC-Z3</code></td>
+          <td><strong>Accessory Z3</strong></td>
+          <td>Accessories</td>
+          <td>$7.49</td>
+          <td>12,400</td>
+          <td><span style="color:#3498db">new</span></td>
+        </tr>
+        <tr>
+          <td><code>ACC-W4</code></td>
+          <td><strong>Accessory W4</strong></td>
+          <td>Accessories</td>
+          <td>$12.99</td>
+          <td>8,750</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p style="margin-top:30px;">For more data, see the <a href="/finance/">financial dashboard</a> or <a href="/">the home page</a>.</p>
   </main>
 
   <footer>
-    <p>Example Test Site — made for extraction testing.</p>
+    <p>Consolidated Financial Report · Globex International Inc. · Confidential — for testing purposes only.</p>
   </footer>
 </body>
 </html>

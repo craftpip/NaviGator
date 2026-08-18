@@ -3,81 +3,355 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Testville — Wikipedia-style reference article</title>
+  <title>Testville — Testpedia</title>
   <style>
     body { font-family: sans-serif; margin: 0; color: #222; line-height: 1.6; background: #fff; }
-    header { background: #f8f9fa; border-bottom: 1px solid #a2a9b1; padding: 12px 20px; }
-    .layout { max-width: 1080px; margin: 16px auto; padding: 0 20px; }
-    .infobox { float: right; width: 280px; border: 1px solid #a2a9b1; background: #f8f9fa; margin: 0 0 16px 20px; font-size: 13px; border-collapse: collapse; }
+    header { background: #f8f9fa; border-bottom: 1px solid #a2a9b1; padding: 8px 20px; display: flex; align-items: center; gap: 16px; }
+    header form { margin-left: auto; }
+    header input { padding: 4px 8px; border: 1px solid #a2a9b1; border-radius: 2px; font-size: 13px; width: 200px; }
+    .layout { max-width: 1080px; margin: 0 auto; padding: 16px 20px; display: flex; gap: 24px; }
+    .content { flex: 1; min-width: 0; }
+    .sidebar { width: 220px; flex-shrink: 0; font-size: 13px; }
+    .infobox { float: right; width: 300px; border: 1px solid #a2a9b1; background: #f8f9fa; margin: 0 0 16px 20px; font-size: 13px; border-collapse: collapse; }
     .infobox th, .infobox td { border: 1px solid #a2a9b1; padding: 6px 10px; text-align: left; vertical-align: top; }
-    .infobox th { background: #eef1f5; }
-    h1 { font-size: 1.8em; border-bottom: 1px solid #a2a9b1; padding-bottom: 4px; }
+    .infobox th { background: #eef1f5; width: 40%; }
+    .infobox .img-placeholder { background: #e8ecf0; height: 160px; display: flex; align-items: center; justify-content: center; color: #72777d; font-size: 13px; }
+    h1 { font-size: 1.8em; border-bottom: 1px solid #a2a9b1; padding-bottom: 4px; margin: 0 0 12px; }
     h2 { font-size: 1.4em; border-bottom: 1px solid #a2a9b1; padding-bottom: 3px; margin-top: 26px; }
-    .toc { border: 1px solid #a2a9b1; background: #f8f9fa; padding: 12px 16px; display: inline-block; font-size: 14px; }
+    h3 { font-size: 1.1em; margin-top: 20px; }
+    .toc { border: 1px solid #a2a9b1; background: #f8f9fa; padding: 12px 16px; display: inline-block; font-size: 14px; margin: 10px 0 16px; }
     .toc ol { margin: 4px 0 0 20px; }
     .catlinks { border: 1px solid #a2a9b1; background: #f8f9fa; padding: 8px 12px; font-size: 12px; margin-top: 20px; }
     .refs { font-size: 13px; }
     .refs li { margin-bottom: 4px; }
     .note { background: #ffe; border: 1px solid #cc9; padding: 8px 12px; font-size: 13px; margin: 10px 0; }
+    .ambox { border: 1px solid #a2a9b1; background: #fbfbfb; padding: 8px 12px; margin: 10px 0; font-size: 0.9em; }
+    .ambox .label { font-weight: bold; color: #555; }
+    table.data { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+    table.data th, table.data td { border: 1px solid #a2a9b1; padding: 6px 10px; text-align: left; }
+    table.data th { background: #eaecf0; }
+    table.data tr:nth-child(even) { background: #f8f9fa; }
+    .wikitable { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 13px; }
+    .wikitable th { background: #eaecf0; border: 1px solid #a2a9b1; padding: 6px 10px; text-align: left; font-weight: bold; }
+    .wikitable td { border: 1px solid #a2a9b1; padding: 6px 10px; }
+    .wikitable tr:nth-child(even) { background: #f8f9fa; }
+    .hatnote { font-style: italic; color: #555; font-size: 0.95em; padding-left: 1.6em; margin: 8px 0; }
+    .quote-box { border-left: 4px solid #a2a9b1; background: #f8f9fa; padding: 8px 16px; margin: 12px 0; }
+    .reflist { font-size: 13px; column-count: 2; column-gap: 20px; }
+    .reflist li { margin-bottom: 3px; }
+    .navbox { border: 1px solid #a2a9b1; background: #fdfdfd; width: 100%; margin: 20px 0 0; font-size: 13px; border-collapse: collapse; }
+    .navbox th { background: #ccf; padding: 4px 8px; text-align: center; }
+    .navbox td { padding: 4px 8px; }
+    .stub-notice { background: #f8f9fa; border: 1px solid #a2a9b1; padding: 8px 12px; font-size: 13px; font-style: italic; margin: 16px 0; }
+    footer { border-top: 1px solid #a2a9b1; padding: 10px 20px; font-size: 12px; color: #555; }
+    @media (max-width: 768px) { .layout { flex-direction: column; } .sidebar { width: 100%; } .infobox { float: none; width: 100%; } }
   </style>
 </head>
 <body>
-  <header><strong>Testpedia</strong> — the free encyclopedia</header>
+  <header>
+    <strong>Testpedia</strong> — the free encyclopedia that anyone can edit
+    <nav style="font-size:13px;display:flex;gap:12px;">
+      <a href="#">Main page</a>
+      <a href="#">Contents</a>
+      <a href="#">Featured</a>
+      <a href="#">Random</a>
+      <a href="#">Current events</a>
+    </nav>
+    <form><input type="text" placeholder="Search Testpedia"></form>
+  </header>
+
   <div class="layout">
-    <h1>Testville</h1>
-    <p><em>From Testpedia, the free encyclopedia</em></p>
+    <div class="content">
 
-    <table class="infobox">
-      <tr><th colspan="2" style="text-align:center;background:#eef1f5;">Testville</th></tr>
-      <tr><th>Country</th><td>Testland</td></tr>
-      <tr><th>State</th><td>South Testland</td></tr>
-      <tr><th>Population</th><td>310,000 (2025 census)</td></tr>
-      <tr><th>Area</th><td>118 km²</td></tr>
-      <tr><th>Founded</th><td>1876</td></tr>
-      <tr><th>Mayor</th><td>P. Voter</td></tr>
-      <tr><th>Timezone</th><td>UTC+2</td></tr>
-    </table>
+      <div class="hatnote">For other uses, see <a href="#">Testville (disambiguation)</a>. For the metropolitan area, see <a href="#">Greater Testville</a>.</div>
 
-    <p><b>Testville</b> is a city in South Testland, situated on the banks of the Test River. It is the largest city in the province with a population of 310,000.</p>
-    <p>The city was founded in 1876 as a trading post. Its economy historically relied on textiles and timber; today it is known for renewable energy, a growing software sector, and its extensive network of public parks.</p>
+      <h1>Testville</h1>
+      <p><em>From Testpedia, the free encyclopedia</em></p>
 
-    <div class="toc"><b>Contents</b>
+      <table class="infobox">
+        <tr><td colspan="2" class="img-placeholder">📍 Satellite image of Testville</td></tr>
+        <tr><th colspan="2" style="text-align:center;background:#eef1f5;font-size:1.05em;">Testville</th></tr>
+        <tr><th>Country</th><td><a href="#">Testland</a></td></tr>
+        <tr><th>State</th><td><a href="#">South Testland</a></td></tr>
+        <tr><th>Founded</th><td>1876</td></tr>
+        <tr><th>Founded by</th><td>James Whitfield, Mary Harlow</td></tr>
+        <tr><th>Population</th><td>310,000 (2025 census)</td></tr>
+        <tr><th>Density</th><td>2,627/km²</td></tr>
+        <tr><th>Area</th><td>118 km² (45.6 sq mi)</td></tr>
+        <tr><th>Elevation</th><td>40 m (131 ft)</td></tr>
+        <tr><th>Time zone</th><td>UTC+2 (CET)</td></tr>
+        <tr><th>Postal code</th><td>TV-1000 to TV-1999</td></tr>
+        <tr><th>Area code</th><td>+49 31</td></tr>
+        <tr><th>Mayor</th><td><a href="#">P. Voter</a> (since 2022)</td></tr>
+        <tr><th>Website</th><td><a href="#">testville.gov</a></td></tr>
+      </table>
+
+      <p><b>Testville</b> is a city in <a href="#">South Testland</a>, situated on the banks of the <a href="#">Test River</a>. It is the largest city in the province with a population of 310,000 as of the 2025 census. The city is a regional hub for <a href="#">renewable energy</a>, <a href="#">software development</a>, and <a href="#">higher education</a>, hosting two universities and a polytechnic.<sup><a href="#ref1">[1]</a></sup></p>
+      <p>The city was founded in 1876 as a trading post by settlers who used the Test River to float timber to downstream mills.<sup><a href="#ref2">[2]</a></sup> The arrival of the <a href="#">Testville–Northern Railway</a> in 1901 transformed it into a regional commercial center. The <a href="#">Testville Dam</a>, completed in 1948, ended a series of destructive spring floods and created <a href="#">Lake Testville</a>, now a popular recreation area.<sup><a href="#ref3">[3]</a></sup></p>
+      <p>The city is known for its extensive network of public parks — 230 covering over 40 km² — which has earned it the nickname "The Green City."<sup><a href="#ref4">[4]</a></sup> In 2025, Testville was named one of the top 10 most livable cities in the country by <em>Urban Living Magazine</em>.</p>
+
+      <div class="toc"><b>Contents</b>
+        <ol>
+          <li><a href="#history">History</a>
+            <ol>
+              <li><a href="#history-founding">Founding (1876–1900)</a></li>
+              <li><a href="#history-railway">Railway era (1901–1945)</a></li>
+              <li><a href="#history-dam">Post-dam development (1946–2000)</a></li>
+            </ol>
+          </li>
+          <li><a href="#geography">Geography</a></li>
+          <li><a href="#demographics">Demographics</a></li>
+          <li><a href="#economy">Economy</a></li>
+          <li><a href="#landmarks">Landmarks</a></li>
+          <li><a href="#parks">Parks and recreation</a></li>
+          <li><a href="#transport">Transportation</a></li>
+          <li><a href="#education">Education</a></li>
+          <li><a href="#culture">Culture</a></li>
+          <li><a href="#sister-cities">Sister cities</a></li>
+          <li><a href="#references">References</a></li>
+          <li><a href="#external-links">External links</a></li>
+        </ol>
+      </div>
+
+      <!-- ========================================= -->
+      <!-- History                                    -->
+      <!-- ========================================= -->
+      <h2 id="history">History</h2>
+
+      <h3 id="history-founding">Founding (1876–1900)</h3>
+      <p>Testville was established in 1876 by <a href="#">James Whitfield</a> and <a href="#">Mary Harlow</a>, two settlers who recognized the strategic value of the Test River's confluence with the South Fork. The original settlement consisted of a timber mill, a general store, and a ferry crossing.<sup><a href="#ref2">[2]</a></sup></p>
+      <p>The early economy relied on timber, agriculture, and river trade. By 1890, the town had grown to 2,400 residents with a school, a post office, and three churches.<sup><a href="#ref5">[5]</a></sup></p>
+
+      <h3 id="history-railway">Railway era (1901–1945)</h3>
+      <p>The arrival of the Testville–Northern Railway in 1901 marked the beginning of rapid industrialization. The railway connected Testville to the national freight network, enabling large-scale export of timber and agricultural products. The population doubled between 1900 and 1920, reaching 18,000.</p>
+      <p>During <a href="#">World War II</a>, the Testville Dam provided hydroelectric power to the region's war effort. The city's population grew further with an influx of workers for the dam's construction and operation.</p>
+
+      <div class="quote-box">
+        "The dam was not just infrastructure — it was the promise that the river, which had always taken from us, would now give back." — <em>Testville: A History</em>, Dr. Sarah Lin, 2004<sup><a href="#ref3">[3]</a></sup>
+      </div>
+
+      <h3 id="history-dam">Post-dam development (1946–2000)</h3>
+      <p>With flood control secured, Testville expanded rapidly. Key milestones:</p>
+      <ul>
+        <li><strong>1952:</strong> <a href="#">University of Testville</a> founded</li>
+        <li><strong>1964:</strong> Construction of the Central Ring Road</li>
+        <li><strong>1978:</strong> Designation as a Special Economic Zone</li>
+        <li><strong>1991:</strong> Opening of the International Technology Park</li>
+        <li><strong>1998:</strong> First light rail line opens</li>
+      </ul>
+      <p>The 1990s tech boom attracted software companies, transforming Testville from an industrial town into a knowledge economy hub. The city's GDP grew by an average of 8.3% annually between 1991 and 2000.<sup><a href="#ref6">[6]</a></sup></p>
+
+      <!-- ========================================= -->
+      <!-- Geography                                  -->
+      <!-- ========================================= -->
+      <h2 id="geography">Geography</h2>
+      <p>The city lies in a valley at 40 m above sea level, bounded by the <a href="#">Test Hills</a> to the north and the <a href="#">South Plain</a> to the south. The Test River bisects the city from north to south, with several tributaries feeding into it within city limits.</p>
+
+      <h3>Climate</h3>
+      <p>Testville has a <a href="#">humid subtropical climate</a> (Köppen <em>Cfa</em>) with warm summers and mild winters:</p>
+      <table class="wikitable">
+        <thead>
+          <tr><th>Month</th><th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th><th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th><th>Year</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Avg high (°C)</td><td>8</td><td>10</td><td>14</td><td>19</td><td>23</td><td>27</td><td>30</td><td>30</td><td>26</td><td>20</td><td>14</td><td>9</td><td>19</td></tr>
+          <tr><td>Avg low (°C)</td><td>0</td><td>1</td><td>4</td><td>8</td><td>12</td><td>16</td><td>19</td><td>18</td><td>15</td><td>10</td><td>5</td><td>1</td><td>9</td></tr>
+          <tr><td>Precipitation (mm)</td><td>42</td><td>38</td><td>51</td><td>62</td><td>78</td><td>85</td><td>92</td><td>88</td><td>74</td><td>65</td><td>52</td><td>45</td><td>772</td></tr>
+          <tr><td>Sunshine hours</td><td>60</td><td>80</td><td>130</td><td>170</td><td>210</td><td>240</td><td>260</td><td>240</td><td>190</td><td>140</td><td>80</td><td>55</td><td>1,855</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ========================================= -->
+      <!-- Demographics                               -->
+      <!-- ========================================= -->
+      <h2 id="demographics">Demographics</h2>
+      <p>As of the 2025 census, the population was 310,000, up from 288,000 in 2020 — an annual growth rate of 1.5%. The city's demographics reflect its transformation from an industrial town to a tech hub:</p>
+
+      <table class="wikitable">
+        <thead>
+          <tr><th>Demographic</th><th>Testville</th><th>South Testland</th><th>National</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Population (2025)</td><td>310,000</td><td>1,200,000</td><td>42,000,000</td></tr>
+          <tr><td>Median age</td><td>34</td><td>37</td><td>39</td></tr>
+          <tr><td>Population under 18</td><td>18%</td><td>21%</td><td>22%</td></tr>
+          <tr><td>Population over 65</td><td>12%</td><td>16%</td><td>18%</td></tr>
+          <tr><td>Born outside Testland</td><td>22%</td><td>11%</td><td>15%</td></tr>
+          <tr><td>University degree or higher</td><td>48%</td><td>32%</td><td>28%</td></tr>
+          <tr><td>Median household income</td><td>$62,400</td><td>$54,200</td><td>$51,800</td></tr>
+          <tr><td>Unemployment rate</td><td>3.2%</td><td>4.8%</td><td>5.1%</td></tr>
+        </tbody>
+      </table>
+
+      <p>The city is home to a large student population attending two universities and a polytechnic, with approximately 45,000 enrolled students during the academic year.<sup><a href="#ref7">[7]</a></sup></p>
+
+      <!-- ========================================= -->
+      <!-- Economy                                    -->
+      <!-- ========================================= -->
+      <h2 id="economy">Economy</h2>
+      <p>Testville's economy is diversified across technology, education, healthcare, and tourism. The city's GDP was approximately $18.6 billion in 2025, making it the third-largest economy in the province.<sup><a href="#ref6">[6]</a></sup></p>
+
+      <h3>Major employers</h3>
+      <table class="data">
+        <thead>
+          <tr><th>#</th><th>Company</th><th>Industry</th><th>Employees</th><th>Founded</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td>Testville Tech Solutions</td><td>Software</td><td>4,200</td><td>1994</td></tr>
+          <tr><td>2</td><td>University of Testville</td><td>Education</td><td>3,800</td><td>1952</td></tr>
+          <tr><td>3</td><td>GreenPower Inc</td><td>Renewable energy</td><td>2,100</td><td>2003</td></tr>
+          <tr><td>4</td><td>Testville Medical Center</td><td>Healthcare</td><td>1,950</td><td>1968</td></tr>
+          <tr><td>5</td><td>SouthTest Logistics</td><td>Freight</td><td>1,400</td><td>1987</td></tr>
+          <tr><td>6</td><td>River Valley Foods</td><td>Food processing</td><td>1,100</td><td>1975</td></tr>
+          <tr><td>7</td><td>TestBank Financial</td><td>Banking</td><td>980</td><td>1923</td></tr>
+          <tr><td>8</td><td>Polytechnic Institute</td><td>Education</td><td>860</td><td>1971</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ========================================= -->
+      <!-- Landmarks                                  -->
+      <!-- ========================================= -->
+      <h2 id="landmarks">Landmarks</h2>
+      <ul>
+        <li><strong><a href="#">Central Park</a></strong> — the oldest park, opened 1892, 2.4 km², includes a zoo and botanical garden</li>
+        <li><strong><a href="#">Testville Dam</a></strong> — completed 1948, 62 m high, hydroelectric capacity 180 MW, creates <a href="#">Lake Testville</a></li>
+        <li><strong><a href="#">Old Textile Mill</a></strong> — converted to a museum in 2001, houses the Museum of Industrial Heritage</li>
+        <li><strong><a href="#">River Avenue Promenade</a></strong> — 2.8 km pedestrian street with markets, cafés, and public art</li>
+        <li><strong><a href="#">Testville Cathedral</a></strong> — Gothic Revival, built 1889–1897, tallest spire in the province at 68 m</li>
+        <li><strong><a href="#">Tech Tower</a></strong> — 32-story office building, tallest structure in the city (142 m)</li>
+        <li><strong><a href="#">Whitfield House</a></strong> — birthplace of founder James Whitfield, now a heritage museum</li>
+        <li><strong><a href="#">Testville Stadium</a></strong> — 45,000-seat multi-purpose stadium, opened 2018</li>
+      </ul>
+
+      <!-- ========================================= -->
+      <!-- Parks                                      -->
+      <!-- ========================================= -->
+      <h2 id="parks">Parks and recreation</h2>
+      <p>Testville operates 230 parks covering over 40 km², accounting for approximately one-third of the city's total area. The parks system is managed by the <a href="#">Testville Parks Department</a>, which employs 340 staff and maintains 1,400+ trees across the network.</p>
+      <p>Major parks include:</p>
+      <table class="wikitable">
+        <thead>
+          <tr><th>Park</th><th>Area (km²)</th><th>Opened</th><th>Key features</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Central Park</td><td>2.4</td><td>1892</td><td>Zoo, botanical garden, fountain plaza</td></tr>
+          <tr><td>Riverfront Park</td><td>1.8</td><td>2010</td><td>Playground, splash pad, zip line, kayak launch</td></tr>
+          <tr><td>Lake Testville Recreation Area</td><td>3.2</td><td>1950</td><td>Swimming, hiking, camping, fishing</td></tr>
+          <tr><td>Rose Garden Park</td><td>0.4</td><td>1965</td><td>1,200 rose varieties, annual rose festival</td></tr>
+          <tr><td>Memorial Forest</td><td>5.1</td><td>1988</td><td>Nature trails, bird watching, cross-country skiing</td></tr>
+          <tr><td>Heritage Square</td><td>0.12</td><td>2001</td><td>Farmers market, public art, amphitheater</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ========================================= -->
+      <!-- Transport                                  -->
+      <!-- ========================================= -->
+      <h2 id="transport">Transportation</h2>
+      <p>Testville is served by the <a href="#">Testville–Northern Railway</a> with two stations: Testville Central and Testville South. The city operates a light rail system (2 lines, 28 stations) and a bus network (14 routes).</p>
+      <ul>
+        <li><strong>Airport:</strong> <a href="#">Testville International Airport</a> (TVL) — 12 km south of city center, 1.2M passengers/year</li>
+        <li><strong>Rail:</strong> Testville–Northern Railway — hourly services to the capital (2h 15min)</li>
+        <li><strong>Light rail:</strong> Line 1 (North–South), Line 2 (East–West), 15-minute frequency</li>
+        <li><strong>Bus:</strong> 14 routes, 120 buses, free WiFi on all vehicles</li>
+        <li><strong>Cycling:</strong> 85 km of dedicated bike lanes, city bike share program (1,200 bikes)</li>
+        <li><strong>Road:</strong> Connected to the national highway network via the Central Ring Road (A4)</li>
+      </ul>
+
+      <!-- ========================================= -->
+      <!-- Education                                  -->
+      <!-- ========================================= -->
+      <h2 id="education">Education</h2>
+      <p>Testville has 42 public schools (28 primary, 14 secondary) and 8 private schools. The city hosts two universities and a polytechnic, with a combined enrollment of approximately 45,000 students.</p>
+      <ul>
+        <li><strong><a href="#">University of Testville</a></strong> — founded 1952, 22,000 students, 14 faculties, ranked in the top 50 nationally</li>
+        <li><strong><a href="#">South Testland Polytechnic</a></strong> — founded 1971, 8,000 students, emphasis on engineering and applied sciences</li>
+        <li><strong><a href="#">International University of Testville</a></strong> — founded 2008, 5,000 students, English-language curriculum</li>
+      </ul>
+
+      <!-- ========================================= -->
+      <!-- Culture                                    -->
+      <!-- ========================================= -->
+      <h2 id="culture">Culture</h2>
+      <p>Testville has a vibrant cultural scene, with over 30 museums, galleries, and performance venues. Notable institutions include:</p>
       <ol>
-        <li><a href="#history">History</a></li>
-        <li><a href="#geography">Geography</a></li>
-        <li><a href="#demographics">Demographics</a></li>
-        <li><a href="#landmarks">Landmarks</a></li>
-        <li><a href="#references">References</a></li>
+        <li><strong>Testville Museum of Art</strong> — 12,000+ works spanning 500 years; free admission on Sundays</li>
+        <li><strong>Museum of Industrial Heritage</strong> — housed in the Old Textile Mill; interactive exhibits on the city's manufacturing history</li>
+        <li><strong>Testville Symphony Orchestra</strong> — performs at the 1,800-seat Grand Hall</li>
+        <li><strong>Riverfront Amphitheater</strong> — 3,000-seat outdoor venue, summer concert series</li>
+        <li><strong>Heritage Square Farmers Market</strong> — Saturdays year-round, 120+ vendors</li>
       </ol>
+      <p>Annual events include the <a href="#">Testville Festival</a> (June), the <a href="#">Rose Festival</a> (July), and the <a href="#">Tech Conference</a> (September), which draws 8,000 attendees from across the region.</p>
+
+      <!-- ========================================= -->
+      <!-- Sister cities                              -->
+      <!-- ========================================= -->
+      <h2 id="sister-cities">Sister cities</h2>
+      <p>Testville has sister city agreements with:</p>
+      <ul>
+        <li><a href="#">Riverdale</a>, <a href="#">Northland</a> (since 1985)</li>
+        <li><a href="#">Portfield</a>, <a href="#">Eastshire</a> (since 1992)</li>
+        <li><a href="#">Highbury</a>, <a href="#">Westmoor</a> (since 2001)</li>
+        <li><a href="#">Sakuragawa</a>, <a href="#">Kanto Prefecture</a> (since 2008)</li>
+      </ul>
+
+      <div class="stub-notice">This article about a city in Testland is a <a href="#">stub</a>. You can help by <a href="#">expanding it</a>.</div>
+
+      <!-- ========================================= -->
+      <!-- References                                 -->
+      <!-- ========================================= -->
+      <h2 id="references">References</h2>
+      <ol class="refs reflist">
+        <li id="ref1">South Testland Census Office (2025). <i>Population report: Testville metropolitan area.</i> pp. 12–14. ISBN 978-3-16-148410-0.</li>
+        <li id="ref2">Whitfield, J. (1988). <i>The River and the Rail: Testville's Founding.</i> Testville Historical Society Press. pp. 1–45.</li>
+        <li id="ref3">Lin, S. (2004). <i>Testville: A History.</i> University of Testville Press. pp. 156–189.</li>
+        <li id="ref4">City of Testville (2024). <i>Parks Master Plan 2025–2035.</i> Department of Public Works.</li>
+        <li id="ref5">South Testland Census Office (1890). <i>First National Census: Population by settlement.</i> p. 34.</li>
+        <li id="ref6">National Bureau of Economic Research (2025). <i>Regional GDP estimates.</i> Table 4.2: South Testland.</li>
+        <li id="ref7">University of Testville (2025). <i>Annual Report 2024–2025.</i> p. 3.</li>
+        <li id="ref8">Harlow, M. (1920). <i>Testville in the Early Days.</i> Testville Times Press. pp. 67–89.</li>
+        <li id="ref9">Department of Transport (2024). <i>Annual Transit Statistics.</i> Table 7: Ridership by mode.</li>
+        <li id="ref10">Urban Living Magazine (2025). "Top 10 Most Livable Cities." Issue 342, pp. 44–51.</li>
+      </ol>
+
+      <div class="catlinks">Categories: <a href="#">Cities in Testland</a> · <a href="#">Populated places established in 1876</a> · <a href="#">River valley settlements</a> · <a href="#">University towns in Testland</a> · <a href="#">Stub articles — Testland</a></div>
     </div>
 
-    <h2 id="history">History</h2>
-    <p>Testville was established in 1876 by settlers who used the river to float timber to downstream mills. The arrival of the railway in 1901 turned it into a regional hub. In 1948 the Testville Dam was completed, ending a series of destructive spring floods.</p>
-
-    <h2 id="geography">Geography</h2>
-    <p>The city lies in a valley at 40 m above sea level. The Test River bisects the city from north to south. Testville receives about 950 mm of rainfall per year and 300 days of sunshine.</p>
-
-    <h2 id="demographics">Demographics</h2>
-    <p>As of the 2025 census, the population was 310,000, up from 288,000 in 2020. Median age is 34. The city is home to a large student population attending two universities.</p>
-
-    <h2 id="landmarks">Landmarks</h2>
-    <ul>
-      <li>Central Park — the oldest park, opened 1892</li>
-      <li>The Testville Dam — completed 1948, 62 m high</li>
-      <li>Old Textile Mill — converted to a museum in 2001</li>
-      <li>River Avenue Promenade — pedestrian street with markets</li>
-    </ul>
-
-    <div class="note">This article is a deliberately simple reference page: a lead paragraph, an infobox table, a table of contents, sections, and footnotes — the shape of most Wikipedia articles.</div>
-
-    <h2 id="references">References</h2>
-    <ol class="refs">
-      <li>South Testland Census Office (2025). <i>Population report.</i></li>
-      <li>Testville Historical Society (1998). <i>The River and the Rail.</i></li>
-      <li>City of Testville (2024). <i>Parks Master Plan.</i></li>
-    </ol>
-
-    <div class="catlinks">Categories: Cities in Testland | Populated places established in 1876</div>
+    <nav class="sidebar" style="padding-top:16px;">
+      <div style="margin-bottom:12px;">
+        <h3 style="font-size:0.85em;margin:0 0 4px;">Navigation</h3>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Main page</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Contents</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Current events</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Random article</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">About Testpedia</a>
+      </div>
+      <div style="margin-bottom:12px;">
+        <h3 style="font-size:0.85em;margin:0 0 4px;">Contribute</h3>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Help editing</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Community portal</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Recent changes</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Upload file</a>
+      </div>
+      <div style="margin-bottom:12px;">
+        <h3 style="font-size:0.85em;margin:0 0 4px;">Tools</h3>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">What links here</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Related changes</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Special pages</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Permanent link</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Page information</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Cite this page</a>
+      </div>
+      <div>
+        <h3 style="font-size:0.85em;margin:0 0 4px;">Other projects</h3>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Wikivoyage</a>
+        <a href="#" style="display:block;font-size:0.9em;color:#0645ad;text-decoration:none;padding:2px 0;">Wikidata</a>
+      </div>
+    </nav>
   </div>
+
+  <footer>
+    <p>Testpedia® is a registered trademark of the Testpedia Foundation, Inc., a non-profit organization.</p>
+    <p>Content is available under <a href="#">Creative Commons Attribution-ShareAlike License</a>.</p>
+  </footer>
 </body>
 </html>

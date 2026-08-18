@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Step 2: Invite your team — CloudStack Onboarding</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #f8f9fb; line-height: 1.6; min-height: 100vh; display: flex; flex-direction: column; }
+    a { color: #4f46e5; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .topbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-size: 1.1em; font-weight: 700; color: #4f46e5; }
+    .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 0.85em; color: #6b7280; }
+    .topbar-right a { color: #6b7280; }
+    .progress-wrap { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 20px 24px; }
+    .progress-inner { max-width: 720px; margin: 0 auto; }
+    .progress-steps { display: flex; justify-content: space-between; margin-bottom: 12px; }
+    .progress-step { display: flex; align-items: center; gap: 8px; font-size: 0.82em; color: #9ca3af; }
+    .progress-step.active { color: #4f46e5; font-weight: 600; }
+    .progress-step.done { color: #10b981; }
+    .step-circle { width: 28px; height: 28px; border-radius: 50%; border: 2px solid #d1d5db; display: flex; align-items: center; justify-content: center; font-size: 0.78em; font-weight: 700; }
+    .progress-step.active .step-circle { border-color: #4f46e5; background: #4f46e5; color: #fff; }
+    .progress-step.done .step-circle { border-color: #10b981; background: #10b981; color: #fff; }
+    .progress-bar { height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #4f46e5; border-radius: 2px; transition: width 0.3s; }
+    .main { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 40px 24px; gap: 24px; max-width: 860px; margin: 0 auto; width: 100%; }
+    @media (max-width: 768px) { .main { flex-direction: column; } .sidebar { display: none; } }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 36px; width: 100%; max-width: 560px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .card h1 { font-size: 1.5em; font-weight: 700; margin-bottom: 4px; }
+    .card .subtitle { font-size: 0.9em; color: #6b7280; margin-bottom: 24px; }
+
+    .sidebar { width: 280px; flex-shrink: 0; padding-top: 8px; }
+    .sidebar-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+    .sidebar-box h3 { font-size: 0.82em; font-weight: 700; color: #374151; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .sidebar-box p, .sidebar-box li { font-size: 0.82em; color: #6b7280; line-height: 1.5; }
+    .sidebar-box ul { padding-left: 16px; margin: 0; }
+    .sidebar-box li { margin-bottom: 4px; }
+    .perm-table { width: 100%; border-collapse: collapse; font-size: 0.78em; }
+    .perm-table th { text-align: left; padding: 6px 4px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #374151; }
+    .perm-table td { padding: 5px 4px; border-bottom: 1px solid #f3f4f6; color: #6b7280; }
+    .perm-table .check { color: #10b981; }
+    .perm-table .cross { color: #d1d5db; }
+    .role-desc { font-size: 0.78em; color: #6b7280; background: #f9fafb; padding: 8px 10px; border-radius: 6px; margin-top: 6px; line-height: 1.4; }
+
+    .invite-list { margin-bottom: 16px; }
+    .invite-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .invite-row input { flex: 1; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.88em; }
+    .invite-row input:focus { outline: none; border-color: #4f46e5; }
+    .invite-row select { width: 120px; padding: 10px 8px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.85em; background: #fff; }
+    .invite-row .remove-btn { background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 1.2em; padding: 4px 8px; border-radius: 4px; }
+    .invite-row .remove-btn:hover { color: #ef4444; background: #fef2f2; }
+    .add-invite { background: none; border: 1px dashed #d1d5db; padding: 10px; border-radius: 8px; width: 100%; font-size: 0.85em; color: #6b7280; cursor: pointer; text-align: center; }
+    .add-invite:hover { border-color: #4f46e5; color: #4f46e5; }
+    .hint { font-size: 0.78em; color: #6b7280; margin-top: 6px; }
+    .divider-text { text-align: center; font-size: 0.8em; color: #9ca3af; margin: 20px 0; position: relative; }
+    .divider-text::before, .divider-text::after { content: ''; position: absolute; top: 50%; width: calc(50% - 60px); height: 1px; background: #e5e7eb; }
+    .divider-text::before { left: 0; }
+    .divider-text::after { right: 0; }
+    .skip-link { text-align: center; font-size: 0.85em; }
+    .skip-link a { color: #6b7280; }
+    .btn-row { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; }
+    .btn-back { background: none; border: 1px solid #d1d5db; padding: 10px 20px; border-radius: 8px; font-size: 0.88em; color: #374151; cursor: pointer; font-weight: 500; text-decoration: none; }
+    .btn-back:hover { background: #f9fafb; }
+    .btn-next { background: #4f46e5; color: #fff; border: none; padding: 10px 28px; border-radius: 8px; font-size: 0.88em; font-weight: 600; cursor: pointer; }
+    .btn-next:hover { background: #4338ca; }
+    footer { border-top: 1px solid #e5e7eb; padding: 16px 24px; text-align: center; font-size: 0.78em; color: #9ca3af; }
+    footer a { color: #6b7280; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">☁️ CloudStack</div>
+    <div class="topbar-right">
+      <span>Step 2 of 3</span>
+      <a href="#">Exit onboarding</a>
+    </div>
+  </header>
+
+  <div class="progress-wrap">
+    <div class="progress-inner">
+      <div class="progress-steps">
+        <div class="progress-step done">
+          <div class="step-circle">✓</div>
+          <span>Your profile</span>
+        </div>
+        <div class="progress-step active">
+          <div class="step-circle">2</div>
+          <span>Team setup</span>
+        </div>
+        <div class="progress-step">
+          <div class="step-circle">3</div>
+          <span>Deploy project</span>
+        </div>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:66%"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="card">
+      <h1>Invite your team</h1>
+      <p class="subtitle">Teams that collaborate on CloudStack deploy 2.3× faster. Add teammates now or skip — you can always invite later from Settings.</p>
+
+      <form id="step2" novalidate>
+        <div class="invite-list" id="inviteList">
+          <div class="invite-row">
+            <input type="email" name="invite1" placeholder="colleague@company.com">
+            <select name="role1">
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+              <option value="viewer">Viewer</option>
+            </select>
+            <button type="button" class="remove-btn" title="Remove">×</button>
+          </div>
+          <div class="invite-row">
+            <input type="email" name="invite2" placeholder="colleague@company.com">
+            <select name="role2">
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+              <option value="viewer">Viewer</option>
+            </select>
+            <button type="button" class="remove-btn" title="Remove">×</button>
+          </div>
+          <div class="invite-row">
+            <input type="email" name="invite3" placeholder="colleague@company.com">
+            <select name="role3">
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+              <option value="viewer">Viewer</option>
+            </select>
+            <button type="button" class="remove-btn" title="Remove">×</button>
+          </div>
+        </div>
+
+        <button type="button" class="add-invite" id="addInvite">+ Add another person</button>
+
+        <div class="hint" style="margin-top:8px;">Invites are sent after onboarding. Each teammate gets a personal onboarding flow with project templates relevant to their role.</div>
+
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-top:16px;font-size:0.85em;color:#166534;">
+          <strong>Free during trial:</strong> You can invite up to 10 teammates on the Pro plan at no cost. After the trial, each additional Member is $29/month.
+        </div>
+
+        <div class="divider-text">or</div>
+
+        <div class="skip-link">
+          <a href="/flow/step3/">Skip for now — I'll invite later →</a>
+        </div>
+
+        <div class="btn-row">
+          <a href="/flow/step1/" class="btn-back">← Back</a>
+          <button type="submit" class="btn-next">Continue →</button>
+        </div>
+      </form>
+    </div>
+
+    <aside class="sidebar">
+      <div class="sidebar-box">
+        <h3>Role permissions</h3>
+        <table class="perm-table">
+          <thead>
+            <tr><th>Capability</th><th>Admin</th><th>Member</th><th>Viewer</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Deploy projects</td><td class="check">✓</td><td class="check">✓</td><td class="cross">—</td></tr>
+            <tr><td>View logs</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+            <tr><td>Manage env vars</td><td class="check">✓</td><td class="check">✓</td><td class="cross">—</td></tr>
+            <tr><td>Invite members</td><td class="check">✓</td><td class="cross">—</td><td class="cross">—</td></tr>
+            <tr><td>Billing access</td><td class="check">✓</td><td class="cross">—</td><td class="cross">—</td></tr>
+            <tr><td>Delete projects</td><td class="check">✓</td><td class="cross">—</td><td class="cross">—</td></tr>
+            <tr><td>View dashboards</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+            <tr><td>Configure domains</td><td class="check">✓</td><td class="cross">—</td><td class="cross">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>Role descriptions</h3>
+        <div class="role-desc"><strong>Admin</strong> — Full workspace control. Can manage billing, invite/remove members, delete projects, and configure all settings. Assign to co-founders and team leads.</div>
+        <div class="role-desc" style="margin-top:6px;"><strong>Member</strong> — Can deploy, view logs, manage environment variables, and create projects. Cannot access billing or manage members. Default for engineers.</div>
+        <div class="role-desc" style="margin-top:6px;"><strong>Viewer</strong> — Read-only access to dashboards, logs, and deployment history. Great for stakeholders, clients, and QA reviewers.</div>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>Workspace limits</h3>
+        <div style="font-size:0.82em;color:#6b7280;line-height:1.6;">
+          <p style="margin:0 0 6px;"><strong>Pro trial:</strong> 10 members included</p>
+          <p style="margin:0 0 6px;"><strong>Projects:</strong> Unlimited</p>
+          <p style="margin:0 0 6px;"><strong>Domains:</strong> 3 custom domains</p>
+          <p style="margin:0;"><strong>Regions:</strong> All 38 regions</p>
+        </div>
+      </div>
+
+      <div class="sidebar-box">
+        <h3>Bulk invite</h3>
+        <p style="margin:0;">Have a CSV of emails? <a href="#">Import from CSV</a> after onboarding. Supports up to 500 invites per batch with role assignment.</p>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    <a href="#">Help</a> · <a href="#">Privacy</a> · <a href="#">Terms</a> · © 2026 CloudStack, Inc. (Fictional)
+  </footer>
+
+  <script>
+    let inviteCount = 3;
+    document.getElementById('addInvite').addEventListener('click', () => {
+      inviteCount++;
+      const row = document.createElement('div');
+      row.className = 'invite-row';
+      row.innerHTML = `
+        <input type="email" name="invite${inviteCount}" placeholder="colleague@company.com">
+        <select name="role${inviteCount}">
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+          <option value="viewer">Viewer</option>
+        </select>
+        <button type="button" class="remove-btn" title="Remove">×</button>
+      `;
+      document.getElementById('inviteList').appendChild(row);
+      row.querySelector('.remove-btn').addEventListener('click', () => row.remove());
+    });
+    document.querySelectorAll('.remove-btn').forEach(btn => {
+      btn.addEventListener('click', () => btn.closest('.invite-row').remove());
+    });
+    document.getElementById('step2').addEventListener('submit', (e) => {
+      e.preventDefault();
+      window.location.href = '/flow/step3/';
+    });
+  </script>
+</body>
+</html>
