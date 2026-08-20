@@ -2109,6 +2109,20 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       await stabilizePage(page, hint, manager.config);
       debugLog("stabilize_page", t);
 
+      t = performance.now();
+      const earlyBotChallenge = await withPageTimeout("check_bot_early", () => detectBotChallenge(page));
+      debugLog("check_bot_early", t);
+      if (earlyBotChallenge) {
+        const earlyUrl = page.url();
+        const earlyTitle = await page.title().catch(() => "");
+        return {
+          title: earlyTitle || earlyUrl || "",
+          url: earlyUrl,
+          text: "",
+          error: earlyBotChallenge
+        };
+      }
+
       if (hintOverride) {
         if (hint?.requireSelector && !(await domHasSelector(page, hint.requireSelector))) {
           hintNote = `⚠ requireSelector "${hint.requireSelector}" not found on this page — hint did not apply`;
@@ -2260,8 +2274,12 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       return result;
     } finally {
       t = performance.now();
-      if (!page.isClosed()) {
-        await page.close();
+      try {
+        if (!page.isClosed()) {
+          await page.close();
+        }
+      } catch {
+        // Target may have been closed by timeout handler or concurrent operation
       }
       debugLog("close_page", t);
     }
@@ -2352,8 +2370,12 @@ export async function browserCaptureScreenshot({
         screenshotBase64: screenshot
       };
     } finally {
-      if (!page.isClosed()) {
-        await page.close();
+      try {
+        if (!page.isClosed()) {
+          await page.close();
+        }
+      } catch {
+        // Target may have been closed by timeout handler or concurrent operation
       }
     }
     });

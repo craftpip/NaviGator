@@ -3,24 +3,24 @@ import { BrowserSearchDriver } from "./browser-driver.js";
 const RESULT_SELECTORS = ["main .result", ".result", ".w-gl"];
 
 const RETRYABLE_MSG =
-  /Execution context was destroyed|Target closed|Cannot find context with specified id/i;
+  /Execution context was destroyed|Target closed|Cannot find context with specified id|Navigation timeout|timeout exceeded/i;
 
 const EXTRACT_PAGE = () => {
-  const rows = Array.from(document.querySelectorAll("main .result")).filter((row) =>
-    row.querySelector("a.result-link")
+  const rows = Array.from(document.querySelectorAll("main .result, .result, .w-gl")).filter((row) =>
+    row.querySelector("a.result-link, a[href^='http']")
   );
 
   const results = rows.map((row) => {
-    const anchor = row.querySelector("a.result-link");
-    const heading = row.querySelector("h2.wgl-title");
-    const snippetEl = row.querySelector("p.description");
+    const anchor = row.querySelector("a.result-link") || row.querySelector("a[href^='http']");
+    const heading = row.querySelector("h2.wgl-title") || row.querySelector("h2") || row.querySelector("h3");
+    const snippetEl = row.querySelector("p.description") || row.querySelector("p");
 
     return {
       title: heading?.textContent || "",
       url: anchor?.href || "",
       snippet: snippetEl?.textContent || ""
     };
-  });
+  }).filter(r => r.title && r.url);
 
   const directAnswers = Array.from(
     document.querySelectorAll('[data-testid="wiki qi see more container"]')

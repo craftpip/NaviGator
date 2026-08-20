@@ -1,6 +1,7 @@
 import { BrowserSearchDriver } from "./browser-driver.js";
 
-const INPUT_SELECTOR = "input[name='q'], input#searchbox_input, input[data-testid='searchbox-input']";
+const INPUT_SELECTOR = "textarea[name='q'], input[name='q'], textarea#searchbox_input, input#searchbox_input, input[data-testid='searchbox-input']";
+const FORM_SUBMIT_SELECTOR = "textarea[name='q'], input[name='q'], textarea#searchbox_input, input#searchbox_input, input[data-testid='searchbox-input']";
 const RESULT_SELECTORS = [
   "article[data-testid='result']",
   "#links .result",
@@ -21,7 +22,7 @@ const EXTRACT_PAGE = () => {
       url: anchor?.href || "",
       snippet: snippetEl?.textContent || ""
     };
-  });
+  }).filter(r => r.title && r.url);
 
   const answerNodes = [
     ...document.querySelectorAll("[data-testid='instant-answer']"),
@@ -54,25 +55,36 @@ export class DuckDuckGoBrowserDriver extends BrowserSearchDriver {
 
   async submit(page, query) {
     const { config } = this;
-    await page.goto(this.searchUrl(query), {
-      waitUntil: "domcontentloaded",
-      timeout: config.browserOpTimeoutMs
-    });
+    const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
 
-    // DuckDuckGo shows homepage skeleton with ?q=, not results — need to submit the form
-    await page.waitForSelector(this.inputSelectors.join(","), {
-      timeout: config.browserOpTimeoutMs
-    });
-    await page.evaluate((q) => {
-      const input = document.querySelector("input[name='q'], input#searchbox_input, input[data-testid='searchbox-input']");
-      if (input) {
-        input.value = q;
-        const form = input.closest("form");
-        if (form) form.submit();
-      }
-    }, query);
-    // Wait for navigation to complete after form submit
-    await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: config.browserOpTimeoutMs }).catch(() => {});
+    // Try form-based submission first (more natural, less likely bot-detected)
+    try {
+      await page.goto(this.searchUrl(query), {
+        waitUntil: "domcontentloaded",
+        timeout: config.browserOpTimeoutMs
+      });
+
+      await page.waitForSelector(FORM_SUBMIT_SELECTOR, {
+        timeout: Math.min(config.browserOpTimeoutMs, 8000)
+      });
+      await page.evaluate((q) => {
+        const input = document.querySelector(FORM_SUBMIT_SELECTOR);
+        if (input) {
+          input.value = q;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          const form = input.closest("form");
+          if (form) form.submit();
+        }
+      }, query);
+      await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: config.browserOpTimeoutMs }).catch(() => {});
+    } catch {
+      // Fallback: navigate directly to search URL
+      await page.goto(searchUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: config.browserOpTimeoutMs
+      });
+    }
+
     await this.waitForAnySelector(page, this.resultSelectors, config.browserOpTimeoutMs);
   }
 

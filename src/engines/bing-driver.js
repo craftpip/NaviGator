@@ -3,9 +3,9 @@ import { BrowserSearchDriver } from "./browser-driver.js";
 const RESULT_SELECTORS = ["#b_results", "#b_results li.b_algo"];
 
 const EXTRACT_PAGE = () => {
-  const rows = Array.from(document.querySelectorAll("#b_results li.b_algo"));
+  const rows = Array.from(document.querySelectorAll("#b_results li.b_algo, #b_results > li"));
   const results = rows.map((row) => {
-    const anchor = row.querySelector("h2 a") || row.querySelector("a");
+    const anchor = row.querySelector("h2 a") || row.querySelector("a[href^='http']");
     const snippetEl =
       row.querySelector(".b_caption p") || row.querySelector(".b_snippet") || row.querySelector("p");
 
@@ -14,7 +14,7 @@ const EXTRACT_PAGE = () => {
       url: anchor?.href || "",
       snippet: snippetEl?.textContent || ""
     };
-  });
+  }).filter(r => r.title && r.url);
 
   const answerNodes = [
     ...document.querySelectorAll(".b_ans .b_focusTextLarge, .b_ans .b_paractl, .b_ans .b_snippet"),

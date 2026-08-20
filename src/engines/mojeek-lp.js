@@ -1,19 +1,19 @@
 import { BrowserSearchDriver } from "./browser-driver.js";
 
-const RESULT_SELECTORS = [".results-standard", ".results-standard li", ".serp-results", ".results"];
+const RESULT_SELECTORS = [".results-standard", ".results-standard li", ".serp-results", ".serp-results li", ".results", ".results li"];
 
 const EXTRACT_PAGE = () => {
-  const rows = Array.from(document.querySelectorAll(".results-standard li"));
+  const rows = Array.from(document.querySelectorAll(".results-standard li, .serp-results li, .results li"));
   const results = rows.map((row) => {
-    const anchor = row.querySelector("h2 a.title") || row.querySelector("h2 a") || row.querySelector("a.title");
-    const snippetEl = row.querySelector("p.s");
+    const anchor = row.querySelector("h2 a.title") || row.querySelector("h2 a") || row.querySelector("a.title") || row.querySelector("a[href^='http']");
+    const snippetEl = row.querySelector("p.s") || row.querySelector("p");
 
     return {
       title: anchor?.textContent || "",
       url: anchor?.href || "",
       snippet: snippetEl?.textContent || ""
     };
-  });
+  }).filter(r => r.title && r.url);
 
   const directAnswers = Array.from(document.querySelectorAll(".infobox p"))
     .map((node) => ({

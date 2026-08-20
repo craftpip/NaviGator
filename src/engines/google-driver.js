@@ -5,24 +5,25 @@ const RESULT_SELECTORS = [
   "#search .MjjYud",
   "#search .g",
   "#rso",
+  "#rso > div",
   ".srg",
   ".g",
   "#rcnt"
 ];
 
 const EXTRACT_PAGE = () => {
-  const rows = Array.from(document.querySelectorAll("#search .MjjYud, #search .g"));
+  const rows = Array.from(document.querySelectorAll("#search .MjjYud, #search .g, #rso > div"));
   const results = rows.map((row) => {
-    const anchor = row.querySelector("a:has(h3)") || row.querySelector("h3")?.closest("a");
+    const anchor = row.querySelector("a:has(h3)") || row.querySelector("h3")?.closest("a") || row.querySelector("a[href^='http']");
     const heading = row.querySelector("h3");
-    const snippetEl = row.querySelector(".VwiC3b, [data-sncf], div[data-content-feature='1']");
+    const snippetEl = row.querySelector(".VwiC3b, [data-sncf], div[data-content-feature='1'], .IsZvec");
 
     return {
       title: heading?.textContent || "",
       url: anchor?.href || "",
       snippet: snippetEl?.textContent || ""
     };
-  });
+  }).filter(r => r.title && r.url);
 
   const answerNodes = [
     ...document.querySelectorAll("#search .kno-rdesc span, #search [data-attrid='wa:/description']"),
