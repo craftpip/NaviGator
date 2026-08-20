@@ -1069,18 +1069,25 @@ function buildFeed(entries, pageOps) {
   for (const op of pageOps || []) {
     const isDevtools = op.source === "devtools";
     const pageAction = op.tool === "web_page_screenshot" ? "capture" : "fetch";
+    const isRunning = op.status === "running";
     rows.push({
       key: `p-${op.id}`,
       ts: op.ts,
       kind: isDevtools ? "devtools" : "page_op",
-      status: op.ok ? "ok" : "fail",
+      status: op.status || (op.ok ? "ok" : "fail"),
       category: isDevtools ? "Dev" : "Web",
       tool: op.tool || "page",
       backend: formatBackend(op.backend),
       requestLabel: isDevtools ? "tab" : "page",
       request: isDevtools ? devtoolsRequest(op.tool || "", op.url) : `${pageAction}: ${requestTarget(op.url)}`,
-      response: op.error ? "error" : op.response_chars ? `${Number(op.response_chars).toLocaleString()} chars` : "- chars",
-      duration: op.duration_ms != null ? formatMs(op.duration_ms) : "",
+      response: isRunning
+        ? "in progress…"
+        : op.error
+          ? "error"
+          : op.response_chars
+            ? `${Number(op.response_chars).toLocaleString()} chars`
+            : "- chars",
+      duration: op.duration_ms != null ? formatMs(op.duration_ms) : isRunning ? "…" : "",
       error: op.error || "",
     });
   }
@@ -1151,7 +1158,7 @@ function LiveFeed({ feed, enabledEngines, feedMaxHeight }) {
             </colgroup>
             <tbody>
               {rows.map((entry) => {
-                const tone = entry.status === "ok" ? "ok" : entry.status === "fail" || entry.status === "error" ? "fail" : "";
+                const tone = entry.status === "ok" ? "ok" : entry.status === "fail" || entry.status === "error" ? "fail" : entry.status === "running" ? "running" : "";
                 return (
                   <tr
                     className={`activity-row ${tone} ${newKeys.has(entry.key) ? "activity-new" : ""}`}

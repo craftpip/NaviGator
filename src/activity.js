@@ -79,10 +79,33 @@ export function recordDbEngineAttempt({ engine, backend, status, resultCount = 0
   });
 }
 
-export function recordPageOp({ tool, url, backend, durationMs = 0, responseChars = 0, ok = true, error = "", source = "mcp" }) {
+export function recordPageOpStart({ tool, url, backend, source = "mcp" }) {
+  return runExclusive(() => {
+    const info = getDb()
+      .prepare("INSERT INTO page_ops (ts, tool, url, backend, duration_ms, response_chars, ok, status, error, source) VALUES (?, ?, ?, ?, NULL, 0, 0, 'running', '', ?)")
+      .run(Date.now(), String(tool), String(url || "").slice(0, 2000), backend || null, source);
+    return Number(info.lastInsertRowid);
+  });
+}
+
+export function recordPageOp({ id = null, tool, url, backend, durationMs = 0, responseChars = 0, ok = true, error = "", source = "mcp" }) {
   runExclusive(() => {
+    if (id) {
+      getDb()
+        .prepare("UPDATE page_ops SET duration_ms = ?, response_chars = ?, ok = ?, status = ?, error = ?, backend = COALESCE(?, backend) WHERE id = ?")
+        .run(
+          Math.max(0, Math.round(durationMs) || 0),
+          Math.max(0, Math.round(responseChars) || 0),
+          ok ? 1 : 0,
+          ok ? "ok" : "fail",
+          ok ? "" : String(error || "").slice(0, 300),
+          backend || null,
+          id
+        );
+      return;
+    }
     getDb()
-      .prepare("INSERT INTO page_ops (ts, tool, url, backend, duration_ms, response_chars, ok, error, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .prepare("INSERT INTO page_ops (ts, tool, url, backend, duration_ms, response_chars, ok, status, error, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .run(
         Date.now(),
         String(tool),
@@ -91,6 +114,7 @@ export function recordPageOp({ tool, url, backend, durationMs = 0, responseChars
         Math.max(0, Math.round(durationMs) || 0),
         Math.max(0, Math.round(responseChars) || 0),
         ok ? 1 : 0,
+        ok ? "ok" : "fail",
         ok ? "" : String(error || "").slice(0, 300),
         source
       );
@@ -119,8 +143,8 @@ export function getRecentActivity({ sinceId = 0, sinceOpId = 0, limit = 100, inc
   let pageOps = [];
   if (includePageOps) {
     pageOps = db
-      .prepare("SELECT * FROM page_ops WHERE id > ? ORDER BY id DESC LIMIT ?")
-      .all(Number(sinceOpId) || 0, Math.min(500, Math.max(1, Number(limit) || 100)));
+      .prepare("SELECT * FROM page_ops WHERE id > ? OR ts >= ? ORDER BY id DESC LIMIT ?")
+      .all(Number(sinceOpId) || 0, recentCutoff, Math.min(500, Math.max(1, Number(limit) || 100)));
   }
   return { entries, pageOps };
 }

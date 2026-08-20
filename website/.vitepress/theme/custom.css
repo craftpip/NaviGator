@@ -100,3 +100,108 @@ html.dark {
 .shot-light { display: block !important; }
 html.dark .shot-dark { display: block !important; }
 html.dark .shot-light { display: none !important; }
+
+/* ── Navbar logo size ── */
+.VPNavBarTitle .logo {
+  height: 50px;
+  margin-right: 16px;
+}
+
+@media (max-width: 960px) {
+  .VPNavBarTitle .logo {
+    height: 42px;
+    margin-right: 12px;
+  }
+}
+
+/* ── Always reserve the vertical scrollbar so short pages keep the same width ── */
+html {
+  overflow-y: scroll;
+}
+
+/* ── "Install in Docker" sidebar item — looks recommended (highlight, not a text label) ── */
+.VPSidebarItem .item > a[href="/guides/quick-start-docker"] {
+  background: var(--lp-blue-soft);
+  border: 1px solid var(--lp-blue);
+  border-radius: 6px;
+  font-weight: 600;
+  color: var(--lp-blue);
+  padding: 2px 8px;
+}
+
+/* ── Collapsible groups: custom arrow, indented items ── */
+.VPSidebar .nav {
+  padding-top: 24px;
+}
+.VPSidebarItem.collapsed {
+  padding-bottom: 4px;
+}
+/* hide VitePress's default inline chevron glyph */
+.VPSidebarItem .caret .caret-icon {
+  display: none;
+}
+/* our own arrow — the caret is a flex box, so the arrow stays centered on the text line */
+.VPSidebarItem .caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: auto 2px auto 8px;
+}
+.VPSidebarItem .caret::before {
+  content: "";
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--vp-c-text-2);
+  border-bottom: 2px solid var(--vp-c-text-2);
+  transform: rotate(-45deg);
+  transition: transform 0.25s ease;
+}
+.VPSidebarItem:not(.collapsed) > .item .caret::before {
+  transform: rotate(45deg);
+}
+/* indent the sub-links inside a group */
+.VPSidebarItem.level-0 > .items .VPSidebarItem .item {
+  padding-left: 8px;
+}
+
+/* ── Navbar strip background covers the whole bar (logo + menu) on pages with a sidebar ── */
+.VPNavBar.has-sidebar,
+.VPNavBar.has-sidebar .wrapper,
+.VPNavBar.has-sidebar .container {
+  background: var(--vp-nav-bg-color) !important;
+}
+.VPNavBarTitle.has-sidebar .title {
+  border-bottom: none !important;
+}
+
+@media (max-width: 960px) {
+  .VPNavBar.has-sidebar {
+    background: transparent !important;
+  }
+}
+
+/* ── Consistent navbar across pages (docs pages have .has-sidebar which shifts the bar) ── */
+@media (min-width: 960px) {
+  .VPNavBar.has-sidebar .wrapper {
+    padding: 0 32px !important;
+  }
+  .VPNavBar.has-sidebar .container {
+    max-width: calc(var(--vp-layout-max-width) - 64px) !important;
+  }
+  .VPNavBar.has-sidebar .title {
+    position: static !important;
+    width: auto !important;
+    padding: 0 !important;
+  }
+  .VPNavBar.has-sidebar .content {
+    position: static !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .VPNavBar.has-sidebar .divider {
+    padding-left: 0 !important;
+  }
+}

@@ -52,7 +52,7 @@ const MIGRATIONS = [
   );
    CREATE INDEX IF NOT EXISTS idx_page_ops_ts ON page_ops(ts);
    CREATE INDEX IF NOT EXISTS idx_page_ops_tool ON page_ops(tool);`,
-  `ALTER TABLE page_ops ADD COLUMN response_chars INTEGER NOT NULL DEFAULT 0;`,
+   `ALTER TABLE page_ops ADD COLUMN response_chars INTEGER NOT NULL DEFAULT 0;`,
   `CREATE TABLE IF NOT EXISTS api_keys (
      id INTEGER PRIMARY KEY AUTOINCREMENT,
      name TEXT NOT NULL,
@@ -97,7 +97,8 @@ const MIGRATIONS = [
      ON CONFLICT(key) DO UPDATE SET value = CASE WHEN usage_totals.value > excluded.value THEN usage_totals.value ELSE excluded.value END;
    INSERT INTO usage_totals (key, value)
      VALUES ('toolCalls', (SELECT COUNT(*) FROM activity_events))
-     ON CONFLICT(key) DO UPDATE SET value = CASE WHEN usage_totals.value > excluded.value THEN usage_totals.value ELSE excluded.value END;`
+     ON CONFLICT(key) DO UPDATE SET value = CASE WHEN usage_totals.value > excluded.value THEN usage_totals.value ELSE excluded.value END;`,
+  `ALTER TABLE page_ops ADD COLUMN status TEXT;`
 ];
 
 export function initDb(dataDir = path.join(process.cwd(), "data")) {

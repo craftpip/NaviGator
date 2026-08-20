@@ -1,5 +1,5 @@
 <template>
-  <div class="lp">
+  <div class="lp" :class="{ 'is-scrolled': isScrolled }">
 
     <ForestCanvas />
 
@@ -50,13 +50,15 @@
 
     <section class="section features" ref="featuresRef">
       <div class="inner">
-        <h2>Five tools. Zero setup.</h2>
-        <p class="lead">Every capability your agent needs to navigate the real web.</p>
-        <div class="grid-4">
-          <div class="card" v-for="f in features" :key="f.name">
-            <div class="card-icon" :style="{ background: f.bg, color: f.fg }" v-html="f.icon"></div>
-            <h3>{{ f.name }}</h3>
-            <p>{{ f.desc }}</p>
+        <h2>Built for agents. Visible to you.</h2>
+        <p class="lead">Every capability your agent needs to navigate the real web — optimized to waste as few tokens as possible.</p>
+        <div class="feature-list">
+          <div class="feature-row" v-for="(f, i) in features" :key="f.name" :class="{ reverse: i % 2 === 1 }">
+            <FeatureVisual class="feature-illust" :type="f.visual" />
+            <div class="feature-text">
+              <h3>{{ f.name }}</h3>
+              <p>{{ f.desc }}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -67,7 +69,9 @@
         <h2>Why Navigator</h2>
         <div class="grid-2">
           <div class="card" v-for="w in why" :key="w.title">
-            <span class="tag" :style="{ background: w.bg, color: w.fg }">{{ w.tag }}</span>
+            <div class="card-icon" :style="{ background: w.bg, color: w.fg }">
+              <span v-html="w.icon"></span>
+            </div>
             <h3>{{ w.title }}</h3>
             <p>{{ w.desc }}</p>
           </div>
@@ -75,47 +79,20 @@
       </div>
     </section>
 
-    <section class="section stats" ref="statsRef">
-      <div class="stats-row">
-        <div class="stat" v-for="s in stats" :key="s.label">
-          <span class="stat-val">{{ s.val }}</span>
-          <span class="stat-label">{{ s.label }}</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="section install" ref="installRef">
-      <div class="inner narrow">
-        <h2>Running in 30 seconds</h2>
-        <p class="lead">One container. One config line. Done.</p>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div>
-              <div class="step-title">Start the server</div>
-              <pre><code>docker compose up -d</code></pre>
-            </div>
+    <section class="section audience" ref="statsRef">
+      <div class="inner">
+        <div class="audience-row">
+          <div class="audience-item">
+            <h3>For developers</h3>
+            <p>Build MCP-powered tools that browse the real web — with full CDP control, custom extraction, and a test suite you can run locally.</p>
           </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div>
-              <div class="step-title">Connect your client</div>
-              <pre><code>{
-  "mcpServers": {
-    "navigator": {
-      "url": "http://localhost:3000/mcp"
-    }
-  }
-}</code></pre>
-            </div>
+          <div class="audience-item">
+            <h3>For hobbyists</h3>
+            <p>Gather, extract, and analyze web content at scale — with multi-engine search, per-domain hints, and token-optimized output.</p>
           </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div>
-              <div class="step-title">Your agent is browsing</div>
-              <pre><code>Search any engine. Read any page.
-Screenshot any view. Click any button.</code></pre>
-            </div>
+          <div class="audience-item">
+            <h3>For all your agents</h3>
+            <p>Self-hosted, private, no data leaves your network — one Docker container, works with any MCP client your team already uses.</p>
           </div>
         </div>
       </div>
@@ -123,7 +100,7 @@ Screenshot any view. Click any button.</code></pre>
 
     <section class="section cta-bottom" ref="ctaRef">
       <h2>Give your agents the real web.</h2>
-      <p>Self-hosted. Private. Ship today.</p>
+      <p>Self-hosted. Private. Runs in a single container.</p>
       <div class="ctas" style="margin-top:28px">
         <a href="/getting-started" class="cta-primary">
           Get Started
@@ -149,16 +126,23 @@ Screenshot any view. Click any button.</code></pre>
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import ForestCanvas from './ForestCanvas.vue'
+import FeatureVisual from './FeatureVisual.vue'
 
 const featuresRef = ref(null)
 const whyRef = ref(null)
 const statsRef = ref(null)
-const installRef = ref(null)
 const ctaRef = ref(null)
+const isScrolled = ref(false)
 let observer = null
 
+const updateScrollState = () => {
+  isScrolled.value = window.scrollY > 0
+}
+
 onMounted(() => {
-  const els = [featuresRef.value, whyRef.value, statsRef.value, installRef.value, ctaRef.value].filter(Boolean)
+  updateScrollState()
+  window.addEventListener('scroll', updateScrollState, { passive: true })
+  const els = [featuresRef.value, whyRef.value, statsRef.value, ctaRef.value].filter(Boolean)
   observer = new IntersectionObserver(entries => {
     for (const e of entries) {
       if (e.isIntersecting) { e.target.classList.add('show'); observer.unobserve(e.target) }
@@ -166,59 +150,416 @@ onMounted(() => {
   }, { threshold: 0.1 })
   els.forEach(el => observer.observe(el))
 })
-onBeforeUnmount(() => observer?.disconnect())
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  window.removeEventListener('scroll', updateScrollState)
+})
 
 const features = [
   {
-    name: 'web_search',
-    desc: 'Twelve routes across DuckDuckGo, Google, Bing, Brave, Mojeek. Circuit breakers swap engines instantly when one fails.',
-    bg: '#eff6ff', fg: '#2563eb',
-    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+    name: 'Smart Search Routing',
+    visual: 'search',
+    desc: 'Twelve search routes across four backends. A smart queue scores, ranks, and rotates engines — when one fails, circuit breakers swap to the next instantly. Your search never stops.',
+    illustration: `<svg viewBox="0 0 480 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <g>
+        <rect x="30" y="28" width="110" height="42" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+        <circle cx="52" cy="49" r="8" fill="none" stroke="#059669" stroke-width="2"/>
+        <line x1="58" y1="55" x2="64" y2="61" stroke="#059669" stroke-width="2" stroke-linecap="round"/>
+        <rect x="72" y="44" width="50" height="5" rx="2" fill="#059669" opacity="0.25"/>
+        <rect x="72" y="53" width="35" height="4" rx="2" fill="#059669" opacity="0.15"/>
+        <rect x="30" y="82" width="110" height="42" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+        <circle cx="52" cy="103" r="8" fill="none" stroke="#059669" stroke-width="2"/>
+        <line x1="58" y1="109" x2="64" y2="115" stroke="#059669" stroke-width="2" stroke-linecap="round"/>
+        <rect x="72" y="98" width="50" height="5" rx="2" fill="#059669" opacity="0.25"/>
+        <rect x="72" y="107" width="35" height="4" rx="2" fill="#059669" opacity="0.15"/>
+        <rect x="30" y="136" width="110" height="42" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="2.5"/>
+        <circle cx="52" cy="157" r="8" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+        <line x1="58" y1="163" x2="64" y2="169" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"/>
+        <rect x="72" y="152" width="50" height="5" rx="2" fill="#2563eb" opacity="0.35"/>
+        <rect x="72" y="161" width="35" height="4" rx="2" fill="#2563eb" opacity="0.2"/>
+        <rect x="30" y="190" width="110" height="42" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+        <circle cx="52" cy="211" r="8" fill="none" stroke="#059669" stroke-width="2"/>
+        <line x1="58" y1="217" x2="64" y2="223" stroke="#059669" stroke-width="2" stroke-linecap="round"/>
+        <rect x="72" y="206" width="50" height="5" rx="2" fill="#059669" opacity="0.25"/>
+        <rect x="72" y="215" width="35" height="4" rx="2" fill="#059669" opacity="0.15"/>
+        <rect x="30" y="244" width="110" height="42" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+        <circle cx="52" cy="265" r="8" fill="none" stroke="#059669" stroke-width="2"/>
+        <line x1="58" y1="271" x2="64" y2="277" stroke="#059669" stroke-width="2" stroke-linecap="round"/>
+        <rect x="72" y="260" width="50" height="5" rx="2" fill="#059669" opacity="0.25"/>
+        <rect x="72" y="269" width="35" height="4" rx="2" fill="#059669" opacity="0.15"/>
+      </g>
+      <polygon points="240,100 290,125 290,175 240,200 190,175 190,125" fill="#2563eb" opacity="0.08" stroke="#2563eb" stroke-width="2"/>
+      <polygon points="240,120 270,135 270,165 240,180 210,165 210,135" fill="#2563eb" opacity="0.12"/>
+      <path d="M225,145 L255,135" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M250,131 L255,135 L251,140" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M255,155 L225,165" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M230,169 L225,165 L229,160" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <g opacity="0.4">
+        <rect x="340" y="55" width="110" height="42" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1"/>
+        <circle cx="362" cy="76" r="8" fill="none" stroke="#7c3aed" stroke-width="1.5"/>
+        <line x1="368" y1="82" x2="374" y2="88" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round"/>
+        <rect x="382" y="71" width="50" height="5" rx="2" fill="#7c3aed" opacity="0.3"/>
+        <rect x="382" y="80" width="35" height="4" rx="2" fill="#7c3aed" opacity="0.2"/>
+        <rect x="340" y="115" width="110" height="42" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1"/>
+        <circle cx="362" cy="136" r="8" fill="none" stroke="#7c3aed" stroke-width="1.5"/>
+        <line x1="368" y1="142" x2="374" y2="148" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round"/>
+        <rect x="382" y="131" width="50" height="5" rx="2" fill="#7c3aed" opacity="0.3"/>
+        <rect x="382" y="140" width="35" height="4" rx="2" fill="#7c3aed" opacity="0.2"/>
+        <rect x="340" y="175" width="110" height="42" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1"/>
+        <circle cx="362" cy="196" r="8" fill="none" stroke="#7c3aed" stroke-width="1.5"/>
+        <line x1="368" y1="202" x2="374" y2="208" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round"/>
+        <rect x="382" y="191" width="50" height="5" rx="2" fill="#7c3aed" opacity="0.3"/>
+        <rect x="382" y="200" width="35" height="4" rx="2" fill="#7c3aed" opacity="0.2"/>
+      </g>
+      <line x1="140" y1="49" x2="190" y2="130" stroke="#059669" stroke-width="1" opacity="0.25"/>
+      <line x1="140" y1="103" x2="190" y2="140" stroke="#059669" stroke-width="1" opacity="0.25"/>
+      <line x1="140" y1="157" x2="190" y2="150" stroke="#2563eb" stroke-width="3" opacity="0.85"/>
+      <line x1="140" y1="211" x2="190" y2="160" stroke="#059669" stroke-width="1" opacity="0.25"/>
+      <line x1="140" y1="265" x2="190" y2="170" stroke="#059669" stroke-width="1" opacity="0.25"/>
+      <line x1="290" y1="135" x2="340" y2="76" stroke="#7c3aed" stroke-width="1" opacity="0.2"/>
+      <line x1="290" y1="145" x2="340" y2="136" stroke="#7c3aed" stroke-width="1" opacity="0.2"/>
+      <line x1="290" y1="165" x2="340" y2="196" stroke="#7c3aed" stroke-width="1" opacity="0.2"/>
+      <rect x="205" y="220" width="70" height="28" rx="14" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+      <path d="M233,228 L240,240 L237,240 L243,250" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>`
   },
   {
-    name: 'web_fetch',
-    desc: 'Open any URL. Get clean readable text, tables, links with ref IDs your agent can follow deeper into the site.',
-    bg: '#ecfdf5', fg: '#059669',
-    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+    name: 'Flexible Content Extraction',
+    visual: 'extract',
+    desc: 'Readability to Markdown, Trafilatura to Markdown, raw HTML, plain text, or tables-only. Run the output through an AI post-processor or any custom API you wire up. The web is not built the same everywhere — neither is the output.',
+    illustration: `<svg viewBox="0 0 480 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="40" width="120" height="200" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.5"/>
+      <text x="40" y="75" font-size="22" font-weight="700" fill="#dc2626" opacity="0.4" font-family="monospace">&lt;/&gt;</text>
+      <rect x="35" y="95" width="90" height="6" rx="2" fill="#fca5a5" opacity="0.5"/>
+      <rect x="35" y="108" width="70" height="5" rx="2" fill="#fca5a5" opacity="0.35"/>
+      <rect x="35" y="120" width="85" height="5" rx="2" fill="#fca5a5" opacity="0.4"/>
+      <rect x="35" y="132" width="55" height="5" rx="2" fill="#fca5a5" opacity="0.3"/>
+      <rect x="35" y="144" width="80" height="5" rx="2" fill="#fca5a5" opacity="0.35"/>
+      <rect x="35" y="156" width="65" height="5" rx="2" fill="#fca5a5" opacity="0.3"/>
+      <rect x="35" y="168" width="90" height="5" rx="2" fill="#fca5a5" opacity="0.4"/>
+      <rect x="35" y="180" width="50" height="5" rx="2" fill="#fca5a5" opacity="0.3"/>
+      <rect x="35" y="192" width="75" height="5" rx="2" fill="#fca5a5" opacity="0.35"/>
+      <rect x="35" y="204" width="60" height="5" rx="2" fill="#fca5a5" opacity="0.3"/>
+      <path d="M150,140 L185,140" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4"/>
+      <path d="M180,135 L188,140 L180,145" fill="#94a3b8"/>
+      <rect x="195" y="30" width="110" height="40" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+      <rect x="207" y="42" width="16" height="16" rx="3" fill="#2563eb" opacity="0.2"/>
+      <text x="215" y="54" text-anchor="middle" font-size="10" fill="#2563eb" opacity="0.6" font-family="serif">R</text>
+      <rect x="230" y="46" width="55" height="5" rx="2" fill="#2563eb" opacity="0.25"/>
+      <rect x="230" y="55" width="40" height="4" rx="2" fill="#2563eb" opacity="0.15"/>
+      <rect x="195" y="82" width="110" height="40" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+      <rect x="207" y="94" width="16" height="16" rx="3" fill="#059669" opacity="0.2"/>
+      <text x="215" y="106" text-anchor="middle" font-size="10" fill="#059669" opacity="0.6" font-family="serif">T</text>
+      <rect x="230" y="100" width="55" height="5" rx="2" fill="#059669" opacity="0.25"/>
+      <rect x="230" y="109" width="40" height="4" rx="2" fill="#059669" opacity="0.15"/>
+      <rect x="195" y="134" width="110" height="40" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+      <rect x="207" y="146" width="16" height="16" rx="3" fill="#7c3aed" opacity="0.2"/>
+      <text x="215" y="158" text-anchor="middle" font-size="10" fill="#7c3aed" opacity="0.6" font-family="serif">H</text>
+      <rect x="230" y="152" width="55" height="5" rx="2" fill="#7c3aed" opacity="0.25"/>
+      <rect x="230" y="161" width="40" height="4" rx="2" fill="#7c3aed" opacity="0.15"/>
+      <rect x="195" y="186" width="110" height="40" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1"/>
+      <rect x="207" y="198" width="16" height="16" rx="3" fill="#dc2626" opacity="0.15"/>
+      <text x="215" y="210" text-anchor="middle" font-size="10" fill="#dc2626" opacity="0.5" font-family="serif">TX</text>
+      <rect x="230" y="204" width="55" height="5" rx="2" fill="#dc2626" opacity="0.2"/>
+      <rect x="230" y="213" width="40" height="4" rx="2" fill="#dc2626" opacity="0.12"/>
+      <line x1="305" y1="50" x2="350" y2="100" stroke="#94a3b8" stroke-width="1" opacity="0.3"/>
+      <line x1="305" y1="102" x2="350" y2="110" stroke="#94a3b8" stroke-width="1" opacity="0.3"/>
+      <line x1="305" y1="154" x2="350" y2="120" stroke="#94a3b8" stroke-width="1" opacity="0.3"/>
+      <line x1="305" y1="206" x2="350" y2="130" stroke="#94a3b8" stroke-width="1" opacity="0.3"/>
+      <rect x="355" y="70" width="100" height="100" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+      <circle cx="405" cy="108" r="22" fill="none" stroke="#2563eb" stroke-width="2" opacity="0.5"/>
+      <circle cx="396" cy="104" r="8" fill="#2563eb" opacity="0.15"/>
+      <circle cx="414" cy="104" r="8" fill="#2563eb" opacity="0.15"/>
+      <path d="M396,116 Q405,124 414,116" stroke="#2563eb" stroke-width="1.5" fill="none" opacity="0.5"/>
+      <circle cx="375" cy="82" r="2" fill="#2563eb" opacity="0.4"/>
+      <circle cx="435" cy="82" r="2" fill="#2563eb" opacity="0.4"/>
+      <circle cx="375" cy="158" r="2" fill="#2563eb" opacity="0.3"/>
+      <circle cx="435" cy="158" r="2" fill="#2563eb" opacity="0.3"/>
+      <path d="M405,170 L405,200" stroke="#059669" stroke-width="2" stroke-dasharray="5 4"/>
+      <path d="M400,195 L405,203 L410,195" fill="#059669"/>
+      <rect x="355" y="208" width="100" height="50" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+      <rect x="370" y="222" width="6" height="6" rx="1" fill="#059669" opacity="0.5"/>
+      <rect x="382" y="223" width="50" height="4" rx="2" fill="#059669" opacity="0.3"/>
+      <rect x="382" y="232" width="40" height="4" rx="2" fill="#059669" opacity="0.2"/>
+      <rect x="370" y="242" width="6" height="6" rx="1" fill="#059669" opacity="0.5"/>
+      <rect x="382" y="243" width="55" height="4" rx="2" fill="#059669" opacity="0.3"/>
+    </svg>`
   },
   {
-    name: 'web_page_screenshot',
-    desc: 'Full-page or viewport. JPEG, base64, file, or URL. Your agent finally sees what a page actually looks like.',
-    bg: '#f5f3ff', fg: '#7c3aed',
-    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>'
+    name: 'Per-Domain Customization',
+    visual: 'domain',
+    desc: 'Sites are not all built the same. Add custom extraction hints for any domain — selectors, content flows, wait strategies — and Navigator learns exactly how each page should be read. Edit them live from the web console.',
+    illustration: `<svg viewBox="0 0 480 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="240" cy="140" r="100" fill="none" stroke="#7c3aed" stroke-width="1.5" opacity="0.25"/>
+      <ellipse cx="240" cy="140" rx="50" ry="100" fill="none" stroke="#7c3aed" stroke-width="1" opacity="0.18"/>
+      <ellipse cx="240" cy="140" rx="80" ry="100" fill="none" stroke="#7c3aed" stroke-width="0.8" opacity="0.1" stroke-dasharray="4 3"/>
+      <line x1="140" y1="110" x2="340" y2="110" stroke="#7c3aed" stroke-width="0.8" opacity="0.12"/>
+      <line x1="140" y1="170" x2="340" y2="170" stroke="#7c3aed" stroke-width="0.8" opacity="0.12"/>
+      <circle cx="110" cy="50" r="26" fill="white" stroke="#7c3aed" stroke-width="1.5"/>
+      <circle cx="110" cy="50" r="10" fill="none" stroke="#7c3aed" stroke-width="2.5" opacity="0.5"/>
+      <circle cx="110" cy="50" r="4" fill="#7c3aed" opacity="0.4"/>
+      <rect x="108" y="24" width="4" height="8" rx="1" fill="#7c3aed" opacity="0.45"/>
+      <rect x="108" y="68" width="4" height="8" rx="1" fill="#7c3aed" opacity="0.45"/>
+      <rect x="84" y="48" width="8" height="4" rx="1" fill="#7c3aed" opacity="0.45"/>
+      <rect x="128" y="48" width="8" height="4" rx="1" fill="#7c3aed" opacity="0.45"/>
+      <line x1="132" y1="68" x2="178" y2="100" stroke="#7c3aed" stroke-width="1.2" opacity="0.25"/>
+      <circle cx="370" cy="55" r="26" fill="white" stroke="#7c3aed" stroke-width="1.5"/>
+      <line x1="358" y1="42" x2="358" y2="68" stroke="#7c3aed" stroke-width="2.5" opacity="0.5" stroke-linecap="round"/>
+      <line x1="370" y1="42" x2="370" y2="68" stroke="#7c3aed" stroke-width="2.5" opacity="0.5" stroke-linecap="round"/>
+      <line x1="382" y1="42" x2="382" y2="68" stroke="#7c3aed" stroke-width="2.5" opacity="0.5" stroke-linecap="round"/>
+      <circle cx="358" cy="50" r="4" fill="#7c3aed" opacity="0.6"/>
+      <circle cx="370" cy="60" r="4" fill="#7c3aed" opacity="0.6"/>
+      <circle cx="382" cy="46" r="4" fill="#7c3aed" opacity="0.6"/>
+      <line x1="348" y1="75" x2="290" y2="105" stroke="#7c3aed" stroke-width="1.2" opacity="0.25"/>
+      <circle cx="110" cy="228" r="26" fill="white" stroke="#7c3aed" stroke-width="1.5"/>
+      <rect x="96" y="218" width="28" height="10" rx="4" fill="#7c3aed" opacity="0.35"/>
+      <rect x="96" y="234" width="28" height="10" rx="4" fill="#7c3aed" opacity="0.35"/>
+      <path d="M110,228 L110,234" stroke="#7c3aed" stroke-width="2" opacity="0.5"/>
+      <path d="M104,232 L110,238 L116,232" stroke="#7c3aed" stroke-width="1.5" fill="none" opacity="0.5"/>
+      <line x1="132" y1="218" x2="178" y2="188" stroke="#7c3aed" stroke-width="1.2" opacity="0.25"/>
+      <circle cx="370" cy="230" r="26" fill="white" stroke="#7c3aed" stroke-width="1.5"/>
+      <rect x="354" y="218" width="32" height="24" rx="4" fill="none" stroke="#7c3aed" stroke-width="2" opacity="0.5"/>
+      <line x1="354" y1="226" x2="386" y2="226" stroke="#7c3aed" stroke-width="1.2" opacity="0.4"/>
+      <line x1="354" y1="234" x2="386" y2="234" stroke="#7c3aed" stroke-width="1.2" opacity="0.4"/>
+      <line x1="364" y1="218" x2="364" y2="242" stroke="#7c3aed" stroke-width="1.2" opacity="0.4"/>
+      <line x1="348" y1="210" x2="298" y2="180" stroke="#7c3aed" stroke-width="1.2" opacity="0.25"/>
+      <circle cx="240" cy="140" r="22" fill="#7c3aed" opacity="0.08"/>
+      <path d="M230,152 L250,128 L255,133 L235,157 Z" fill="#7c3aed" opacity="0.45"/>
+      <path d="M250,128 L255,123 L260,128 L255,133 Z" fill="#7c3aed" opacity="0.45"/>
+    </svg>`
   },
   {
-    name: 'DevTools',
-    desc: 'Nineteen CDP tools — DOM read/write, clicks, keystrokes, network, console, persistent browser tabs.',
-    bg: '#fffbeb', fg: '#d97706',
-    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>'
+    name: 'Token-Optimized Screenshots',
+    visual: 'screenshot',
+    desc: 'Choose low, medium, or high JPEG quality to control image size. Return the screenshot inline as base64, or return only a file path so the agent can inspect it when needed or pass it directly to another tool without loading the image into the conversation.',
+    illustration: `<svg viewBox="0 0 480 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="30" y="30" width="220" height="170" rx="10" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
+      <rect x="30" y="30" width="220" height="28" rx="10" fill="#e5e7eb"/>
+      <rect x="30" y="48" width="220" height="10" fill="#e5e7eb"/>
+      <circle cx="46" cy="44" r="5" fill="#fca5a5"/>
+      <circle cx="60" cy="44" r="5" fill="#fde68a"/>
+      <circle cx="74" cy="44" r="5" fill="#86efac"/>
+      <rect x="44" y="66" width="192" height="10" rx="3" fill="#cbd5e1"/>
+      <rect x="44" y="82" width="160" height="7" rx="2" fill="#e2e8f0"/>
+      <rect x="44" y="95" width="180" height="7" rx="2" fill="#e2e8f0"/>
+      <rect x="44" y="112" width="80" height="60" rx="6" fill="#dbeafe"/>
+      <rect x="132" y="112" width="108" height="8" rx="2" fill="#e2e8f0"/>
+      <rect x="132" y="126" width="96" height="6" rx="2" fill="#e2e8f0"/>
+      <rect x="132" y="138" width="100" height="6" rx="2" fill="#e2e8f0"/>
+      <rect x="132" y="150" width="88" height="6" rx="2" fill="#e2e8f0"/>
+      <rect x="132" y="162" width="104" height="6" rx="2" fill="#e2e8f0"/>
+      <rect x="132" y="174" width="72" height="6" rx="2" fill="#e2e8f0"/>
+      <path d="M260,115 L305,115" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4"/>
+      <path d="M300,110 L308,115 L300,120" fill="#94a3b8"/>
+      <rect x="320" y="30" width="135" height="52" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+      <rect x="335" y="42" width="14" height="14" rx="3" fill="#2563eb" opacity="0.2"/>
+      <rect x="335" y="60" width="14" height="14" rx="3" fill="#2563eb" opacity="0.2"/>
+      <line x1="342" y1="56" x2="342" y2="60" stroke="#2563eb" stroke-width="2" opacity="0.5" stroke-dasharray="2 2"/>
+      <rect x="358" y="45" width="70" height="6" rx="2" fill="#2563eb" opacity="0.2"/>
+      <rect x="358" y="56" width="55" height="5" rx="2" fill="#2563eb" opacity="0.12"/>
+      <rect x="358" y="65" width="60" height="5" rx="2" fill="#2563eb" opacity="0.12"/>
+      <rect x="320" y="94" width="135" height="52" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+      <rect x="335" y="104" width="14" height="18" rx="2" fill="#059669" opacity="0.25"/>
+      <path d="M345,104 L349,104 L349,110 L345,104" fill="#059669" opacity="0.3"/>
+      <rect x="358" y="108" width="70" height="6" rx="2" fill="#059669" opacity="0.2"/>
+      <rect x="358" y="119" width="55" height="5" rx="2" fill="#059669" opacity="0.12"/>
+      <rect x="358" y="128" width="60" height="5" rx="2" fill="#059669" opacity="0.12"/>
+      <rect x="320" y="158" width="135" height="52" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+      <circle cx="342" cy="178" r="7" fill="none" stroke="#7c3aed" stroke-width="2" opacity="0.4"/>
+      <circle cx="354" cy="178" r="7" fill="none" stroke="#7c3aed" stroke-width="2" opacity="0.4"/>
+      <rect x="358" y="172" width="70" height="6" rx="2" fill="#7c3aed" opacity="0.2"/>
+      <rect x="358" y="183" width="55" height="5" rx="2" fill="#7c3aed" opacity="0.12"/>
+      <rect x="358" y="192" width="60" height="5" rx="2" fill="#7c3aed" opacity="0.12"/>
+      <circle cx="100" cy="240" r="18" fill="none" stroke="#dc2626" stroke-width="2" opacity="0.4"/>
+      <circle cx="100" cy="240" r="8" fill="#dc2626" opacity="0.15"/>
+      <circle cx="155" cy="240" r="12" fill="none" stroke="#d97706" stroke-width="2" opacity="0.4"/>
+      <circle cx="155" cy="240" r="5" fill="#d97706" opacity="0.15"/>
+      <circle cx="200" cy="240" r="6" fill="none" stroke="#059669" stroke-width="2" opacity="0.5"/>
+      <circle cx="200" cy="240" r="2.5" fill="#059669" opacity="0.3"/>
+      <path d="M120,240 L135,240" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3 2"/>
+      <path d="M170,240 L186,240" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3 2"/>
+    </svg>`
   },
+  {
+    name: 'Full Browser Control',
+    visual: 'control',
+    desc: 'Nineteen CDP tools. Navigate, click, type, read the DOM, inspect network requests, read console logs. Open persistent tabs. Your agent drives the browser like a user — but faster.',
+    illustration: `<svg viewBox="0 0 480 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="20" width="260" height="210" rx="10" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
+      <rect x="40" y="20" width="260" height="28" rx="10" fill="#e5e7eb"/>
+      <rect x="40" y="38" width="260" height="10" fill="#e5e7eb"/>
+      <circle cx="56" cy="34" r="5" fill="#fca5a5"/>
+      <circle cx="70" cy="34" r="5" fill="#fde68a"/>
+      <circle cx="84" cy="34" r="5" fill="#86efac"/>
+      <rect x="54" y="56" width="232" height="10" rx="3" fill="#cbd5e1"/>
+      <rect x="54" y="72" width="200" height="7" rx="2" fill="#e2e8f0"/>
+      <rect x="54" y="85" width="220" height="7" rx="2" fill="#e2e8f0"/>
+      <rect x="54" y="100" width="100" height="55" rx="6" fill="#dbeafe"/>
+      <rect x="162" y="100" width="124" height="7" rx="2" fill="#e2e8f0"/>
+      <rect x="162" y="113" width="110" height="6" rx="2" fill="#e2e8f0"/>
+      <rect x="162" y="125" width="118" height="6" rx="2" fill="#e2e8f0"/>
+      <rect x="54" y="165" width="232" height="36" rx="5" fill="#f1f5f9"/>
+      <rect x="64" y="174" width="60" height="18" rx="4" fill="#2563eb" opacity="0.25"/>
+      <rect x="134" y="174" width="60" height="18" rx="4" fill="#e2e8f0"/>
+      <path d="M120,140 L120,160 L126,154 L134,162 L138,158 L130,150 L138,150 Z" fill="#1e293b" opacity="0.6"/>
+      <rect x="330" y="24" width="125" height="36" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+      <rect x="342" y="32" width="14" height="14" rx="3" fill="#dc2626" opacity="0.25"/>
+      <rect x="342" y="50" width="14" height="6" rx="2" fill="#dc2626" opacity="0.15"/>
+      <rect x="362" y="34" width="70" height="5" rx="2" fill="#dc2626" opacity="0.2"/>
+      <rect x="362" y="43" width="55" height="4" rx="2" fill="#dc2626" opacity="0.12"/>
+      <rect x="330" y="70" width="125" height="36" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+      <circle cx="349" cy="82" r="6" fill="none" stroke="#dc2626" stroke-width="1.5" opacity="0.5"/>
+      <circle cx="349" cy="82" r="2" fill="#dc2626" opacity="0.4"/>
+      <rect x="362" y="76" width="70" height="5" rx="2" fill="#dc2626" opacity="0.2"/>
+      <rect x="362" y="85" width="55" height="4" rx="2" fill="#dc2626" opacity="0.12"/>
+      <rect x="330" y="116" width="125" height="36" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+      <rect x="340" y="124" width="18" height="12" rx="2" fill="none" stroke="#dc2626" stroke-width="1.5" opacity="0.5"/>
+      <rect x="343" y="127" width="4" height="4" rx="1" fill="#dc2626" opacity="0.3"/>
+      <rect x="349" y="127" width="4" height="4" rx="1" fill="#dc2626" opacity="0.3"/>
+      <rect x="362" y="122" width="70" height="5" rx="2" fill="#dc2626" opacity="0.2"/>
+      <rect x="362" y="131" width="55" height="4" rx="2" fill="#dc2626" opacity="0.12"/>
+      <rect x="330" y="162" width="125" height="36" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+      <rect x="342" y="170" width="6" height="6" rx="1" fill="#dc2626" opacity="0.4"/>
+      <rect x="352" y="168" width="6" height="6" rx="1" fill="#dc2626" opacity="0.25"/>
+      <rect x="352" y="178" width="6" height="6" rx="1" fill="#dc2626" opacity="0.25"/>
+      <rect x="362" y="168" width="70" height="5" rx="2" fill="#dc2626" opacity="0.2"/>
+      <rect x="362" y="177" width="55" height="4" rx="2" fill="#dc2626" opacity="0.12"/>
+      <rect x="330" y="208" width="125" height="36" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+      <circle cx="349" cy="220" r="5" fill="none" stroke="#dc2626" stroke-width="1.5" opacity="0.5"/>
+      <path d="M344,220 L340,220" stroke="#dc2626" stroke-width="1.5" opacity="0.4"/>
+      <path d="M354,220 L358,220" stroke="#dc2626" stroke-width="1.5" opacity="0.4"/>
+      <rect x="362" y="214" width="70" height="5" rx="2" fill="#dc2626" opacity="0.2"/>
+      <rect x="362" y="223" width="55" height="4" rx="2" fill="#dc2626" opacity="0.12"/>
+      <line x1="300" y1="80" x2="330" y2="42" stroke="#dc2626" stroke-width="1" opacity="0.3"/>
+      <line x1="300" y1="120" x2="330" y2="88" stroke="#dc2626" stroke-width="1" opacity="0.3"/>
+      <line x1="300" y1="160" x2="330" y2="134" stroke="#dc2626" stroke-width="1" opacity="0.3"/>
+      <line x1="300" y1="175" x2="330" y2="180" stroke="#dc2626" stroke-width="1" opacity="0.3"/>
+      <line x1="300" y1="190" x2="330" y2="226" stroke="#dc2626" stroke-width="1" opacity="0.3"/>
+    </svg>`
+  },
+  {
+    name: 'Remote Desktop',
+    visual: 'remote',
+    desc: 'A live Chromium tab you can watch in real time via VNC or noVNC. See exactly what your agent sees, step in when it gets stuck, watch it recover. The black box finally has a window.',
+    illustration: `<svg viewBox="0 0 480 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="20" width="400" height="230" rx="12" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
+      <rect x="40" y="20" width="400" height="32" rx="12" fill="#e5e7eb"/>
+      <rect x="40" y="36" width="400" height="16" fill="#e5e7eb"/>
+      <circle cx="56" cy="36" r="5" fill="#fca5a5"/>
+      <circle cx="70" cy="36" r="5" fill="#fde68a"/>
+      <circle cx="84" cy="36" r="5" fill="#86efac"/>
+      <rect x="44" y="52" width="130" height="22" rx="6" fill="#2563eb" opacity="0.15"/>
+      <rect x="52" y="58" width="20" height="8" rx="2" fill="#2563eb" opacity="0.3"/>
+      <rect x="76" y="60" width="80" height="4" rx="2" fill="#2563eb" opacity="0.2"/>
+      <rect x="178" y="52" width="110" height="22" rx="6" fill="#f1f5f9"/>
+      <rect x="186" y="58" width="20" height="8" rx="2" fill="#94a3b8" opacity="0.2"/>
+      <rect x="210" y="60" width="60" height="4" rx="2" fill="#94a3b8" opacity="0.15"/>
+      <rect x="292" y="52" width="100" height="22" rx="6" fill="#f1f5f9"/>
+      <rect x="332" y="58" width="20" height="8" rx="2" fill="#94a3b8" opacity="0.2"/>
+      <rect x="44" y="78" width="392" height="164" rx="4" fill="white" stroke="#e5e7eb" stroke-width="0.8"/>
+      <rect x="160" y="100" width="160" height="14" rx="3" fill="#de5833" opacity="0.2"/>
+      <rect x="140" y="124" width="200" height="22" rx="11" fill="#f1f5f9" stroke="#d1d5db" stroke-width="0.8"/>
+      <rect x="152" y="131" width="120" height="6" rx="2" fill="#d1d5db" opacity="0.4"/>
+      <rect x="140" y="158" width="200" height="6" rx="2" fill="#2563eb" opacity="0.25"/>
+      <rect x="140" y="170" width="180" height="4" rx="2" fill="#e2e8f0"/>
+      <rect x="140" y="180" width="190" height="4" rx="2" fill="#e2e8f0"/>
+      <rect x="140" y="196" width="200" height="6" rx="2" fill="#2563eb" opacity="0.25"/>
+      <rect x="140" y="208" width="160" height="4" rx="2" fill="#e2e8f0"/>
+      <rect x="140" y="218" width="170" height="4" rx="2" fill="#e2e8f0"/>
+      <circle cx="60" cy="248" r="5" fill="#22c55e"/>
+      <rect x="72" y="244" width="30" height="8" rx="2" fill="#22c55e" opacity="0.2"/>
+      <path d="M200,268 C210,258 230,258 240,268 C230,278 210,278 200,268 Z" fill="none" stroke="#94a3b8" stroke-width="1.5" opacity="0.4"/>
+      <circle cx="220" cy="268" r="4" fill="#94a3b8" opacity="0.3"/>
+    </svg>`
+  },
+  {
+    name: 'Web Console',
+    visual: 'console',
+    desc: 'Live health dashboard, engine success rates, browser tab management, extraction testing, and domain hint editing — all at :3000/console. No restart needed.',
+    illustration: `<svg viewBox="0 0 480 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="30" y="15" width="420" height="250" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+      <rect x="30" y="15" width="420" height="30" rx="10" fill="#1e293b"/>
+      <rect x="30" y="35" width="420" height="10" fill="#1e293b"/>
+      <circle cx="46" cy="30" r="4.5" fill="#fca5a5"/>
+      <circle cx="58" cy="30" r="4.5" fill="#fde68a"/>
+      <circle cx="70" cy="30" r="4.5" fill="#86efac"/>
+      <rect x="42" y="52" width="195" height="120" rx="6" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+      <rect x="54" y="62" width="70" height="7" rx="2" fill="#334155"/>
+      <rect x="54" y="62" width="63" height="7" rx="2" fill="#22c55e" opacity="0.8"/>
+      <rect x="54" y="76" width="70" height="7" rx="2" fill="#334155"/>
+      <rect x="54" y="76" width="58" height="7" rx="2" fill="#22c55e" opacity="0.8"/>
+      <rect x="54" y="90" width="70" height="7" rx="2" fill="#334155"/>
+      <rect x="54" y="90" width="48" height="7" rx="2" fill="#facc15" opacity="0.8"/>
+      <rect x="54" y="104" width="70" height="7" rx="2" fill="#334155"/>
+      <rect x="54" y="104" width="66" height="7" rx="2" fill="#22c55e" opacity="0.8"/>
+      <rect x="54" y="118" width="70" height="7" rx="2" fill="#334155"/>
+      <rect x="54" y="118" width="56" height="7" rx="2" fill="#22c55e" opacity="0.8"/>
+      <rect x="54" y="132" width="70" height="7" rx="2" fill="#334155"/>
+      <rect x="54" y="132" width="60" height="7" rx="2" fill="#22c55e" opacity="0.8"/>
+      <rect x="54" y="146" width="70" height="7" rx="2" fill="#334155"/>
+      <rect x="54" y="146" width="42" height="7" rx="2" fill="#ef4444" opacity="0.6"/>
+      <rect x="243" y="52" width="195" height="120" rx="6" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+      <circle cx="255" cy="68" r="3" fill="#22c55e" opacity="0.7"/>
+      <rect x="262" y="66" width="80" height="4" rx="2" fill="#94a3b8" opacity="0.2"/>
+      <circle cx="255" cy="82" r="3" fill="#60a5fa" opacity="0.7"/>
+      <rect x="262" y="80" width="90" height="4" rx="2" fill="#94a3b8" opacity="0.2"/>
+      <circle cx="255" cy="96" r="3" fill="#22c55e" opacity="0.7"/>
+      <rect x="262" y="94" width="75" height="4" rx="2" fill="#94a3b8" opacity="0.2"/>
+      <circle cx="255" cy="110" r="3" fill="#f59e0b" opacity="0.7"/>
+      <rect x="262" y="108" width="85" height="4" rx="2" fill="#94a3b8" opacity="0.2"/>
+      <circle cx="255" cy="124" r="3" fill="#60a5fa" opacity="0.7"/>
+      <rect x="262" y="122" width="70" height="4" rx="2" fill="#94a3b8" opacity="0.2"/>
+      <circle cx="255" cy="138" r="3" fill="#22c55e" opacity="0.7"/>
+      <rect x="262" y="136" width="95" height="4" rx="2" fill="#94a3b8" opacity="0.2"/>
+      <circle cx="255" cy="152" r="3" fill="#60a5fa" opacity="0.7"/>
+      <rect x="262" y="150" width="80" height="4" rx="2" fill="#94a3b8" opacity="0.2"/>
+      <rect x="42" y="180" width="130" height="75" rx="6" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+      <rect x="54" y="192" width="40" height="16" rx="3" fill="#22c55e" opacity="0.2"/>
+      <rect x="54" y="216" width="80" height="4" rx="2" fill="#94a3b8" opacity="0.15"/>
+      <rect x="54" y="226" width="60" height="4" rx="2" fill="#94a3b8" opacity="0.1"/>
+      <rect x="54" y="236" width="70" height="4" rx="2" fill="#94a3b8" opacity="0.08"/>
+      <rect x="180" y="180" width="130" height="75" rx="6" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+      <rect x="192" y="192" width="30" height="16" rx="3" fill="#60a5fa" opacity="0.2"/>
+      <rect x="192" y="216" width="80" height="4" rx="2" fill="#94a3b8" opacity="0.15"/>
+      <rect x="192" y="226" width="60" height="4" rx="2" fill="#94a3b8" opacity="0.1"/>
+      <rect x="192" y="236" width="70" height="4" rx="2" fill="#94a3b8" opacity="0.08"/>
+      <rect x="318" y="180" width="120" height="75" rx="6" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+      <rect x="330" y="192" width="35" height="16" rx="3" fill="#a78bfa" opacity="0.2"/>
+      <rect x="330" y="216" width="80" height="4" rx="2" fill="#94a3b8" opacity="0.15"/>
+      <rect x="330" y="226" width="60" height="4" rx="2" fill="#94a3b8" opacity="0.1"/>
+      <rect x="330" y="236" width="70" height="4" rx="2" fill="#94a3b8" opacity="0.08"/>
+    </svg>`
+  }
 ]
 
 const why = [
   {
-    tag: 'Reliable',
-    title: 'Multi-engine routing',
-    desc: 'If DuckDuckGo trips, Google picks up. Twelve routes, four backends, circuit breakers — your agent never loses search.',
-    bg: '#eff6ff', fg: '#2563eb',
-  },
-  {
-    tag: 'Private',
-    title: 'Self-hosted',
-    desc: 'One Docker container on your machine. HTTP or stdio. Every search, page, and screenshot stays on your network.',
+    tag: 'Self-Hosted',
+    title: 'Your data never leaves your machine',
+    desc: 'One Docker container. HTTP or stdio transport. Every search query, page fetch, and screenshot stays on your network — no third-party API calls, no telemetry, no surprises.',
     bg: '#ecfdf5', fg: '#059669',
+    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
   },
   {
-    tag: 'Smart',
-    title: 'Domain hints',
-    desc: 'Teach Navigator how to read specific sites — custom selectors, content flows for multi-step pages, per-domain rules.',
+    tag: 'Resilient',
+    title: 'Finds a way when everything else fails',
+    desc: 'Twelve search routes across four backends with automatic circuit breakers. When DuckDuckGo trips, Google picks up. When a page blocks headless, CloakBrowser steps in. Your agent never sees a dead end.',
+    bg: '#eff6ff', fg: '#2563eb',
+    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>'
+  },
+  {
+    tag: 'Teachable',
+    title: 'Learns how to read every site',
+    desc: 'Domain hints let you teach Navigator exactly how to extract content from each site — custom selectors, multi-step content flows, wait strategies. Edit live from the web console.',
     bg: '#f5f3ff', fg: '#7c3aed',
+    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>'
   },
   {
     tag: 'Visible',
-    title: 'Web console',
-    desc: 'Live health dashboard, engine success rates, tab management, extraction testing, and hint editing at :3000/console.',
+    title: 'Know exactly what your agent is doing',
+    desc: 'Live health dashboard, engine success rates, browser tab management with inactivity countdowns, extraction testing, and a full activity feed — all at :3000/console.',
     bg: '#fffbeb', fg: '#d97706',
+    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
   },
 ]
 
@@ -226,7 +567,7 @@ const stats = [
   { val: '12', label: 'Search routes' },
   { val: '4', label: 'Browser backends' },
   { val: '19', label: 'DevTools commands' },
-  { val: '30s', label: 'Time to first search' },
+  { val: '7', label: 'Search engines' },
 ]
 </script>
 
@@ -240,6 +581,10 @@ const stats = [
 }
 
 .lp :deep(*) { box-sizing: border-box; margin: 0; padding: 0; }
+
+:global(body:has(.lp:not(.is-scrolled)) .VPNavBar .divider-line) {
+  opacity: 0;
+}
 
 /* ── Hero ── */
 .hero {
@@ -405,7 +750,7 @@ html.dark .shot-frame {
   font-weight: 700;
   letter-spacing: -0.02em;
   text-align: center;
-  margin-bottom: 8px;
+  margin-bottom: 32px;
 }
 .lead {
   text-align: center;
@@ -414,8 +759,51 @@ html.dark .shot-frame {
   margin-bottom: 40px;
 }
 
-/* ── Feature grid ── */
-.grid-4 {
+/* ── Feature list (full-width rows) ── */
+.feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.feature-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: center;
+  padding: 40px 0;
+  border-bottom: 1px solid var(--lp-border);
+}
+.feature-row.reverse .feature-illust {
+  order: 2;
+}
+.feature-row.reverse .feature-text {
+  order: 1;
+}
+
+.feature-illust {
+  width: 100%;
+}
+.feature-illust :deep(svg) {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.feature-text h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+  letter-spacing: -0.01em;
+}
+.feature-text p {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--lp-muted);
+}
+
+/* ── Card grid (Why section) ── */
+.grid-2 {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 14px;
@@ -446,24 +834,6 @@ html.dark .card:hover {
   margin-bottom: 16px;
 }
 
-.card h3 {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-.card p {
-  font-size: 0.88rem;
-  line-height: 1.6;
-  color: var(--lp-muted);
-}
-
-/* ── Why grid ── */
-.grid-2 {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
-}
 .tag {
   display: inline-block;
   font-size: 0.68rem;
@@ -473,6 +843,40 @@ html.dark .card:hover {
   padding: 3px 10px;
   border-radius: 5px;
   margin-bottom: 12px;
+}
+
+.card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.card p {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--lp-muted);
+}
+
+/* ── Audience row ── */
+.audience-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.audience-item {
+  padding: 28px;
+  border-radius: 12px;
+  background: var(--lp-surface);
+  border: 1px solid var(--lp-border);
+}
+.audience-item h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.audience-item p {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--lp-muted);
 }
 
 /* ── Stats ── */
@@ -594,7 +998,14 @@ html.dark .card:hover {
   .hero { min-height: auto; padding: 100px 20px 60px; }
   .title { font-size: 2.6rem; }
   .subtitle { font-size: 1.15rem; }
-  .grid-4, .grid-2 { grid-template-columns: 1fr; }
+  .grid-2, .audience-row { grid-template-columns: 1fr; }
+  .feature-row,
+  .feature-row.reverse {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .feature-row.reverse .feature-illust { order: 0; }
+  .feature-row.reverse .feature-text { order: 0; }
   .stats-row { grid-template-columns: repeat(2, 1fr); gap: 28px; }
 }
 </style>

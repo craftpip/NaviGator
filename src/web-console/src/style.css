@@ -1209,6 +1209,9 @@ p,
 .activity-row.fail .feed-backend {
   color: var(--red);
 }
+.activity-row.running .feed-response {
+  color: var(--gold);
+}
 .manage {
   overflow-x: auto;
 }

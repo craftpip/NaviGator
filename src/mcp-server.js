@@ -20,7 +20,7 @@ import { validateConfigValue, hotApplyConfig } from "./config-manager.js";
 import { getEnvFilePath, readEnvFile, writeEnvFile, upsertEnvText, removeEnvKeysText, backupEnvFile, revertEnvFile, recordEnvChange, getEnvChangeHistory, latestBackupPath } from "./env-file.js";
 import { vncManager } from "./vnc-manager.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats, getEngineProfiles, resetSearchEngine } from "./search.js";
-import { getActivityTrend, getRecentActivity, recordActivityEvent, recordPageOp } from "./activity.js";
+import { getActivityTrend, getRecentActivity, recordActivityEvent, recordPageOp, recordPageOpStart } from "./activity.js";
 import { createMcpApiKey, getUsageTotals, incrementUsageTotal, initDb, initializeMcpApiKeys, listMcpApiKeys, revokeMcpApiKey, setMcpApiKeyTools } from "./db.js";
 import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters, createTarget, closeTarget, getPageContent, navigatePage, listTargets } from "./devtools.js";
 import { transform as asciiTransform } from "./ascii.js";
@@ -2006,6 +2006,7 @@ async function handleToolCallInner(name, args = {}) {
     let result;
     if (hasTargetId) {
       mark = timer.step("prepare_execution", mark);
+      const pageOpId = recordPageOpStart({ tool: name, url: args.targetId.trim() });
       try {
         result = await runWithHangGuard(`mcp:${name}`, () =>
           captureTargetScreenshot({
@@ -2016,6 +2017,7 @@ async function handleToolCallInner(name, args = {}) {
           })
         );
         recordPageOp({
+          id: pageOpId,
           tool: name,
           url: result.url || args.targetId.trim(),
           durationMs: performance.now() - screenshotStartedAt,
@@ -2023,6 +2025,7 @@ async function handleToolCallInner(name, args = {}) {
         });
       } catch (error) {
         recordPageOp({
+          id: pageOpId,
           tool: name,
           url: args.targetId.trim(),
           durationMs: performance.now() - screenshotStartedAt,

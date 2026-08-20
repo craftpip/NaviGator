@@ -8,6 +8,7 @@ import path from "node:path";
 import {
   recordDbEngineAttempt,
   recordPageOp,
+  recordPageOpStart,
   recordSearchEnd,
   recordSearchStart,
   searchContext
@@ -1993,6 +1994,8 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
     }
   }
 
+  const pageOpId = recordPageOpStart({ tool: "web_fetch", url, backend: manager.config.defaultBackend });
+
   try {
     const cached = typeof cachedHtml === "string" && cachedHtml.length > 0 ? cachedHtml : null;
     if (cached && hint?.flow?.length && isInteractionFreeFlow(hint.flow)) {
@@ -2008,6 +2011,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         config: manager.config
       });
       if (debug) console.log(`[web_fetch] [${url}] cached flow replay: ${Math.round(performance.now() - tCache)}ms (browser skipped)`);
+      recordPageOp({ id: pageOpId, tool: "web_fetch", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tOverall, responseChars: replayed.text?.length, ok: true });
       return replayed;
     }
     if (cached && !(hint?.flow?.length)) {
@@ -2037,6 +2041,7 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
         finalText = `${hintNote}\n\n${finalText}`;
       }
       if (debug) console.log(`[web_fetch] [${url}] cached-html extraction: ${Math.round(performance.now() - tCache)}ms (browser skipped)`);
+      recordPageOp({ id: pageOpId, tool: "web_fetch", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tOverall, responseChars: finalText.length, ok: true });
       return {
         ...extracted,
         text: finalText,
@@ -2284,10 +2289,10 @@ export async function browserOpenAndExtract({ url, maxChars: requestedMaxChars, 
       debugLog("close_page", t);
     }
     });
-    recordPageOp({ tool: "web_fetch", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tOverall, responseChars: result.text?.length, ok: true });
+    recordPageOp({ id: pageOpId, tool: "web_fetch", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tOverall, responseChars: result.text?.length, ok: true });
     return result;
   } catch (error) {
-    recordPageOp({ tool: "web_fetch", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tOverall, ok: false, error: String(error?.message || error) });
+    recordPageOp({ id: pageOpId, tool: "web_fetch", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tOverall, ok: false, error: String(error?.message || error) });
     throw error;
   }
 }
@@ -2307,6 +2312,7 @@ export async function browserCaptureScreenshot({
     normalizedFormat === "jpeg"
       ? Math.max(1, Math.min(100, Math.floor(Number.isFinite(quality) ? quality : 75)))
       : undefined;
+  const pageOpId = recordPageOpStart({ tool: "web_page_screenshot", url, backend: manager.config.defaultBackend });
 
   try {
     const result = await manager.withPageSlot(async () => {
@@ -2379,10 +2385,10 @@ export async function browserCaptureScreenshot({
       }
     }
     });
-    recordPageOp({ tool: "web_page_screenshot", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tShotStart, responseChars: result.screenshotBase64?.length, ok: true });
+    recordPageOp({ id: pageOpId, tool: "web_page_screenshot", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tShotStart, responseChars: result.screenshotBase64?.length, ok: true });
     return result;
   } catch (error) {
-    recordPageOp({ tool: "web_page_screenshot", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tShotStart, ok: false, error: String(error?.message || error) });
+    recordPageOp({ id: pageOpId, tool: "web_page_screenshot", url, backend: manager.config.defaultBackend, durationMs: performance.now() - tShotStart, ok: false, error: String(error?.message || error) });
     throw error;
   }
 }

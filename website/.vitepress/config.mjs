@@ -55,138 +55,88 @@ export default defineConfig({
 
     nav: [
       { text: "Home", link: "/" },
+      { text: "Docs", link: "/guides/quick-start-docker" },
+      { text: "Changelog", link: "/changelog" },
+    ],
+
+    sidebar: [
       {
-        text: "Guides",
+        text: "Getting Started",
+        collapsible: true,
+        collapsed: true,
         items: [
-          { text: "Getting Started", link: "/guides/quick-start-docker" },
-          { text: "Search", link: "/guides/search/overview" },
-          { text: "Extraction", link: "/guides/extraction/overview" },
-          { text: "Screenshots", link: "/guides/screenshots/overview" },
-          { text: "DevTools", link: "/guides/devtools/overview" },
-          { text: "Self-Hosting", link: "/guides/self-hosting/overview" },
+          { text: "Docker (recommended)", link: "/guides/quick-start-docker" },
+          { text: "Or manual install (Node.js)", link: "/guides/quick-start-nodejs" },
+          { text: "First Search", link: "/guides/first-search" },
+          { text: "Client Configuration", link: "/guides/client-config" },
+        ],
+      },
+      {
+        text: "Search",
+        collapsible: true,
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/guides/search/overview" },
+          { text: "Engines", link: "/guides/search/engines" },
+          { text: "Results", link: "/guides/search/results" },
+          { text: "Tips", link: "/guides/search/tips" },
+        ],
+      },
+      {
+        text: "Extraction",
+        collapsible: true,
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/guides/extraction/overview" },
+          { text: "Extractor Formats", link: "/guides/extraction/formats" },
+          { text: "Domain Hints", link: "/guides/extraction/domain-hints" },
+          { text: "Link Navigation", link: "/guides/extraction/links" },
+          { text: "AI Extractors", link: "/guides/extraction/ai-extractors" },
+        ],
+      },
+      {
+        text: "Screenshots",
+        collapsible: true,
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/guides/screenshots/overview" },
+          { text: "ASCII Renders", link: "/guides/screenshots/ascii" },
+          { text: "Output Options", link: "/guides/screenshots/output" },
+        ],
+      },
+      {
+        text: "DevTools",
+        collapsible: true,
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/guides/devtools/overview" },
+          { text: "DOM Inspection", link: "/guides/devtools/dom" },
+          { text: "Interaction", link: "/guides/devtools/interaction" },
+          { text: "Network & Console", link: "/guides/devtools/network" },
+        ],
+      },
+      {
+        text: "Self-Hosting",
+        collapsible: true,
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/guides/self-hosting/overview" },
+          { text: "Docker Configuration", link: "/guides/self-hosting/docker" },
+          { text: "Environment Variables", link: "/guides/self-hosting/env-vars" },
+          { text: "Security", link: "/guides/self-hosting/security" },
+          { text: "Monitoring", link: "/guides/self-hosting/monitoring" },
         ],
       },
       {
         text: "Reference",
+        collapsible: true,
+        collapsed: true,
         items: [
           { text: "All Tools", link: "/reference/tools" },
           { text: "Architecture", link: "/reference/architecture" },
         ],
       },
-      { text: "Changelog", link: "/changelog" },
     ],
-
-    sidebar: {
-      "/guides/quick-start-docker": [
-        {
-          text: "Getting Started",
-          items: [
-            { text: "Quick Start (Docker)", link: "/guides/quick-start-docker" },
-            { text: "Quick Start (Node.js)", link: "/guides/quick-start-nodejs" },
-            { text: "First Search", link: "/guides/first-search" },
-            { text: "Client Configuration", link: "/guides/client-config" },
-          ],
-        },
-      ],
-      "/guides/quick-start-nodejs": [
-        {
-          text: "Getting Started",
-          items: [
-            { text: "Quick Start (Docker)", link: "/guides/quick-start-docker" },
-            { text: "Quick Start (Node.js)", link: "/guides/quick-start-nodejs" },
-            { text: "First Search", link: "/guides/first-search" },
-            { text: "Client Configuration", link: "/guides/client-config" },
-          ],
-        },
-      ],
-      "/guides/first-search": [
-        {
-          text: "Getting Started",
-          items: [
-            { text: "Quick Start (Docker)", link: "/guides/quick-start-docker" },
-            { text: "Quick Start (Node.js)", link: "/guides/quick-start-nodejs" },
-            { text: "First Search", link: "/guides/first-search" },
-            { text: "Client Configuration", link: "/guides/client-config" },
-          ],
-        },
-      ],
-      "/guides/client-config": [
-        {
-          text: "Getting Started",
-          items: [
-            { text: "Quick Start (Docker)", link: "/guides/quick-start-docker" },
-            { text: "Quick Start (Node.js)", link: "/guides/quick-start-nodejs" },
-            { text: "First Search", link: "/guides/first-search" },
-            { text: "Client Configuration", link: "/guides/client-config" },
-          ],
-        },
-      ],
-      "/guides/search/": [
-        {
-          text: "Search",
-          items: [
-            { text: "Overview", link: "/guides/search/overview" },
-            { text: "Engines", link: "/guides/search/engines" },
-            { text: "Results", link: "/guides/search/results" },
-            { text: "Tips", link: "/guides/search/tips" },
-          ],
-        },
-      ],
-      "/guides/extraction/": [
-        {
-          text: "Extraction",
-          items: [
-            { text: "Overview", link: "/guides/extraction/overview" },
-            { text: "Extractor Formats", link: "/guides/extraction/formats" },
-            { text: "Domain Hints", link: "/guides/extraction/domain-hints" },
-            { text: "Link Navigation", link: "/guides/extraction/links" },
-            { text: "AI Extractors", link: "/guides/extraction/ai-extractors" },
-          ],
-        },
-      ],
-      "/guides/screenshots/": [
-        {
-          text: "Screenshots",
-          items: [
-            { text: "Overview", link: "/guides/screenshots/overview" },
-            { text: "ASCII Renders", link: "/guides/screenshots/ascii" },
-            { text: "Output Options", link: "/guides/screenshots/output" },
-          ],
-        },
-      ],
-      "/guides/devtools/": [
-        {
-          text: "DevTools",
-          items: [
-            { text: "Overview", link: "/guides/devtools/overview" },
-            { text: "DOM Inspection", link: "/guides/devtools/dom" },
-            { text: "Interaction", link: "/guides/devtools/interaction" },
-            { text: "Network & Console", link: "/guides/devtools/network" },
-          ],
-        },
-      ],
-      "/guides/self-hosting/": [
-        {
-          text: "Self-Hosting",
-          items: [
-            { text: "Overview", link: "/guides/self-hosting/overview" },
-            { text: "Docker Configuration", link: "/guides/self-hosting/docker" },
-            { text: "Environment Variables", link: "/guides/self-hosting/env-vars" },
-            { text: "Security", link: "/guides/self-hosting/security" },
-            { text: "Monitoring", link: "/guides/self-hosting/monitoring" },
-          ],
-        },
-      ],
-      "/reference/": [
-        {
-          text: "Reference",
-          items: [
-            { text: "All Tools", link: "/reference/tools" },
-            { text: "Architecture", link: "/reference/architecture" },
-          ],
-        },
-      ],
-    },
 
     socialLinks: [
       { icon: "github", link: "https://github.com/craftpip/navigator" },
