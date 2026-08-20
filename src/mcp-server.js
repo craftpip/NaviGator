@@ -2708,12 +2708,12 @@ async function maybeStartHttpServer(managerOverride) {
       }
 
       if (method !== "GET" &&
-           !(url.pathname.startsWith("/console/") || url.pathname === "/console" || url.pathname === "/ui" || url.pathname === "/dashboard")) {
+           !(url.pathname === "/" || url.pathname.startsWith("/console/") || url.pathname === "/console" || url.pathname === "/ui" || url.pathname === "/dashboard")) {
         sendJson(res, 405, { ok: false, error: "Method not allowed" });
         return;
       }
 
-      if (url.pathname === "/" || url.pathname === "/health") {
+      if (url.pathname === "/health") {
         const health = {
           ...(await manager.getHealth()),
           searchRouteCircuitBreakers: getSearchBackendHealth(),
@@ -3017,7 +3017,7 @@ async function maybeStartHttpServer(managerOverride) {
         return;
       }
 
-      if (url.pathname === "/console" || url.pathname.startsWith("/console/") || url.pathname === "/ui" || url.pathname === "/dashboard") {
+      if (url.pathname === "/" || url.pathname === "/console" || url.pathname.startsWith("/console/") || url.pathname === "/ui" || url.pathname === "/dashboard") {
         if (!manager.config.enableWebConsole) {
           sendJson(res, 404, { ok: false, error: "Web console not available" });
           return;
