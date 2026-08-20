@@ -4,7 +4,7 @@
 [![Docker](https://ghcr-badge.egpl.dev/craftpip/navigator/latest_tag?label=ghcr.io/craftpip/navigator)](https://github.com/craftpip/navigator/pkgs/container/navigator)
 [![License](https://img.shields.io/github/license/craftpip/navigator)](LICENSE)
 
-> **Last doc update:** 2026-08-18
+> **Last doc update:** 2026-08-19
 
 navigator gives your MCP client a real browser for:
 

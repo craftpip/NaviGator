@@ -42,7 +42,7 @@ Input: `queries` is a non-empty string array. Optional `limit` defaults to `5`; 
 
 Input: provide exactly one target mode, `urls: string[]` or `ref_ids: number[]`. Optional `maxChars` controls returned text length; `bypassCache` refreshes the cached page result.
 
-The response contains an entry for each page with readable text, extracted tables, page metadata, and a page reference. Tables are extracted and rendered as structured Markdown by default; a matching domain hint can limit them to content or disable them. `maxChars` is applied when reading the structured result, after cache lookup; large tables may still make the complete response exceed the requested text length and a truncation notice is added.
+The response contains an entry for each page with readable text, extracted tables, page metadata, and a page reference. Tables are extracted and rendered as structured Markdown by default; the page's extractor (Readability, HTML-to-Markdown, text, or an AI model) decides how tables are rendered, and `table`/`table_json`/`table_csv` extractors return tables-only output. `maxChars` is applied when reading the structured result, after cache lookup; large tables may still make the complete response exceed the requested text length and a truncation notice is added.
 
 ```json
 {"urls":["https://example.com/article"],"maxChars":8000}
