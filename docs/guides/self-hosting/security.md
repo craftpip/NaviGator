@@ -21,7 +21,7 @@ MCP_API_KEYS=your-secret-key-here
   "mcpServers": {
     "navigator": {
       "transport": "http",
-      "url": "http://localhost:3000/mcp",
+      "url": "http://localhost:1994/mcp",
       "headers": {
         "Authorization": "Bearer your-secret-key-here"
       }
@@ -52,7 +52,7 @@ The web console at `/console` provides a UI for:
 
 ### Don't Expose to Public Internet
 
-Navigator drives a real browser with live web access. Don't expose port 3000 to untrusted networks without authentication.
+Navigator drives a real browser with live web access. Don't expose port 1994 to untrusted networks without authentication.
 
 ### Use a Reverse Proxy
 
@@ -68,7 +68,7 @@ server {
     ssl_certificate_key /etc/ssl/private/navigator.key;
 
     location / {
-        proxy_pass http://navigator:3000;
+        proxy_pass http://navigator:1994;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
@@ -94,7 +94,7 @@ Default (`HEADLESS=true`) — no visible browser window. Recommended for product
 
 ### VNC Mode
 
-Optional remote desktop access (port 7900). Only enable for debugging:
+Optional remote desktop access (port 1996). Only enable for debugging:
 
 ```bash
 ENABLE_VNC=1

@@ -393,7 +393,7 @@ describe("loadConfig (parse engine behavior)", () => {
     const config = await loadConfig();
     expect(config.defaultBackend).toBe("cloakbrowser");
     expect(config.browserOpTimeoutMs).toBe(60000);
-    expect(config.mcpApiPort).toBe(3000);
+    expect(config.mcpApiPort).toBe(1994);
     expect(config.enableHttpMcp).toBe(false);
     expect(config.mcpApiKeys).toEqual([]);
     expect(config.mcpAllowUnauthenticated).toBe(true);

@@ -27,8 +27,8 @@ if [ "${ENABLE_VNC:-0}" = "1" ]; then
     sleep 0.1
   done
   fluxbox >/tmp/fluxbox.log 2>&1 &
-  x11vnc -display "$DISPLAY" -rfbport "${VNC_PORT:-5900}" -forever -shared -nopw >/tmp/x11vnc.log 2>&1 &
-  websockify --web=/usr/share/novnc/ "${NOVNC_PORT:-7900}" "localhost:${VNC_PORT:-5900}" >/tmp/novnc.log 2>&1 &
+  x11vnc -display "$DISPLAY" -rfbport "${VNC_PORT:-1995}" -forever -shared -nopw >/tmp/x11vnc.log 2>&1 &
+  websockify --web=/usr/share/novnc/ "${NOVNC_PORT:-1996}" "localhost:${VNC_PORT:-1995}" >/tmp/novnc.log 2>&1 &
 fi
 
 # Ensure node_modules matches package.json (handles branch switches, stale volumes)

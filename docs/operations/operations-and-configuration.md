@@ -8,7 +8,7 @@
 docker compose build
 docker compose down
 docker compose up -d
-docker compose exec navigator curl -s localhost:3000/health
+docker compose exec navigator curl -s localhost:1994/health
 ```
 
 The container entrypoint installs production dependencies at startup. Install development dependencies in the running container before linting or Vitest:
@@ -64,7 +64,7 @@ Search IDs and page-operation IDs have independent sequences. Consumers of `/sta
 ./navigator.js engines reset google_cb
 ```
 
-The base URL is resolved from `--url`, then `NAVIGATOR_URL`, then `.env` `MCP_API_HOST` and `MCP_API_PORT`, then `http://localhost:3000`.
+The base URL is resolved from `--url`, then `NAVIGATOR_URL`, then `.env` `MCP_API_HOST` and `MCP_API_PORT`, then `http://localhost:1994`.
 
 ## Web Console
 
@@ -93,4 +93,4 @@ It provides:
 
 `VncManager` runs or adopts the optional graphical stack: Xvfb, fluxbox, x11vnc, and websockify/noVNC. Enabling VNC sets `DISPLAY=:99`, starts the stack, relaunches the default browser headfully, and persists `ENABLE_VNC=1` plus `HEADLESS=false`. Disabling reverses that sequence and returns to headless mode.
 
-The manager records lifecycle steps, checks readiness, reuses existing scoped processes, and terminates owned/adopted processes on stop. Default desktop resolution is 1920x1080x24; noVNC is normally available on port 7900.
+The manager records lifecycle steps, checks readiness, reuses existing scoped processes, and terminates owned/adopted processes on stop. Default desktop resolution is 1920x1080x24; noVNC is normally available on port 1996.

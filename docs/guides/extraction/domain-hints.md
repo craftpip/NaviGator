@@ -58,7 +58,7 @@ Without hints, Navigator uses generic extraction (Readability). With hints, it k
 
 The easiest way to create hints:
 
-1. Open **http://localhost:3000/console/hints**
+1. Open **http://localhost:1994/console/hints**
 2. Click **Create New Hint**
 3. Enter the domain and path pattern
 4. Use the **Test** pane to verify extraction

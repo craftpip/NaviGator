@@ -38,7 +38,7 @@ COPY docker/entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh && mkdir -p /data/chrome
 
-EXPOSE 5900 7900 3000
+EXPOSE 1995 1996 1994
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "src/mcp-server.js"]

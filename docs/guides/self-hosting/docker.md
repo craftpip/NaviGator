@@ -13,8 +13,8 @@ services:
   navigator:
     build: .
     ports:
-      - "3000:3000"    # MCP server + web console
-      - "7900:7900"    # noVNC (optional)
+      - "1994:1994"    # MCP server + web console
+      - "1996:1996"    # noVNC (optional)
     volumes:
       - ./:/app        # Source code (bind mount)
       - chrome_data:/data/chrome  # Persistent browser profile
@@ -32,8 +32,8 @@ services:
 
 | Port | Service | Required |
 |------|---------|----------|
-| 3000 | MCP Server + Web Console | Yes |
-| 7900 | noVNC Remote Desktop | Optional |
+| 1994 | MCP Server + Web Console | Yes |
+| 1996 | noVNC Remote Desktop | Optional |
 
 ### Volumes
 

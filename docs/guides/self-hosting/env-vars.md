@@ -19,7 +19,7 @@ Configure Navigator through environment variables in `.env`. Most are hot-reload
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ENABLE_HTTP_MCP` | `0` app / `1` Compose | Enable HTTP transport on `/mcp` |
-| `MCP_API_PORT` | `3000` | Server port |
+| `MCP_API_PORT` | `1994` | Server port |
 | `MCP_ALLOW_UNAUTHENTICATED` | `1` | Set to `0` to require API keys |
 | `MCP_API_KEYS` | — | Comma-separated API keys |
 | `ENABLE_DEVTOOLS_MCP` | — | Enable DevTools browser tools |
@@ -80,7 +80,7 @@ Configure Navigator through environment variables in `.env`. Most are hot-reload
 
 ```bash
 # Just the basics — works out of the box
-MCP_API_PORT=3000
+MCP_API_PORT=1994
 ENABLE_HTTP_MCP=1
 ```
 
@@ -106,7 +106,7 @@ POST_PROCESSOR_MODELS=[{"id":"reader_lm","label":"reader-lm","model":"jinaai/rea
 ### Production
 
 ```bash
-MCP_API_PORT=3000
+MCP_API_PORT=1994
 ENABLE_HTTP_MCP=1
 MCP_ALLOW_UNAUTHENTICATED=0
 MCP_API_KEYS=your-secure-key
@@ -120,7 +120,7 @@ BROWSER_OP_TIMEOUT_MS=120000
 - **Most variables are hot-reloaded** — no restart needed for most changes
 - **Check `/console`** to see current configuration
 - **Use `.env` file** — don't set variables in `docker-compose.yml` unless necessary
-- **Test changes** with `curl localhost:3000/health` after updating
+- **Test changes** with `curl localhost:1994/health` after updating
 
 ## Next Steps
 

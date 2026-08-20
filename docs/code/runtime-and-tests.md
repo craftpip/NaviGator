@@ -14,7 +14,7 @@ For the normal container deployment:
 
 ```bash
 docker compose up --build -d
-docker exec navigator curl -s localhost:3000/health
+docker exec navigator curl -s localhost:1994/health
 ```
 
 `docker-compose.yml` builds one `navigator` service, mounts the repository at `/app`, persists the Chrome profile in the named `chrome_profile_data` volume, and exposes the configured MCP port plus noVNC. The deployment defaults enable HTTP MCP, health, web console, DevTools MCP, and VNC. Put deployment settings in `.env`; `.env.example` contains the usual starting set.
@@ -31,7 +31,7 @@ The service has a 2 GB shared-memory allocation and 4 CPU / 4 GB resource limits
 
 ## Container Startup And VNC
 
-The entrypoint starts a virtual X display, Fluxbox, x11vnc, and noVNC only when `ENABLE_VNC=1`. It reuses a live X display and removes a stale display lock only when the recorded process is no longer alive. noVNC is available on `NOVNC_PORT` (Compose default `7900`).
+The entrypoint starts a virtual X display, Fluxbox, x11vnc, and noVNC only when `ENABLE_VNC=1`. It reuses a live X display and removes a stale display lock only when the recorded process is no longer alive. noVNC is available on `NOVNC_PORT` (Compose default `1996`).
 
 At every container start, the entrypoint runs `npm install --omit=dev` against the bind-mounted application. This keeps production dependencies aligned after branch changes, but it prunes development dependencies from the mounted `node_modules`. Do not rely on host-installed test tools after a restart.
 
@@ -51,10 +51,10 @@ The server serves generated files from `src/web-console/dist` at `/console/`. Do
 ```bash
 ./navigator.js statistics
 ./navigator.js monitoring --interval 5
-./navigator.js stats --json --url http://localhost:3000
+./navigator.js stats --json --url http://localhost:1994
 ```
 
-`statistics` (`stats`, `stat`) prints one `/health` and `/stats` snapshot. `monitoring` (`mon`) redraws it until Ctrl+C; the default refresh interval is two seconds. The endpoint URL resolves in this order: `--url`, `NAVIGATOR_URL`, `MCP_API_HOST` and `MCP_API_PORT` from `.env`, then `http://localhost:3000`.
+`statistics` (`stats`, `stat`) prints one `/health` and `/stats` snapshot. `monitoring` (`mon`) redraws it until Ctrl+C; the default refresh interval is two seconds. The endpoint URL resolves in this order: `--url`, `NAVIGATOR_URL`, `MCP_API_HOST` and `MCP_API_PORT` from `.env`, then `http://localhost:1994`.
 
 The CLI exits non-zero for an invalid command, an unreachable service, or a failed endpoint request. The server exposes its health and statistics endpoints when either HTTP health or HTTP MCP is enabled.
 
@@ -64,7 +64,7 @@ Use the light endpoint first, then inspect state only when needed:
 
 ```bash
 docker compose ps
-docker exec navigator curl -s localhost:3000/health
+docker exec navigator curl -s localhost:1994/health
 ./navigator.js statistics
 ```
 
@@ -74,7 +74,7 @@ When changing server source under the bind mount, restart or recreate the contai
 
 ```bash
 docker compose restart navigator
-docker exec navigator curl -s localhost:3000/health
+docker exec navigator curl -s localhost:1994/health
 ```
 
 For a full image/dependency refresh, use `docker compose build` followed by `docker compose down` and `docker compose up -d`.

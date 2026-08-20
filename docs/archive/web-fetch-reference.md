@@ -487,7 +487,7 @@ This would give better output than Readability for many page types.
 ### Quick Test
 
 ```bash
-curl "http://localhost:3000/extract?url=https://example.com&maxChars=2000"
+curl "http://localhost:1994/extract?url=https://example.com&maxChars=2000"
 ```
 
 ### MCP Test
@@ -500,7 +500,7 @@ npx --yes mcporter call local-navigator.web_fetch '{"url": "https://example.com"
 
 ```bash
 docker compose build && docker compose down && docker compose up -d
-sleep 10 && docker exec navigator curl -s localhost:3000/health
+sleep 10 && docker exec navigator curl -s localhost:1994/health
 ```
 
 ---

@@ -655,14 +655,14 @@ If you prefer the CLI, the manual workflow below still works.
 
 4. **Selectors must be stable** — Avoid CSS-module class names that change per build. Prefer data attributes, semantic elements (`main`, `article`), well-known classes (`markdown-body`, `js-*`).
 
-5. **Test incrementally** — Use `curl "http://localhost:3000/extract?url=..."` to test without going through MCP.
+5. **Test incrementally** — Use `curl "http://localhost:1994/extract?url=..."` to test without going through MCP.
 
    To test an **unsaved** candidate hint (test-before-save), pass it as a URL-encoded
    JSON `hint` param — `domain`/`pathPattern` are optional for testing, and it fully
    replaces the resolved static hint for that one request:
 
    ```bash
-   curl "http://localhost:3000/extract?url=https://example.com&hint=%7B%22waitForSelector%22%3A%22p%22%2C%22preferReadability%22%3Afalse%7D"
+   curl "http://localhost:1994/extract?url=https://example.com&hint=%7B%22waitForSelector%22%3A%22p%22%2C%22preferReadability%22%3Afalse%7D"
    ```
 
 6. **Order matters** — The first matching hint wins. Put more specific patterns before less specific ones.

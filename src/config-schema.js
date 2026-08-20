@@ -8,7 +8,7 @@ export const CONFIG_SCHEMA = [
   { key: "CHROME_USER_DATA_DIR", category: "backend", type: "string", fallback: "/data/chrome", applies: "recreate", description: "Persistent Chrome profile directory." },
   { key: "CHROME_PROFILE_DIR", category: "backend", type: "string", fallback: "Default", applies: "recreate", description: "Chrome profile folder name." },
   { key: "LIGHTPANDA_PATH", category: "backend", type: "string", fallback: "auto-detect", applies: "recreate", description: "Path to the lightpanda binary." },
-  { key: "LIGHTPANDA_PORT", category: "backend", type: "number", fallback: 9222, applies: "recreate", description: "CDP port for lightpanda." },
+  { key: "LIGHTPANDA_PORT", category: "backend", type: "number", fallback: 1997, applies: "recreate", description: "CDP port for lightpanda." },
   { key: "CLOAKBROWSER_BINARY_PATH", category: "backend", type: "string", fallback: "auto-detect", applies: "recreate", description: "Path to the cloakbrowser chrome binary." },
   { key: "PRELAUNCH_BROWSER", category: "backend", type: "boolean", fallback: true, applies: "recreate", description: "Pre-launch browser on server start." },
   { key: "STARTUP_URL", category: "backend", type: "string", fallback: "about:blank", applies: "recreate", description: "URL opened in the browser on launch." },
@@ -53,14 +53,14 @@ export const CONFIG_SCHEMA = [
   { key: "MCP_ALLOW_UNAUTHENTICATED", category: "console", type: "boolean", fallback: true, applies: "hot", description: "Allow /mcp requests without an API key." },
   { key: "ENABLE_STDIO_MCP", category: "console", type: "boolean", fallback: true, applies: "recreate", description: "Run MCP over stdio." },
   { key: "ENABLE_DEVTOOLS_MCP", category: "console", type: "boolean", fallback: false, applies: "recreate", description: "Expose devtools browser tools via MCP." },
-  { key: "MCP_API_PORT", category: "console", type: "number", fallback: 3000, applies: "recreate", description: "Port the HTTP server listens on." },
+  { key: "MCP_API_PORT", category: "console", type: "number", fallback: 1994, applies: "recreate", description: "Port the HTTP server listens on." },
   { key: "MCP_API_HOST", category: "console", type: "string", fallback: "http://localhost", applies: "recreate", description: "Host base shown in logs." },
   { key: "ENABLE_SCREENSHOT_DOWNLOAD_LINK", category: "console", type: "boolean", fallback: false, applies: "recreate", description: "Serve screenshot files at /download/." },
   { key: "ENABLE_SCREENSHOT_PATH", category: "console", type: "string", fallback: "", applies: "recreate", description: "Where screenshot files are stored (empty = in-memory)." },
 
   { key: "ENABLE_VNC", category: "vnc", type: "boolean", fallback: false, applies: "hot", description: "VNC mode. Toggled automatically by the console VNC control." },
-  { key: "VNC_PORT", category: "vnc", type: "number", fallback: 5900, applies: "recreate", description: "x11vnc port." },
-  { key: "NOVNC_PORT", category: "vnc", type: "number", fallback: 7900, applies: "recreate", description: "noVNC web port (published to host)." },
+  { key: "VNC_PORT", category: "vnc", type: "number", fallback: 1995, applies: "recreate", description: "x11vnc port." },
+  { key: "NOVNC_PORT", category: "vnc", type: "number", fallback: 1996, applies: "recreate", description: "noVNC web port (published to host)." },
 
   { key: "POST_PROCESSOR_MODELS", category: "extractor", type: "string", fallback: "[]", applies: "recreate", description: 'JSON array of post-processor models, e.g. [{"id":"reader_lm","label":"reader-lm-0.5b","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]. Each id becomes an "AI Model" option in the extractor/post-processor dropdowns. Each entry accepts an optional kind: "chat" (default; OpenAI-compatible /chat/completions), "mineru" (POST {html} to baseUrl/extract), or "api" (custom endpoint with body/outputField). Per-entry timeoutMs/maxInputChars/maxTokens override defaults. reader-lm weights are CC-BY-NC-4.0 non-commercial; the MinerU-HTML model carries the Tencent Hunyuan Community License. (Legacy names: AI_EXTRACTOR_MODELS, READER_LM_MODELS.)' }
 ];

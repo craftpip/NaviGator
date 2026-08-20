@@ -55,7 +55,7 @@ export default defineConfig({
 
     nav: [
       { text: "Home", link: "/" },
-      { text: "Docs", link: "/guides/quick-start-docker" },
+      { text: "Docs", link: "/guides/getting-started" },
       { text: "Changelog", link: "/changelog" },
     ],
 
@@ -65,10 +65,65 @@ export default defineConfig({
         collapsible: true,
         collapsed: true,
         items: [
-          { text: "Docker (recommended)", link: "/guides/quick-start-docker" },
-          { text: "Or manual install (Node.js)", link: "/guides/quick-start-nodejs" },
+          { text: "Getting Started", link: "/guides/getting-started" },
           { text: "First Search", link: "/guides/first-search" },
           { text: "Client Configuration", link: "/guides/client-config" },
+        ],
+      },
+      {
+        text: "Search",
+        collapsible: true,
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/guides/search/overview" },
+          { text: "Engines", link: "/guides/search/engines" },
+          { text: "Results", link: "/guides/search/results" },
+          { text: "Tips", link: "/guides/search/tips" },
+        ],
+      },
+      {
+        text: "Extraction",
+        collapsible: true,
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/guides/extraction/overview" },
+          { text: "Formats", link: "/guides/extraction/formats" },
+          { text: "Links", link: "/guides/extraction/links" },
+          { text: "AI Extractors", link: "/guides/extraction/ai-extractors" },
+          { text: "Domain Hints", link: "/guides/extraction/domain-hints" },
+        ],
+      },
+      {
+        text: "Screenshots",
+        collapsible: true,
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/guides/screenshots/overview" },
+          { text: "Output", link: "/guides/screenshots/output" },
+          { text: "ASCII Screenshot", link: "/guides/screenshots/ascii" },
+        ],
+      },
+      {
+        text: "DevTools",
+        collapsible: true,
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/guides/devtools/overview" },
+          { text: "DOM", link: "/guides/devtools/dom" },
+          { text: "Network", link: "/guides/devtools/network" },
+          { text: "Interaction", link: "/guides/devtools/interaction" },
+        ],
+      },
+      {
+        text: "Self-Hosting",
+        collapsible: true,
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/guides/self-hosting/overview" },
+          { text: "Docker", link: "/guides/self-hosting/docker" },
+          { text: "Environment Variables", link: "/guides/self-hosting/env-vars" },
+          { text: "Monitoring", link: "/guides/self-hosting/monitoring" },
+          { text: "Security", link: "/guides/self-hosting/security" },
         ],
       },
       {
@@ -102,28 +157,11 @@ export default defineConfig({
         ],
       },
       {
-        text: "Extraction",
-        collapsible: true,
-        collapsed: true,
-        items: [
-          { text: "Extraction and Hints", link: "/extraction/extraction-and-hints" },
-          { text: "MinerU-HTML Sidecar", link: "/extraction/navigator-mineru-sidecar" },
-        ],
-      },
-      {
         text: "Operations",
         collapsible: true,
         collapsed: true,
         items: [
           { text: "Operations and Configuration", link: "/operations/operations-and-configuration" },
-        ],
-      },
-      {
-        text: "Search",
-        collapsible: true,
-        collapsed: true,
-        items: [
-          { text: "Search and Drivers", link: "/search/search-and-drivers" },
         ],
       },
       {

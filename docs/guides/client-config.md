@@ -11,7 +11,7 @@ For any MCP client that supports HTTP transport:
   "mcpServers": {
     "navigator": {
       "transport": "http",
-      "url": "http://localhost:3000/mcp"
+      "url": "http://localhost:1994/mcp"
     }
   }
 }
@@ -30,7 +30,7 @@ Edit `claude_desktop_config.json`:
   "mcpServers": {
     "navigator": {
       "transport": "http",
-      "url": "http://localhost:3000/mcp"
+      "url": "http://localhost:1994/mcp"
     }
   }
 }
@@ -46,7 +46,7 @@ Open Cursor Settings → MCP → Add new MCP server:
 {
   "navigator": {
     "transport": "http",
-    "url": "http://localhost:3000/mcp"
+    "url": "http://localhost:1994/mcp"
   }
 }
 ```
@@ -62,7 +62,7 @@ Add to your `opencode.json`:
   "mcpServers": {
     "navigator": {
       "transport": "http",
-      "url": "http://localhost:3000/mcp"
+      "url": "http://localhost:1994/mcp"
     }
   }
 }
@@ -76,7 +76,7 @@ Open Windsurf Settings → MCP → Add server:
 {
   "navigator": {
     "transport": "http",
-    "url": "http://localhost:3000/mcp"
+    "url": "http://localhost:1994/mcp"
   }
 }
 ```
@@ -105,7 +105,7 @@ If you've enabled API key authentication (`MCP_ALLOW_UNAUTHENTICATED=0`):
   "mcpServers": {
     "navigator": {
       "transport": "http",
-      "url": "http://localhost:3000/mcp",
+      "url": "http://localhost:1994/mcp",
       "headers": {
         "Authorization": "Bearer your-api-key-here"
       }
@@ -123,7 +123,7 @@ If Navigator is running on a different machine:
   "mcpServers": {
     "navigator": {
       "transport": "http",
-      "url": "http://192.168.1.100:3000/mcp"
+      "url": "http://192.168.1.100:1994/mcp"
     }
   }
 }
@@ -139,7 +139,7 @@ After adding the config and restarting your client:
 
 1. Ask your agent: "Search for something"
 2. If it returns search results, Navigator is connected
-3. If not, check the [Troubleshooting](/guides/quick-start-docker#troubleshooting) section
+3. If not, check the [Troubleshooting](/guides/getting-started#troubleshooting) section
 
 ## Next Steps
 

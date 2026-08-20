@@ -1,4 +1,4 @@
-const BASE = process.env.NAVIGATOR_URL || "http://localhost:3000/mcp";
+const BASE = process.env.NAVIGATOR_URL || "http://localhost:1994/mcp";
 
 export async function mcpCall(name, arguments_) {
   const res = await fetch(BASE, {

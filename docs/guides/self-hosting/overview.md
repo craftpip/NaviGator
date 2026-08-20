@@ -60,7 +60,7 @@ For production deployments at scale, see the Kubernetes examples in the reposito
 ┌─────────────────────────────────────────────┐
 │                Navigator                    │
 ├─────────────────────────────────────────────┤
-│  MCP Server (port 3000)                     │
+│  MCP Server (port 1994)                     │
 │  ├── web_search  → Search engines           │
 │  ├── web_fetch   → Browser + extraction     │
 │  ├── screenshots → Browser rendering        │
@@ -92,7 +92,7 @@ For production deployments at scale, see the Kubernetes examples in the reposito
 ## Quick Health Check
 
 ```bash
-curl -s http://localhost:3000/health
+curl -s http://localhost:1994/health
 ```
 
 Returns:

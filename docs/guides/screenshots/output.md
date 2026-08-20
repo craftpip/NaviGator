@@ -79,7 +79,7 @@ Return a temporary download URL:
 Returns:
 
 ```
-Screenshot: http://localhost:3000/download/abc123
+Screenshot: http://localhost:1994/download/abc123
 ```
 
 ### Configuration

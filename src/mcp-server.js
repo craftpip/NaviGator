@@ -365,7 +365,7 @@ function probePort(port, host = "127.0.0.1", timeoutMs = 800) {
 }
 
 const vncRunningCache = { at: 0, running: false };
-async function isVncRunning(novncPort = 7900) {
+async function isVncRunning(novncPort = 1996) {
   const now = Date.now();
   if (now - vncRunningCache.at < 5000) return vncRunningCache.running;
   vncRunningCache.at = now;

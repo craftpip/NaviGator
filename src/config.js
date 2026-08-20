@@ -377,7 +377,7 @@ export async function loadConfig() {
     chromeUserDataDir: process.env.CHROME_USER_DATA_DIR || "/data/chrome",
     chromeProfileDir: process.env.CHROME_PROFILE_DIR || "Default",
     lightpandaPath,
-    lightpandaPort: parsePort(process.env.LIGHTPANDA_PORT, 9222),
+    lightpandaPort: parsePort(process.env.LIGHTPANDA_PORT, 1997),
     cloakbrowserPath,
     defaultBackend: parseBrowserBackend(process.env.BROWSER_BACKEND, "cloakbrowser"),
     devtoolsBackend: parseBrowserBackend(
@@ -390,7 +390,7 @@ export async function loadConfig() {
     userAgent:
       process.env.BROWSER_USER_AGENT ||
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
-    mcpApiPort: parseNumber(process.env.MCP_API_PORT || process.env.HEALTH_PORT, 3000),
+    mcpApiPort: parseNumber(process.env.MCP_API_PORT || process.env.HEALTH_PORT, 1994),
     mcpApiHost: process.env.MCP_API_HOST || "http://localhost",
     enableHttpHealth: parseBoolean(process.env.ENABLE_HTTP_HEALTH, false),
     enableHttpMcp: parseBoolean(process.env.ENABLE_HTTP_MCP, false),
@@ -402,8 +402,8 @@ export async function loadConfig() {
     screenshotPathPrefix: screenshotPathPrefix.trim() || null,
     enableWebConsole: parseBoolean(process.env.ENABLE_WEB_CONSOLE, true),
     vncEnabled,
-    vncPort: parseNumber(process.env.VNC_PORT, 5900),
-    novncPort: parseNumber(process.env.NOVNC_PORT, 7900),
+    vncPort: parseNumber(process.env.VNC_PORT, 1995),
+    novncPort: parseNumber(process.env.NOVNC_PORT, 1996),
     searchKeepMinWorkingWindows,
     searchMaxWorkingWindows,
     maxChars: DEFAULT_MAX_CHARS,

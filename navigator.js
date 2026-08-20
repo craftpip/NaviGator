@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_SEARCH_ENABLED_ENGINES, parseEngines } from "./src/config.js";
 import { getEngineMetadata, SUPPORTED_ENGINES } from "./src/engines/index.js";
 
-const DEFAULT_URL = "http://localhost:3000";
+const DEFAULT_URL = "http://localhost:1994";
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const ENV_VARS = loadEnvFile();
 
@@ -553,7 +553,7 @@ ${red("✗")} Could not reach the navigator server at ${baseUrl}
 
   This URL was resolved from (in order):
     --url flag, then NAVIGATOR_URL, then .env (MCP_API_HOST + MCP_API_PORT),
-    then http://localhost:3000.
+    then http://localhost:1994.
 
   The HTTP API appears to be disabled, or the server is not running.
 

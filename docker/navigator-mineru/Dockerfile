@@ -26,5 +26,5 @@ RUN pip install --no-cache-dir "huggingface_hub[cli]" && \
 
 COPY sidecar.py /app/sidecar.py
 
-EXPOSE 8001
-CMD ["uvicorn", "sidecar:app", "--host", "0.0.0.0", "--port", "8001"]
+EXPOSE 1998
+CMD ["uvicorn", "sidecar:app", "--host", "0.0.0.0", "--port", "1998"]

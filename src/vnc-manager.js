@@ -37,8 +37,8 @@ function clearStaleDisplayFiles(display) {
 export class VncManager {
   constructor(options = {}) {
     this.display = options.display || ":99";
-    this.vncPort = options.vncPort || 5900;
-    this.novncPort = options.novncPort || 7900;
+    this.vncPort = options.vncPort || 1995;
+    this.novncPort = options.novncPort || 1996;
     this.ownedPids = new Map();
     this.status = "stopped";
     this.steps = [];

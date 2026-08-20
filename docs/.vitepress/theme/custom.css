@@ -147,16 +147,6 @@ html {
   overflow-y: scroll;
 }
 
-/* ── "Install in Docker" sidebar item — looks recommended (highlight, not a text label) ── */
-.VPSidebarItem .item > a[href="/guides/quick-start-docker"] {
-  background: var(--lp-blue-soft);
-  border: 1px solid var(--lp-blue);
-  border-radius: 6px;
-  font-weight: 600;
-  color: var(--lp-blue);
-  padding: 2px 8px;
-}
-
 /* ── Collapsible groups: custom arrow, indented items ── */
 .VPSidebar .nav {
   padding-top: 24px;
@@ -193,6 +183,60 @@ html {
 /* indent the sub-links inside a group */
 .VPSidebarItem.level-0 > .items .VPSidebarItem .item {
   padding-left: 8px;
+}
+
+/* ── Tabs component ── */
+.vp-tab-bar {
+  display: flex;
+  gap: 0;
+  margin: 24px 0 0;
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+  overflow: hidden;
+}
+.vp-tab-btn {
+  flex: 1;
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  color: var(--vp-c-text-2);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+  position: relative;
+  font-family: var(--vp-font-family-base);
+}
+.vp-tab-btn:hover {
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg-mute);
+}
+.vp-tab-btn.active {
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+  background: var(--vp-c-bg);
+}
+.vp-tab-btn.active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--vp-c-brand-1);
+}
+.vp-tabs-content {
+  margin: 0 0 24px;
+  border-radius: 8px;
+}
+.vp-tab-panel {
+  margin: 0;
+}
+.vp-tab-panel > *:first-child {
+  margin-top: 0;
+}
+.vp-tab-panel > *:last-child {
+  margin-bottom: 0;
 }
 
 /* ── Navbar strip background covers the whole bar (logo + menu) on pages with a sidebar ── */

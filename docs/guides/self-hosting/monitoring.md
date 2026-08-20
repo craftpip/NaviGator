@@ -7,7 +7,7 @@ Keep track of Navigator's health, performance, and usage.
 The quickest way to check if Navigator is running:
 
 ```bash
-curl -s http://localhost:3000/health
+curl -s http://localhost:1994/health
 ```
 
 Returns:
@@ -31,7 +31,7 @@ Returns:
 Detailed server statistics:
 
 ```bash
-curl -s http://localhost:3000/stats
+curl -s http://localhost:1994/stats
 ```
 
 Returns:
@@ -70,14 +70,14 @@ A host-side tool for monitoring the live server:
 
 | Option | Description |
 |--------|-------------|
-| `--url <base>` | Server URL (default: http://localhost:3000) |
+| `--url <base>` | Server URL (default: http://localhost:1994) |
 | `--interval <sec>` | Refresh interval for monitoring (default: 2) |
 | `--json` | Output as JSON |
 | `--help` | Show help |
 
 ## Web Console
 
-Open **http://localhost:3000/console** for a visual dashboard:
+Open **http://localhost:1994/console** for a visual dashboard:
 
 - **Engine health** — 24h success bars, most-working badge
 - **Browser tabs** — Live tab count, inactivity countdowns
@@ -130,7 +130,7 @@ Search engine circuit breakers track route health:
 View circuit breaker status:
 
 ```bash
-curl -s http://localhost:3000/health | jq '.searchRouteCircuitBreakers'
+curl -s http://localhost:1994/health | jq '.searchRouteCircuitBreakers'
 ```
 
 ## Performance Monitoring
@@ -166,7 +166,7 @@ This logs each step of `web_fetch` with millisecond timing:
 
 | Symptom | Check |
 |---------|-------|
-| Server won't respond | `curl localhost:3000/health` |
+| Server won't respond | `curl localhost:1994/health` |
 | Search failing | Check circuit breakers in `/health` |
 | Memory growing | `docker stats navigator` |
 | Slow responses | Enable `DEBUG=1`, check timing logs |

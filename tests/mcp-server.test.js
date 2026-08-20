@@ -77,13 +77,13 @@ function makeMockManager(overrides = {}) {
       searchRouteWarmupEngines: [],
       searchEnabledEngines: null,
       lightpandaPath: null,
-      lightpandaPort: 9222,
+      lightpandaPort: 1997,
       screenshotPathPrefix: null,
       enableScreenshotDownloadLink: false,
       enableWebConsole: true,
       vncEnabled: false,
-      vncPort: 5900,
-      novncPort: 7900,
+      vncPort: 1995,
+      novncPort: 1996,
       debug: false,
       logToolErrors: true,
       ...overrides,
@@ -271,7 +271,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(body.vnc).toMatchObject({
         enabled: false,
         headed: false,
-        novncPort: 7900,
+        novncPort: 1996,
       });
       expect(typeof body.vnc.running).toBe("boolean");
     });
@@ -303,7 +303,7 @@ describe("mcp-server HTTP endpoints", () => {
       const res = await fetch(`${MCP_BASE}/console/config`);
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.config).toMatchObject({ enableWebConsole: true, novncPort: 7900 });
+      expect(body.config).toMatchObject({ enableWebConsole: true, novncPort: 1996 });
       expect(body.engines.length).toBeGreaterThan(0);
       expect(body.availableEngines.length).toBeGreaterThanOrEqual(body.engines.length);
       const ddgApi = body.engines.find((e) => e.id === "duckduckgo_api");

@@ -474,7 +474,7 @@ const features = [
   {
     name: 'Web Console',
     visual: 'console',
-    desc: 'Live health dashboard, engine success rates, browser tab management, extraction testing, and domain hint editing — all at :3000/console. No restart needed.',
+    desc: 'Live health dashboard, engine success rates, browser tab management, extraction testing, and domain hint editing — all at :1994/console. No restart needed.',
     illustration: `<svg viewBox="0 0 480 280" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect x="30" y="15" width="420" height="250" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1"/>
       <rect x="30" y="15" width="420" height="30" rx="10" fill="#1e293b"/>
@@ -556,7 +556,7 @@ const why = [
   {
     tag: 'Visible',
     title: 'Know exactly what your agent is doing',
-    desc: 'Live health dashboard, engine success rates, browser tab management with inactivity countdowns, extraction testing, and a full activity feed — all at :3000/console.',
+    desc: 'Live health dashboard, engine success rates, browser tab management with inactivity countdowns, extraction testing, and a full activity feed — all at :1994/console.',
     bg: '#fffbeb', fg: '#d97706',
     icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
   },
