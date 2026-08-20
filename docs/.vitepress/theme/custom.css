@@ -101,6 +101,34 @@ html.dark {
 html.dark .shot-dark { display: block !important; }
 html.dark .shot-light { display: none !important; }
 
+/* Component-scoped global selectors are discarded, so landing theme overrides live here. */
+html.dark .lp {
+  --lp-blue: #5fce7b;
+  --lp-blue-soft: rgba(95, 206, 123, 0.11);
+  background: var(--vp-c-bg);
+}
+
+html.dark .lp .hero {
+  background:
+    radial-gradient(circle at 8% 8%, rgba(40, 145, 75, 0.12), transparent 28rem),
+    linear-gradient(180deg, #07100a 0%, #09150d 48%, #07100a 100%);
+}
+
+html.dark .lp .pill {
+  color: #83dda0;
+  background: rgba(9, 29, 17, 0.72);
+}
+
+html.dark .lp .title {
+  background: linear-gradient(132deg, #f0f8ee 10%, #8fdda4 62%, #75b94e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+html.dark .lp .subtitle {
+  color: #dcebdd;
+}
+
 /* ── Navbar logo size ── */
 .VPNavBarTitle .logo {
   height: 50px;

@@ -21,3 +21,8 @@ domain-hints.json.bak
 website/.vitepress/dist/
 website/.vitepress/cache/
 website/node_modules/
+
+# Docs site (VitePress)
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/node_modules/
