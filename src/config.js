@@ -438,10 +438,33 @@ export async function loadConfig() {
     searchRouteWarmupEngines: process.env.SEARCH_ROUTE_WARMUP_ENGINES === undefined
       ? ["brave_cb", "duckduckgo_api", "duckduckgo_cb"]
       : parseEngines(process.env.SEARCH_ROUTE_WARMUP_ENGINES, []),
-    searchEnabledEngines: parseEngines(
-      process.env.SEARCH_ENABLED_ENGINES,
-      DEFAULT_SEARCH_ENABLED_ENGINES
-    ),
+    searchEnabledEngines: (() => {
+      const parsed = parseEngines(
+        process.env.SEARCH_ENABLED_ENGINES,
+        DEFAULT_SEARCH_ENABLED_ENGINES
+      );
+      const exaApiKey = String(process.env.EXA_API_KEY || "").trim();
+      const linkupApiKey = String(process.env.LINKUP_API_KEY || "").trim();
+      const tavilyApiKey = String(process.env.TAVILY_API_KEY || "").trim();
+      const firecrawlApiKey = String(process.env.FIRECRAWL_API_KEY || "").trim();
+      const hasExplicit = process.env.SEARCH_ENABLED_ENGINES !== undefined && String(process.env.SEARCH_ENABLED_ENGINES).trim() !== "";
+      let next = [...parsed];
+      if (!hasExplicit) {
+        if (exaApiKey && !next.includes("exa_api")) next.push("exa_api");
+        if (linkupApiKey && !next.includes("linkup_api")) next.push("linkup_api");
+        if (tavilyApiKey && !next.includes("tavily_api")) next.push("tavily_api");
+        if (firecrawlApiKey && !next.includes("firecrawl_api")) next.push("firecrawl_api");
+      }
+      if (!exaApiKey) next = next.filter((engine) => engine !== "exa_api");
+      if (!linkupApiKey) next = next.filter((engine) => engine !== "linkup_api");
+      if (!tavilyApiKey) next = next.filter((engine) => engine !== "tavily_api");
+      if (!firecrawlApiKey) next = next.filter((engine) => engine !== "firecrawl_api");
+      return next;
+    })(),
+    exaApiKey: String(process.env.EXA_API_KEY || "").trim(),
+    linkupApiKey: String(process.env.LINKUP_API_KEY || "").trim(),
+    tavilyApiKey: String(process.env.TAVILY_API_KEY || "").trim(),
+    firecrawlApiKey: String(process.env.FIRECRAWL_API_KEY || "").trim(),
     postProcessorModels: resolvePostProcessorModels()
   };
 }

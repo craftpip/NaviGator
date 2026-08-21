@@ -975,13 +975,13 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-async function runSearchEngine({ manager, query, engine, config }) {
+async function runSearchEngine({ manager, query, engine, config, limit }) {
   const driver = getEngineDriver(engine, config);
   const { backend } = getEngineMetadata(engine) || {};
 
   if (backend === "api") {
     const t0 = performance.now();
-    const result = await driver.search({ query });
+    const result = await driver.search({ query, limit });
     const t1 = performance.now();
     console.error(`⏱️  ${engine}: http_total=${Math.round(t1 - t0)}ms`);
     return result;
@@ -1021,7 +1021,42 @@ function routeConcurrencyForEngines(engines, _config) {
   return Math.max(1, engines.length);
 }
 
-async function runSearchRoute({ manager, query, engine, config, explicit }) {
+function isEngineDisabled(engine, config) {
+  const id = String(engine).toLowerCase();
+  if (id === "exa_api" && !String(config?.exaApiKey || "").trim() && !String(process.env.EXA_API_KEY || "").trim()) {
+    return true;
+  }
+  if (id === "linkup_api" && !String(config?.linkupApiKey || "").trim() && !String(process.env.LINKUP_API_KEY || "").trim()) {
+    return true;
+  }
+  if (id === "tavily_api" && !String(config?.tavilyApiKey || "").trim() && !String(process.env.TAVILY_API_KEY || "").trim()) {
+    return true;
+  }
+  if (id === "firecrawl_api" && !String(config?.firecrawlApiKey || "").trim() && !String(process.env.FIRECRAWL_API_KEY || "").trim()) {
+    return true;
+  }
+  return false;
+}
+
+function disabledReason(engine) {
+  const id = String(engine).toLowerCase();
+  if (id === "exa_api") return "EXA_API_KEY not configured — set EXA_API_KEY to enable exa_api search";
+  if (id === "linkup_api") return "LINKUP_API_KEY not configured — set LINKUP_API_KEY to enable linkup_api search";
+  if (id === "tavily_api") return "TAVILY_API_KEY not configured — set TAVILY_API_KEY to enable tavily_api search";
+  if (id === "firecrawl_api") return "FIRECRAWL_API_KEY not configured — set FIRECRAWL_API_KEY to enable firecrawl_api search";
+  return `${engine} is disabled`;
+}
+
+async function runSearchRoute({ manager, query, engine, config, explicit, limit }) {
+  if (isEngineDisabled(engine, config)) {
+    const reason = disabledReason(engine);
+    recordEngineAttempt(engine, "skip", reason);
+    const error = new Error(reason);
+    error.schedulerSkip = true;
+    error.schedulerIgnore = true;
+    throw error;
+  }
+
   const circuit = claimRouteCircuit(engine);
   const routeStart = performance.now();
   if (circuit.open) {
@@ -1035,7 +1070,7 @@ async function runSearchRoute({ manager, query, engine, config, explicit }) {
 
   try {
     const execute = () => manager.withPageSlot(() =>
-      runSearchEngine({ manager, query, engine, config })
+      runSearchEngine({ manager, query, engine, config, limit })
     );
     let value;
     try {
@@ -1056,6 +1091,13 @@ async function runSearchRoute({ manager, query, engine, config, explicit }) {
     }
     return { ...value, durationMs };
   } catch (error) {
+    if (error?.schedulerSkip) {
+      if (circuit?.probe) routeCircuitState.get(circuit.key).probeInFlight = false;
+      recordEngineAttempt(engine, "skip", error, 0, performance.now() - routeStart);
+      error.schedulerIgnore = true;
+      if (explicit) throw error;
+      throw error;
+    }
     const localBrowserFailure = isLocalBrowserFailure(error);
     if (!localBrowserFailure) recordRouteFailure(engine, error, config.searchRouteCircuitOpenMs);
     else if (circuit.probe) routeCircuitState.get(circuit.key).probeInFlight = false;
@@ -1072,7 +1114,7 @@ async function runExplicitEngineGroup({ manager, query, engines, limit, config }
     routeConcurrencyForEngines(engines, config),
     async (engine) => {
       try {
-        const value = await runSearchRoute({ manager, query, engine, config, explicit: true });
+        const value = await runSearchRoute({ manager, query, engine, config, explicit: true, limit });
         return { status: "fulfilled", value, engine };
       } catch (reason) {
         return { status: "rejected", reason, engine };
@@ -1087,9 +1129,10 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
   const errors = [];
   const skipped = [];
 
-  const engines = config.searchEnabledEngines?.length
+  const rawEngines = config.searchEnabledEngines?.length
     ? config.searchEnabledEngines
     : DEFAULT_SEARCH_ENABLED_ENGINES;
+  const engines = rawEngines.filter((engine) => !isEngineDisabled(engine, config));
   engineScheduler.configure(config);
   const scheduled = engineScheduler.select(engines, Date.now(), (engine) => !getRouteCircuit(engine).open);
   for (const skippedEngine of scheduled.skipped) {
@@ -1108,8 +1151,15 @@ async function runFallbackEngineGroups({ manager, query, limit, config }) {
     }
 
     try {
+      // Disabled engines are already filtered from `engines` above, but guard here too
+      if (isEngineDisabled(engine, config)) {
+        const reason = disabledReason(engine);
+        recordEngineAttempt(engine, "skip", reason);
+        skipped.push({ engine, route: routeKey(engine), remainingMs: 0, error: reason });
+        continue;
+      }
       engineScheduler.markSelected(engine);
-      const value = await runSearchRoute({ manager, query, engine, config, explicit: false });
+      const value = await runSearchRoute({ manager, query, engine, config, explicit: false, limit });
       if (!value.results?.length) {
         errors.push({ engine, route: routeKey(engine), error: "Search engine returned no results" });
         continue;

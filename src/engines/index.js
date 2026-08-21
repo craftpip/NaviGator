@@ -2,6 +2,10 @@ import { KNOWN_BACKENDS, POOL_POLICIES, SearchEngineDriver } from "./driver.js";
 import { DuckDuckGoApiDriver } from "./duckduckgo-api.js";
 import { DuckDuckGoCbDriver } from "./duckduckgo-cb.js";
 import { DuckDuckGoChDriver } from "./duckduckgo-ch.js";
+import { ExaApiDriver } from "./exa-api.js";
+import { FirecrawlApiDriver } from "./firecrawl-api.js";
+import { LinkupApiDriver } from "./linkup-api.js";
+import { TavilyApiDriver } from "./tavily-api.js";
 import { GoogleCbDriver } from "./google-cb.js";
 import { GoogleChDriver } from "./google-ch.js";
 import { GoogleLpDriver } from "./google-lp.js";
@@ -19,6 +23,10 @@ const DRIVER_CLASSES = [
   DuckDuckGoApiDriver,
   DuckDuckGoCbDriver,
   DuckDuckGoChDriver,
+  ExaApiDriver,
+  FirecrawlApiDriver,
+  LinkupApiDriver,
+  TavilyApiDriver,
   GoogleCbDriver,
   GoogleChDriver,
   GoogleLpDriver,

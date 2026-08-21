@@ -34,11 +34,15 @@ afterEach(() => {
 });
 
 describe("engine registry", () => {
-  it("registers all 12 internal routes", () => {
+  it("registers all 16 internal routes", () => {
     expect([...SUPPORTED_ENGINES]).toEqual([
       "bing_cb", "bing_lp",
       "brave_cb",
       "duckduckgo_api", "duckduckgo_cb", "duckduckgo_ch",
+      "exa_api",
+      "firecrawl_api",
+      "linkup_api",
+      "tavily_api",
       "google_cb", "google_ch", "google_lp",
       "mojeek_lp",
       "startpage_cb",

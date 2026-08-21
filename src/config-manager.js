@@ -51,7 +51,73 @@ export function validateConfigValue(entry, raw) {
 
 const HOT_APPLYERS = {
   SEARCH_ROUTE_WARMUP_ENGINES: (config, value) => { config.searchRouteWarmupEngines = value; },
-  SEARCH_ENABLED_ENGINES: (config, value) => { config.searchEnabledEngines = value.length ? value : null; },
+  SEARCH_ENABLED_ENGINES: (config, value) => {
+    let engines = value.length ? value : null;
+    if (engines) {
+      if (!config.exaApiKey) engines = engines.filter((e) => e !== "exa_api");
+      if (!config.linkupApiKey) engines = engines.filter((e) => e !== "linkup_api");
+      if (!config.tavilyApiKey) engines = engines.filter((e) => e !== "tavily_api");
+      if (!config.firecrawlApiKey) engines = engines.filter((e) => e !== "firecrawl_api");
+      if (!engines.length) engines = null;
+    }
+    config.searchEnabledEngines = engines;
+  },
+  EXA_API_KEY: (config, value) => {
+    const key = String(value || "").trim();
+    config.exaApiKey = key;
+    process.env.EXA_API_KEY = key;
+    if (Array.isArray(config.searchEnabledEngines)) {
+      const hasExa = config.searchEnabledEngines.includes("exa_api");
+      if (key && !hasExa && !process.env.SEARCH_ENABLED_ENGINES) {
+        config.searchEnabledEngines = [...config.searchEnabledEngines, "exa_api"];
+      } else if (!key && hasExa) {
+        const filtered = config.searchEnabledEngines.filter((e) => e !== "exa_api");
+        config.searchEnabledEngines = filtered.length ? filtered : null;
+      }
+    }
+  },
+  LINKUP_API_KEY: (config, value) => {
+    const key = String(value || "").trim();
+    config.linkupApiKey = key;
+    process.env.LINKUP_API_KEY = key;
+    if (Array.isArray(config.searchEnabledEngines)) {
+      const hasLinkup = config.searchEnabledEngines.includes("linkup_api");
+      if (key && !hasLinkup && !process.env.SEARCH_ENABLED_ENGINES) {
+        config.searchEnabledEngines = [...config.searchEnabledEngines, "linkup_api"];
+      } else if (!key && hasLinkup) {
+        const filtered = config.searchEnabledEngines.filter((e) => e !== "linkup_api");
+        config.searchEnabledEngines = filtered.length ? filtered : null;
+      }
+    }
+  },
+  TAVILY_API_KEY: (config, value) => {
+    const key = String(value || "").trim();
+    config.tavilyApiKey = key;
+    process.env.TAVILY_API_KEY = key;
+    if (Array.isArray(config.searchEnabledEngines)) {
+      const hasTavily = config.searchEnabledEngines.includes("tavily_api");
+      if (key && !hasTavily && !process.env.SEARCH_ENABLED_ENGINES) {
+        config.searchEnabledEngines = [...config.searchEnabledEngines, "tavily_api"];
+      } else if (!key && hasTavily) {
+        const filtered = config.searchEnabledEngines.filter((e) => e !== "tavily_api");
+        config.searchEnabledEngines = filtered.length ? filtered : null;
+      }
+    }
+  },
+  FIRECRAWL_API_KEY: (config, value) => {
+    const key = String(value || "").trim();
+    config.firecrawlApiKey = key;
+    process.env.FIRECRAWL_API_KEY = key;
+    if (Array.isArray(config.searchEnabledEngines)) {
+      const hasFirecrawl = config.searchEnabledEngines.includes("firecrawl_api");
+      if (key && !hasFirecrawl && !process.env.SEARCH_ENABLED_ENGINES) {
+        config.searchEnabledEngines = [...config.searchEnabledEngines, "firecrawl_api"];
+      } else if (!key && hasFirecrawl) {
+        const filtered = config.searchEnabledEngines.filter((e) => e !== "firecrawl_api");
+        config.searchEnabledEngines = filtered.length ? filtered : null;
+      }
+    }
+  },
   SEARCH_ROUTE_CIRCUIT_OPEN_MS: (config, value) => { config.searchRouteCircuitOpenMs = value; },
   SEARCH_KEEP_MIN_WORKING_WINDOWS: (config, value) => {
     config.searchKeepMinWorkingWindows = clamp(value, 0, 20);
