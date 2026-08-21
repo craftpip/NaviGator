@@ -4,12 +4,7 @@
 
 ## Enabling DevTools
 
-DevTools are disabled by default. Enable them:
-
-```bash
-# In .env
-ENABLE_DEVTOOLS_MCP=1
-```
+DevTools are enabled by default. Set `ENABLE_DEVTOOLS_MCP=0` to disable them.
 
 Restart the server after changing this setting.
 

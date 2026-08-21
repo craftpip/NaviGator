@@ -50,17 +50,18 @@ export const EXTRACTOR_FORMATS = [...FORMAT_EXTRACTORS.keys()];
 
 // ── Post-processor Pipeline Step ─────────────────────────────────────────────
 
-async function applyPostProcessor(result, { url, postProcessorModel, config }) {
+async function applyPostProcessor(result, { url, postProcessorModel, config, signal }) {
   if (!postProcessorModel || !result?.text) return result;
 
   // Screenshot input → image post-processor.
   if (result._screenshotInput) {
     try {
-      const processed = await runPostProcessor({ screenshot: result._screenshotInput, model: postProcessorModel, config });
+      const processed = await runPostProcessor({ screenshot: result._screenshotInput, model: postProcessorModel, config, signal });
       if (processed) {
         return { ...result, text: processed, textOriginalLength: processed.length };
       }
     } catch (err) {
+      if (signal?.aborted) throw signal.reason || err;
       console.warn(`[web_fetch] [${url}] post-processor "${postProcessorModel}" failed for screenshot — falling back to raw: ${err.message}`);
     }
     return result;
@@ -71,9 +72,10 @@ async function applyPostProcessor(result, { url, postProcessorModel, config }) {
   // so the post-processor receives clean HTML instead of code-fenced markdown.
   try {
     const ppInput = result._rawHtml ? { html: result._rawHtml } : { text: result.text };
-    const ppResult = await runPostProcessor({ ...ppInput, model: postProcessorModel, config });
+    const ppResult = await runPostProcessor({ ...ppInput, model: postProcessorModel, config, signal });
     if (ppResult) return { ...result, text: ppResult, textOriginalLength: ppResult.length };
   } catch (err) {
+    if (signal?.aborted) throw signal.reason || err;
     console.warn(`[web_fetch] [${url}] post-processor "${postProcessorModel}" failed — keeping original: ${err.message}`);
   }
   return result;
@@ -96,6 +98,7 @@ async function applyPostProcessor(result, { url, postProcessorModel, config }) {
  * @param {boolean} [args.strict]             - Return empty on blocks failure.
  * @param {string[]} [args.defaultExtractSkipSelectors] - Global skip selectors.
  * @param {object}  args.config               - manager.config.
+ * @param {AbortSignal} [args.signal]          - Cancels queued/network post-processing.
  * @returns {Promise<{title: string, url: string, text: string, textOriginalLength: number}>}
  */
 export async function extractTextFromHtml({
@@ -109,7 +112,8 @@ export async function extractTextFromHtml({
   debug = false,
   strict = false,
   defaultExtractSkipSelectors = [],
-  config
+  config,
+  signal
 }) {
   if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml called`);
 
@@ -130,7 +134,15 @@ export async function extractTextFromHtml({
       // avoid a circular dependency at module load time.
       const { renderContentBlocks } = await import("../search.js");
       if (debug) console.log(">>> entering blocks path, blocks:", hint.content.blocks.length, "first selector:", hint.content.blocks[0].selector);
-      const blockResult = await renderContentBlocks(doc, hint, url, maxChars, debug, fallbackTitle, config);
+      const blockResult = await renderContentBlocks(doc, hint, {
+        url,
+        maxChars,
+        debug,
+        fallbackTitle,
+        config,
+        signal,
+        screenshot
+      });
       if (blockResult) return blockResult;
       if (debug) console.log(">>> blocks produced no output");
     }
@@ -158,6 +170,7 @@ export async function extractTextFromHtml({
       screenshot,
       hint,
       config,
+      signal,
       debug,
       format: pageFormat
     };
@@ -203,10 +216,11 @@ export async function extractTextFromHtml({
     if (pageFormat === "screenshot" && screenshot) {
       result._screenshotInput = screenshot;
     }
-    result = await applyPostProcessor(result, { url, postProcessorModel, config });
+    result = await applyPostProcessor(result, { url, postProcessorModel, config, signal });
 
     return result;
   } catch (err) {
+    if (signal?.aborted) throw signal.reason || err;
     if (debug) console.log(`[web_fetch] [${url}] extractTextFromHtml: catch_all error: ${err?.message}`);
     // Hard fallback: extract whatever text we can from the raw DOM.
     const fallback = elementTextWithBreaks(dom?.window?.document?.body).trim();

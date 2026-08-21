@@ -31,7 +31,7 @@ it POSTs raw HTML over HTTP and gets clean Markdown back.
 navigator container (Node)
   web_fetch with format: "<ai-model-id>"
     -> src/ai-extractor.js extractWithMineru()   # kind === "mineru"
-       -> POST http://10.69.1.164:1998/extract  {html}
+       -> POST http://localhost:1998/extract  {html}
 navigator-mineru container (Python, NVIDIA GPU)
   sidecar.py (FastAPI, uvicorn :1998)
     -> MinerUHTMLGeneric.process(html)
@@ -251,7 +251,7 @@ navigator-mineru:
 Add a model entry with `kind: "mineru"` and the sidecar's base URL, e.g.:
 
 ```json
-{"id":"mineru","label":"MinerU-HTML","model":"mineru","kind":"mineru","baseUrl":"http://10.69.1.164:1998"}
+{"id":"mineru","label":"MinerU-HTML","model":"mineru","kind":"mineru","baseUrl":"http://localhost:1998"}
 ```
 
 - `parseAiModelKind` (`src/config.js`) normalizes `kind` to `chat`/`mineru` (anything

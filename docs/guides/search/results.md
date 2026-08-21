@@ -19,17 +19,6 @@ Results:
   Upcoming LTS releases and their support status...
 ```
 
-## Result Fields
-
-| Field | Description |
-|-------|-------------|
-| `title` | Page title from the search engine |
-| `snippet` | Brief description shown in search results |
-| `llmText` | Extended text for LLM context |
-| `ref_id` | Numeric reference ID for this result |
-| `link` | Markdown link: `[title](ref_id)` |
-| `url` | Direct URL to the page |
-
 ## Reference IDs
 
 Every result gets a unique `ref_id`. This is a number you can use to:
@@ -79,20 +68,6 @@ Results:
 ```
 
 Instant answers come from the DuckDuckGo Instant Answer API and appear when available.
-
-## Errors
-
-If a search route fails, the error appears at the bottom:
-
-```
-Results:
-- ...
-
-Errors:
-- google_cb: "Google blocked this request with a CAPTCHA"
-```
-
-Other routes may have succeeded, so you still get results. Check which routes worked in the error section.
 
 ## Caching
 

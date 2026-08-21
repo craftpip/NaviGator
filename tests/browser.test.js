@@ -577,6 +577,24 @@ describe("BrowserManager", () => {
       expect(manager.pageSlotsInUse).toBe(1);
     });
 
+    it("removes an aborted waiter without consuming a slot", async () => {
+      const manager = new BrowserManager(makeConfig({ maxConcurrentPageOps: 1 }));
+      await manager.acquirePageSlot();
+      const controller = new AbortController();
+
+      const queued = manager.acquirePageSlot({ signal: controller.signal });
+      const assertion = expect(queued).rejects.toThrow("slot deadline");
+      expect(manager.pageSlotWaiters).toHaveLength(1);
+
+      controller.abort(new Error("slot deadline"));
+      await assertion;
+
+      expect(manager.pageSlotWaiters).toHaveLength(0);
+      expect(manager.pageSlotsInUse).toBe(1);
+      manager.releasePageSlot();
+      expect(manager.pageSlotsInUse).toBe(0);
+    });
+
     it("withPageSlot wraps task with acquire/release", async () => {
       const manager = new BrowserManager(makeConfig());
       const result = await manager.withPageSlot(() => "task-result");
@@ -589,6 +607,25 @@ describe("BrowserManager", () => {
       await expect(
         manager.withPageSlot(() => Promise.reject(new Error("task failed")))
       ).rejects.toThrow("task failed");
+      expect(manager.pageSlotsInUse).toBe(0);
+    });
+
+    it("releases an active slot when its task is aborted", async () => {
+      const manager = new BrowserManager(makeConfig({ maxConcurrentPageOps: 1 }));
+      const controller = new AbortController();
+      const pending = manager.withPageSlot(
+        () => new Promise(() => {}),
+        { signal: controller.signal }
+      );
+      const assertion = expect(pending).rejects.toThrow("operation deadline");
+
+      await Promise.resolve();
+      expect(manager.pageSlotsInUse).toBe(1);
+      controller.abort(new Error("operation deadline"));
+      await assertion;
+
+      expect(manager.pageSlotsInUse).toBe(0);
+      await expect(manager.withPageSlot(() => "next task")).resolves.toBe("next task");
       expect(manager.pageSlotsInUse).toBe(0);
     });
 

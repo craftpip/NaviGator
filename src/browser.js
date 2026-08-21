@@ -162,13 +162,50 @@ export class BrowserManager {
     return page;
   }
 
-  async acquirePageSlot() {
-    while (this.pageSlotsInUse >= this.config.maxConcurrentPageOps) {
-      await new Promise((resolve) => {
-        this.pageSlotWaiters.push(resolve);
-      });
+  async acquirePageSlot({ signal } = {}) {
+    if (signal?.aborted) {
+      throw signal.reason || new Error("Page slot acquisition aborted");
     }
-    this.pageSlotsInUse += 1;
+    if (this.pageSlotsInUse < this.config.maxConcurrentPageOps) {
+      this.pageSlotsInUse += 1;
+      return;
+    }
+
+    await new Promise((resolve, reject) => {
+      const waiter = {
+        settled: false,
+        grant: () => {
+          if (waiter.settled || signal?.aborted) return false;
+          waiter.settled = true;
+          signal?.removeEventListener("abort", onAbort);
+          this.pageSlotsInUse += 1;
+          resolve();
+          return true;
+        }
+      };
+      const onAbort = () => {
+        if (waiter.settled) return;
+        waiter.settled = true;
+        const index = this.pageSlotWaiters.indexOf(waiter);
+        if (index !== -1) this.pageSlotWaiters.splice(index, 1);
+        reject(signal.reason || new Error("Page slot acquisition aborted"));
+      };
+
+      signal?.addEventListener("abort", onAbort, { once: true });
+      this.pageSlotWaiters.push(waiter);
+      if (signal?.aborted) onAbort();
+    });
+  }
+
+  grantPageSlotWaiters() {
+    while (this.pageSlotsInUse < this.config.maxConcurrentPageOps && this.pageSlotWaiters.length) {
+      const next = this.pageSlotWaiters.shift();
+      if (typeof next === "function") {
+        next();
+        break;
+      }
+      next?.grant?.();
+    }
   }
 
   releasePageSlot() {
@@ -176,17 +213,25 @@ export class BrowserManager {
       this.pageSlotsInUse -= 1;
     }
 
-    if (this.pageSlotsInUse < this.config.maxConcurrentPageOps) {
-      const next = this.pageSlotWaiters.shift();
-      if (next) next();
-    }
+    this.grantPageSlotWaiters();
   }
 
-  async withPageSlot(task) {
-    await this.acquirePageSlot();
+  async withPageSlot(task, { signal } = {}) {
+    await this.acquirePageSlot({ signal });
+    let onAbort;
     try {
-      return await task();
+      if (!signal) return await task();
+      if (signal.aborted) throw signal.reason || new Error("Page operation aborted");
+
+      const abortPromise = new Promise((_, reject) => {
+        onAbort = () => reject(signal.reason || new Error("Page operation aborted"));
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      });
+      const taskPromise = Promise.resolve().then(task);
+      return await Promise.race([taskPromise, abortPromise]);
     } finally {
+      if (onAbort) signal.removeEventListener("abort", onAbort);
       this.releasePageSlot();
     }
   }

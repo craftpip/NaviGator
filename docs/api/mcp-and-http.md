@@ -27,7 +27,7 @@ Tools can be hidden and rejected by `DISABLE_TOOLS`. API keys with an allowed-to
 
 ## DevTools Tools
 
-When `ENABLE_DEVTOOLS_MCP=1`, the server also exposes persistent browser tools:
+The server also exposes persistent browser tools (unless `ENABLE_DEVTOOLS_MCP=0`):
 
 - Targets: `Target.createTarget`, `Target.getTargets`, `Target.closeTarget`
 - Navigation: `Page.navigate`, `Page.reload`, `Page.goBack`, `Page.goForward`

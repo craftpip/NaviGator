@@ -120,4 +120,4 @@ Every installation has a wildcard hint (`domain: "*"`) that provides defaults fo
 ## Next Steps
 
 - [Link Navigation](/guides/extraction/links) — Follow links from extracted pages
-- [AI Extractors](/guides/extraction/ai-extractors) — AI-powered extraction
+- [Post-processors (AI)](/guides/extraction/ai-extractors) — AI-powered extraction

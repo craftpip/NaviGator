@@ -185,49 +185,66 @@ html {
   padding-left: 8px;
 }
 
-/* ── Tabs component ── */
+/* ── H2 headings: consistent spacing + horizontal line above each section ──
+ * VitePress defaults: h2 gets 48px margin-top and 24px padding-top with a border-top.
+ * We override so the line has EQUAL space above and below it (24px each).
+ * Result: every section divider is centered between sections. */
+.vp-doc h2 {
+  margin-top: 24px !important;
+  padding-top: 24px !important;
+  border-top: 1px solid var(--vp-c-divider) !important;
+}
+
+/* No line above Prerequisites — it's the first section after the tab bar,
+ * so a divider before it would look disconnected from the heading above. */
+.vp-doc h2#prerequisites,
+.vp-doc h2:first-child {
+  border-top: none !important;
+  margin-top: 16px !important;
+  padding-top: 0 !important;
+}
+
+/* ── Tabs: underline-style bar with brand-colored active indicator ──
+ * We use an underline pattern (not pill/box tabs) so the active tab is clearly
+ * visible in both light and dark modes. Previous approaches: box tabs (active
+ * blended with bg in dark mode), pill tabs (active invisible in light mode). */
 .vp-tab-bar {
   display: flex;
   gap: 0;
   margin: 24px 0 0;
-  border-radius: 8px;
-  background: var(--vp-c-bg-soft);
-  overflow: hidden;
+  padding-bottom: 16px;
 }
+
+/* Each tab button has a transparent bottom border that becomes the brand color when active.
+ * The -2px margin-bottom overlaps the bar's divider so only the active tab's
+ * colored line is visible, not a double-border. */
 .vp-tab-btn {
   flex: 1;
-  padding: 10px 20px;
+  padding: 10px 16px;
   border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
   background: transparent;
   color: var(--vp-c-text-2);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.2s, background 0.2s;
-  position: relative;
+  transition: color 0.15s, border-color 0.15s;
   font-family: var(--vp-font-family-base);
 }
 .vp-tab-btn:hover {
   color: var(--vp-c-text-1);
-  background: var(--vp-c-bg-mute);
 }
 .vp-tab-btn.active {
   color: var(--vp-c-brand-1);
   font-weight: 600;
-  background: var(--vp-c-bg);
+  border-bottom-color: var(--vp-c-brand-1);
 }
-.vp-tab-btn.active::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--vp-c-brand-1);
-}
+
+/* Reset margins inside tab panels so first/last children don't add extra space.
+ * Without this, markdown paragraphs inside tabs get double-spaced. */
 .vp-tabs-content {
   margin: 0 0 24px;
-  border-radius: 8px;
 }
 .vp-tab-panel {
   margin: 0;
@@ -237,6 +254,21 @@ html {
 }
 .vp-tab-panel > *:last-child {
   margin-bottom: 0;
+}
+
+/* ── Client config tabs: boxed panels ──
+ * Unlike install tabs (Docker/Node.js) which have simple content, client config
+ * tabs show JSON blocks that benefit from a visible container. The box groups
+ * each client's config visually so you can quickly scan between Claude/Cursor/etc.
+ * Uses bg-soft to subtly distinguish the panel from the surrounding page. */
+.vp-tab-bar.vp-tabs-group-client {
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.vp-tabs-group-client .vp-tab-panel {
+  padding: 20px 24px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 0 0 8px 8px;
 }
 
 /* ── Navbar strip background covers the whole bar (logo + menu) on pages with a sidebar ── */
@@ -276,4 +308,210 @@ html {
   .VPNavBar.has-sidebar .divider {
     padding-left: 0 !important;
   }
+}
+
+/* ── Full-width doc layout (no right sidebar) ──
+ * Used by agent-instructions page via pageClass: doc-fullwidth.
+ * Hides the right-side TOC panel so content fills the full width.
+ * The left sidebar stays visible for navigation. */
+.doc-fullwidth .aside {
+  display: none !important;
+}
+
+/* ── Wider content on all doc pages ──
+ * VitePress limits .content-container to 688px (designed for narrow docs with aside).
+ * We override to 100% so content fills the space normally occupied by the aside. */
+.content-container {
+  max-width: 100% !important;
+}
+
+/* ── Telegram-style chat (used by first-search.md) ──
+ * Chat bubbles for user/agent/tool messages to make the first-search page
+ * feel like a real conversation rather than dry documentation. */
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 24px 0;
+  padding: 20px;
+  background: var(--vp-c-bg-soft);
+  border-radius: 12px;
+  border: 1px solid var(--vp-c-border);
+}
+
+/* Base message style — shared by user, agent, and tool bubbles */
+.chat-msg {
+  padding: 10px 14px;
+  border-radius: 12px;
+  max-width: 85%;
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+/* User messages: blue, right-aligned, like a messaging app */
+.chat-msg.user {
+  background: var(--vp-c-brand-1);
+  color: white;
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+
+/* Agent messages: white/dark bg, left-aligned, with a border to stand out from chat bg */
+.chat-msg.agent {
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+  border: 1px solid var(--vp-c-border);
+}
+
+/* Tool call messages: green, dashed border, monospace — distinct from agent text
+ * so the user can see what tools the agent used. Collapsible <details> for output. */
+.chat-msg.tool {
+  background: #f0fdf4;
+  color: #166534;
+  align-self: flex-start;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  padding: 10px 14px;
+  border: 1px dashed #86efac;
+  border-radius: 12px;
+  border-bottom-left-radius: 4px;
+  max-width: 90%;
+}
+
+/* Collapsible tool response: summary is always visible, <pre> only when expanded */
+.chat-msg.tool details {
+  margin: 4px 0 0 0;
+}
+.chat-msg.tool details summary {
+  padding: 2px 0;
+  margin: 0;
+  cursor: pointer;
+  font-size: 11px;
+  color: #16a34a;
+}
+.chat-msg.tool details[open] summary {
+  margin-bottom: 4px;
+}
+.chat-msg.tool details pre {
+  margin: 0;
+  padding: 8px;
+}
+.chat-msg.tool details[open] {
+  margin-top: 4px;
+}
+
+/* ── Chat dark mode overrides ── */
+html.dark .chat-msg.user {
+  background: #1d4ed8;
+}
+html.dark .chat-msg.agent {
+  background: #1e1e22;
+  border-color: #333;
+}
+html.dark .chat-msg.tool {
+  background: #0c2a1a;
+  color: #86efac;
+  border-color: #1a4d32;
+}
+html.dark .chat-msg.tool details summary {
+  color: #4ade80;
+}
+html.dark .chat-msg.tool details pre {
+  background: #071a10 !important;
+  color: #86efac !important;
+}
+html.dark .chat-msg.tool details code {
+  color: #86efac !important;
+}
+
+/* ── Rounded corners for all doc tables ── */
+.vp-doc table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  overflow: hidden;
+  display: table;
+  width: 100%;
+}
+.vp-doc th,
+.vp-doc td {
+  border-bottom: 1px solid var(--vp-c-divider);
+  border-right: 1px solid var(--vp-c-divider);
+}
+.vp-doc th:last-child,
+.vp-doc td:last-child {
+  border-right: none;
+}
+.vp-doc tr:last-child td,
+.vp-doc tr:last-child th {
+  border-bottom: none;
+}
+.vp-doc th:first-child {
+  border-top-left-radius: 8px;
+}
+.vp-doc th:last-child {
+  border-top-right-radius: 8px;
+}
+.vp-doc tr:last-child td:first-child {
+  border-bottom-left-radius: 8px;
+}
+.vp-doc tr:last-child td:last-child {
+  border-bottom-right-radius: 8px;
+}
+
+/* ── Env var badge (distinct from tool names) ── */
+.env-var {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: #065f46;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+html.dark .env-var {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+/* ── Tool name badge (distinct from plain inline code) ── */
+.tool-name {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--vp-c-brand-1);
+  background: var(--vp-c-brand-soft);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+html.dark .tool-name {
+  background: rgba(96, 165, 250, 0.15);
+  border-color: rgba(96, 165, 250, 0.25);
+}
+
+/* ── Hide tab-gated TOC entries when their tab is inactive ──
+ * Development Mode lives inside <TabShow value="nodejs"> which uses v-show,
+ * so the heading always exists in the DOM. VitePress builds the TOC from the
+ * DOM at page load, so the link is always rendered by VitePress itself (styled
+ * + scroll-spy work). This rule only hides the link while the Node.js tab is
+ * not active — shared-tabs.js publishes the active tab as html[data-install]. */
+html:not([data-install="nodejs"]) .VPDocAsideOutline a[href="#development-mode"],
+html:not([data-install="nodejs"]) .VPLocalNavOutlineDropdown a[href="#development-mode"] {
+  display: none !important;
 }

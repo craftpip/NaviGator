@@ -520,6 +520,17 @@ field is rejected as unknown.
 
 ## Project Learnings
 
+### Report Browser-Tool Failures and Improvement Ideas Instantly
+
+**Created:** 2026-08-21
+
+**The rule — make it a reflex:**
+1. **Every failure gets an analysis.** Whenever a navigator browser tool (web tools or devtools) fails, errors, or returns an unexpected result, the very next message to the user must include a failure-output analysis: what was called, what came back, why it likely failed, and what that means.
+2. **Improvement ideas are mandatory, not optional.** Whenever using the browser tools and something is hard to get done, or the tool could be improved (better errors, more parameters, different defaults, clearer messages, missing capability), tell the user instantly — in the moment, not as an afterthought. Do not silently work around tool limitations.
+3. **No silent workarounds.** If you hit a wall with a tool and find a workaround, still surface the underlying issue. The user treats every stumble as potential signal for the next tool improvement.
+
+**Why:** This project's whole value is the navigator MCP server itself. Every friction point the agent hits is a bug report or a feature request waiting to be filed — the user is actively improving the tools and wants the pain surfaced immediately instead of being absorbed silently.
+
 ### Never Miss a Message — Capture Every Instruction in the Todo List
 
 **Created:** 2026-08-13

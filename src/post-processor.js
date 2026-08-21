@@ -25,30 +25,72 @@ export function getPostProcessorKind(config, modelId) {
   return entry?.kind === "mineru" || entry?.kind === "api" ? entry.kind : "chat";
 }
 
-let inFlight = 0;
-let waiters = [];
+function abortReason(signal, fallback) {
+  return signal?.reason instanceof Error ? signal.reason : new Error(fallback);
+}
 
-function acquireSlot() {
-  if (inFlight < DEFAULT_MAX_CONCURRENCY) {
-    inFlight += 1;
-    return Promise.resolve();
+class PostProcessorGate {
+  constructor(limit) {
+    this.limit = limit;
+    this.inFlight = 0;
+    this.waiters = [];
   }
-  return new Promise((resolve) => waiters.push(resolve));
+
+  acquire(signal) {
+    if (signal?.aborted) return Promise.reject(abortReason(signal, "Post-processor aborted"));
+    if (this.inFlight < this.limit) {
+      this.inFlight += 1;
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      const waiter = { settled: false, signal, resolve, reject, onAbort: null };
+      waiter.onAbort = () => {
+        if (waiter.settled) return;
+        waiter.settled = true;
+        const index = this.waiters.indexOf(waiter);
+        if (index !== -1) this.waiters.splice(index, 1);
+        reject(abortReason(signal, "Post-processor aborted while queued"));
+      };
+      signal?.addEventListener("abort", waiter.onAbort, { once: true });
+      this.waiters.push(waiter);
+      if (signal?.aborted) waiter.onAbort();
+    });
+  }
+
+  release() {
+    this.inFlight = Math.max(0, this.inFlight - 1);
+    this.grantWaiters();
+  }
+
+  grantWaiters() {
+    while (this.inFlight < this.limit && this.waiters.length) {
+      const waiter = this.waiters.shift();
+      if (waiter.settled || waiter.signal?.aborted) {
+        if (!waiter.settled) waiter.onAbort();
+        continue;
+      }
+      waiter.settled = true;
+      waiter.signal?.removeEventListener("abort", waiter.onAbort);
+      this.inFlight += 1;
+      waiter.resolve();
+    }
+  }
+
+  reset() {
+    this.inFlight = 0;
+    this.waiters = [];
+  }
 }
 
-function releaseSlot() {
-  inFlight -= 1;
-  const next = waiters.shift();
-  if (next) next();
-}
+const postProcessorGate = new PostProcessorGate(DEFAULT_MAX_CONCURRENCY);
 
 export function getInFlightCount() {
-  return inFlight;
+  return postProcessorGate.inFlight;
 }
 
 export function _resetConcurrencyForTests() {
-  inFlight = 0;
-  waiters = [];
+  postProcessorGate.reset();
 }
 
 function truncateTail(text, maxChars) {
@@ -56,16 +98,45 @@ function truncateTail(text, maxChars) {
   return text.slice(-maxChars);
 }
 
-function timeoutFetch(url, options, timeoutMs) {
+async function requestWithTimeout(url, options, timeoutMs, signal, readResponse) {
+  if (signal?.aborted) throw abortReason(signal, "Post-processor request aborted");
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+  let rejectDeadline;
+  let onAbort;
+  const deadlinePromise = new Promise((_, reject) => {
+    rejectDeadline = reject;
+  });
+  const abort = (error) => {
+    if (!controller.signal.aborted) controller.abort(error);
+    rejectDeadline(error);
+  };
+  const timer = setTimeout(() => {
+    abort(new Error(`Post-processor request timed out after ${timeoutMs}ms`));
+  }, timeoutMs);
+
+  if (signal) {
+    onAbort = () => abort(abortReason(signal, "Post-processor request aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  }
+
+  const requestPromise = (async () => {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return readResponse(response);
+  })();
+
+  try {
+    return await Promise.race([requestPromise, deadlinePromise]);
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
 }
 
 /**
- * Transport functions — each takes (entry, input, config, debug) → string.
+ * Transport functions — each takes (entry, input, config, debug, signal) → string.
  */
-async function extractWithChat(entry, inputText, config, debug) {
+async function extractWithChat(entry, inputText, config, debug, signal) {
   const url = `${entry.baseUrl}/chat/completions`;
   const payload = {
     model: entry.model,
@@ -73,54 +144,60 @@ async function extractWithChat(entry, inputText, config, debug) {
     max_tokens: entry.maxTokens ?? DEFAULT_MAX_TOKENS,
     temperature: 0,
   };
-  const res = await timeoutFetch(
+  return requestWithTimeout(
     url,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(entry.headers || {}) },
       body: JSON.stringify(payload),
     },
-    entry.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    entry.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    signal,
+    async (res) => {
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.error(`[post-processor] chat request failed: ${res.status} ${text.slice(0, 500)}`);
+        throw new Error(`chat request failed: ${res.status} ${text.slice(0, 500)}`);
+      }
+      const data = await res.json();
+      const content = data?.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error("empty chat completion: no content in response");
+      }
+      return content;
+    }
   );
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error(`[post-processor] chat request failed: ${res.status} ${text.slice(0, 500)}`);
-    throw new Error(`chat request failed: ${res.status} ${text.slice(0, 500)}`);
-  }
-  const data = await res.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("empty chat completion: no content in response");
-  }
-  return content;
 }
 
-async function extractWithMineru(entry, preparedHtml, config, debug) {
+async function extractWithMineru(entry, preparedHtml, config, debug, signal) {
   const url = `${entry.baseUrl}/extract`;
   const payload = { html: preparedHtml, mode: "auto" };
-  const res = await timeoutFetch(
+  return requestWithTimeout(
     url,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     },
-    entry.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    entry.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    signal,
+    async (res) => {
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.error(`[post-processor] mineru request failed: ${res.status} ${text.slice(0, 500)}`);
+        throw new Error(`mineru request failed: ${res.status} ${text.slice(0, 500)}`);
+      }
+      const data = await res.json();
+      const content = data?.text || data?.result?.documents?.[0]?.text || "";
+      if (!content) {
+        throw new Error("empty mineru response: no text in response");
+      }
+      return content;
+    }
   );
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error(`[post-processor] mineru request failed: ${res.status} ${text.slice(0, 500)}`);
-    throw new Error(`mineru request failed: ${res.status} ${text.slice(0, 500)}`);
-  }
-  const data = await res.json();
-  const content = data?.text || data?.result?.documents?.[0]?.text || "";
-  if (!content) {
-    throw new Error("empty mineru response: no text in response");
-  }
-  return content;
 }
 
-async function extractWithChatImage(entry, imageDataUrl, prompt, config, debug) {
+async function extractWithChatImage(entry, imageDataUrl, prompt, config, debug, signal) {
   const url = `${entry.baseUrl}/chat/completions`;
   const payload = {
     model: entry.model,
@@ -136,26 +213,29 @@ async function extractWithChatImage(entry, imageDataUrl, prompt, config, debug) 
     max_tokens: entry.maxTokens ?? DEFAULT_MAX_TOKENS,
     temperature: 0,
   };
-  const res = await timeoutFetch(
+  return requestWithTimeout(
     url,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(entry.headers || {}) },
       body: JSON.stringify(payload),
     },
-    entry.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    entry.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    signal,
+    async (res) => {
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.error(`[post-processor] chat image request failed: ${res.status} ${text.slice(0, 500)}`);
+        throw new Error(`chat request failed: ${res.status} ${text.slice(0, 500)}`);
+      }
+      const data = await res.json();
+      const content = data?.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error("empty chat completion: no content in response");
+      }
+      return content;
+    }
   );
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error(`[post-processor] chat image request failed: ${res.status} ${text.slice(0, 500)}`);
-    throw new Error(`chat request failed: ${res.status} ${text.slice(0, 500)}`);
-  }
-  const data = await res.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("empty chat completion: no content in response");
-  }
-  return content;
 }
 
 function interpolateInput(bodyText, input) {
@@ -163,43 +243,46 @@ function interpolateInput(bodyText, input) {
   return bodyText.split('"{{input}}"').join(encoded).split("{{input}}").join(encoded);
 }
 
-async function extractWithApi(entry, input, config, debug) {
+async function extractWithApi(entry, input, config, debug, signal) {
   const url = `${entry.baseUrl}${entry.path || ""}`;
   const method = (entry.method || "POST").toUpperCase();
   const bodyTemplate =
     typeof entry.body === "string"
       ? entry.body
       : JSON.stringify(entry.body ?? { input: "{{input}}" });
-  const res = await timeoutFetch(
+  return requestWithTimeout(
     url,
     {
       method,
       headers: { "Content-Type": "application/json", ...(entry.headers || {}) },
       body: interpolateInput(bodyTemplate, input),
     },
-    entry.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    entry.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    signal,
+    async (res) => {
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.error(`[post-processor] api request failed: ${res.status} ${text.slice(0, 500)}`);
+        throw new Error(`api request failed: ${res.status} ${text.slice(0, 500)}`);
+      }
+      if (entry.outputType === "text") {
+        const raw = await res.text();
+        if (!raw.trim()) throw new Error("empty api response: no body");
+        return raw;
+      }
+      const data = await res.json();
+      const field = entry.outputField || API_DEFAULT_OUTPUT_FIELD;
+      let content = data;
+      for (const part of field.split(".")) {
+        if (content == null) break;
+        content = content[part];
+      }
+      if (typeof content !== "string" || !content.trim()) {
+        throw new Error(`empty api response: outputField "${field}" not found`);
+      }
+      return content;
+    }
   );
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error(`[post-processor] api request failed: ${res.status} ${text.slice(0, 500)}`);
-    throw new Error(`api request failed: ${res.status} ${text.slice(0, 500)}`);
-  }
-  if (entry.outputType === "text") {
-    const raw = await res.text();
-    if (!raw.trim()) throw new Error("empty api response: no body");
-    return raw;
-  }
-  const data = await res.json();
-  const field = entry.outputField || API_DEFAULT_OUTPUT_FIELD;
-  let content = data;
-  for (const part of field.split(".")) {
-    if (content == null) break;
-    content = content[part];
-  }
-  if (typeof content !== "string" || !content.trim()) {
-    throw new Error(`empty api response: outputField "${field}" not found`);
-  }
-  return content;
 }
 
 // ── Transport Registry ───────────────────────────────────────────────────────
@@ -219,8 +302,9 @@ const TRANSPORTS = {
  * @param {string} opts.model       - Model ID from POST_PROCESSOR_MODELS.
  * @param {object} opts.config      - manager.config.
  * @param {boolean} [opts.debug]    - Enable debug logging.
+ * @param {AbortSignal} [opts.signal] - Cancels queued and active work.
  */
-export async function runPostProcessor({ text, html, screenshot, model, config, debug }) {
+export async function runPostProcessor({ text, html, screenshot, model, config, debug, signal }) {
   const entry = getPostProcessorModels(config).find((item) => item.id === model);
   if (!entry) {
     throw new Error(`Post-processor "${model}" is not configured — set POST_PROCESSOR_MODELS`);
@@ -229,28 +313,28 @@ export async function runPostProcessor({ text, html, screenshot, model, config, 
   if (payloads.length !== 1) {
     throw new Error("exactly one of html / text / screenshot is required");
   }
-  return acquireSlot().then(async () => {
-    try {
-      if (debug) {
-        console.log(`[post-processor] runPostProcessor: model=${model} kind=${entry.kind} input=${html ? "html" : text ? "text" : "screenshot"}`);
-      }
-
-      // Screenshot → image variant of chat transport (regardless of kind).
-      if (screenshot) {
-        const dataUrl = screenshot.startsWith("data:") ? screenshot : `data:image/jpeg;base64,${screenshot}`;
-        return await extractWithChatImage(entry, dataUrl, entry.prompt || DEFAULT_SCREENSHOT_PROMPT, config, debug);
-      }
-
-      // Text/HTML → dispatch by kind.
-      const transport = TRANSPORTS[entry.kind] || TRANSPORTS.chat;
-      if (entry.kind === "mineru") {
-        const preparedHtml = String(html ?? text ?? "").slice(0, MINERU_MAX_INPUT_CHARS);
-        return await transport(entry, preparedHtml, config, debug);
-      }
-      const prepared = truncateTail(html ?? text ?? "", entry.maxInputChars ?? DEFAULT_MAX_INPUT_CHARS);
-      return await transport(entry, prepared, config, debug);
-    } finally {
-      releaseSlot();
+  await postProcessorGate.acquire(signal);
+  try {
+    if (signal?.aborted) throw abortReason(signal, "Post-processor aborted");
+    if (debug) {
+      console.log(`[post-processor] runPostProcessor: model=${model} kind=${entry.kind} input=${html ? "html" : text ? "text" : "screenshot"}`);
     }
-  });
+
+    // Screenshot → image variant of chat transport (regardless of kind).
+    if (screenshot) {
+      const dataUrl = screenshot.startsWith("data:") ? screenshot : `data:image/jpeg;base64,${screenshot}`;
+      return await extractWithChatImage(entry, dataUrl, entry.prompt || DEFAULT_SCREENSHOT_PROMPT, config, debug, signal);
+    }
+
+    // Text/HTML → dispatch by kind.
+    const transport = TRANSPORTS[entry.kind] || TRANSPORTS.chat;
+    if (entry.kind === "mineru") {
+      const preparedHtml = String(html ?? text ?? "").slice(0, MINERU_MAX_INPUT_CHARS);
+      return await transport(entry, preparedHtml, config, debug, signal);
+    }
+    const prepared = truncateTail(html ?? text ?? "", entry.maxInputChars ?? DEFAULT_MAX_INPUT_CHARS);
+    return await transport(entry, prepared, config, debug, signal);
+  } finally {
+    postProcessorGate.release();
+  }
 }

@@ -1,19 +1,35 @@
-# AI Extractors
+# Post-processors (AI)
 
-Use AI models to extract clean content from complex pages. Navigator can send page HTML to an LLM, which returns structured markdown.
+Post-processors let you send page HTML or a screenshot to **any AI endpoint** — local Ollama or any ChatGPT-compatible API — and get clean markdown back. Any model that speaks OpenAI `chat/completions` works.
 
-## How It Works
+Configure them in the console:
 
-1. Navigator opens the page in a browser
-2. The full HTML is sent to an AI model
-3. The model extracts and formats the content
-4. You get clean markdown output
+> [Open Settings → POST_PROCESSOR_MODELS](http://localhost:1994/console/manage?focus=POST_PROCESSOR_MODELS){target="_blank"}
 
 If the model fails or isn't configured, Navigator falls back to `html_to_markdown`.
 
-## Configuring AI Models
+## Overview
 
-Add models to `POST_PROCESSOR_MODELS` in your `.env`:
+```
+Extractor ──┬── HTML ──┐
+            └── Image ─┤
+                       ↓
+                Post-processor
+                       │
+            ┌──────────┴──────────┐
+            │ Processor           │
+            ├─ Ollama ────────────┤
+            └─ MinerU ────────────┘
+                       │
+                       ↓
+                 Output (markdown) ──→ User
+```
+
+The extractor provides **HTML or an image**, the post-processor forwards it to the processor — either **Ollama** or **MinerU** — and returns markdown.
+
+## Configuring Post-processors
+
+Add models to `POST_PROCESSOR_MODELS` in your `.env` or use the console link above. Each entry is a JSON object:
 
 ```bash
 POST_PROCESSOR_MODELS=[{"id":"reader_lm","label":"reader-lm","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]
@@ -49,19 +65,13 @@ Works with reader-lm, GPT-4, Claude, or any OpenAI-compatible API.
 
 ### MinerU
 
-POST `{html}` to `<baseUrl>/extract`:
+MinerU is an open-source document parsing engine that turns PDFs, images, and Office docs into LLM-ready markdown and JSON. It runs in its own container with GPU support for fast, local extraction.
 
-```json
-{
-  "html": "<html>...</html>"
-}
-```
-
-Uses the MinerU-HTML GPU sidecar for extraction. See [MinerU Sidecar](/guides/extraction/ai-extractors#mineru-sidecar) below.
+Provided by Navigator — see the [MinerU page](/guides/extraction/mineru) to set it up. Sidecar container `navigator-mineru`, built on [MinerU](https://github.com/opendatalab/MinerU).
 
 ### Custom API
 
-Custom endpoint with configurable body and output field:
+Any API can be used as a post-processor — customize how the request is built and how the response is parsed. The extractor's output is sent to the post-processor, and the post-processor's response is sent back to the agent.
 
 ```json
 {
@@ -73,64 +83,22 @@ Custom endpoint with configurable body and output field:
 }
 ```
 
-## Using AI Extractors
+`body` controls the request payload (`{{html}}` is replaced with the page HTML), `outputField` picks the field in the response, and `outputType` sets how it is parsed — any API that follows this can be used.
 
-In the web console, select the model from the Extractor dropdown when testing domain hints.
+## Using Post-processors
 
-Via MCP, use the model's `id` as the format:
-
-```json
-{
-  "urls": ["https://example.com/complex-page"],
-  "format": "reader_lm"
-}
-```
-
-## MinerU Sidecar
-
-The MinerU-HTML sidecar is a separate Docker container with GPU acceleration:
-
-```yaml
-# In docker-compose.yml
-navigator-mineru:
-  image: navigator-mineru:latest
-  ports:
-    - "8000:8000"
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
-```
-
-The pipeline:
-1. Simplify HTML (strip noise)
-2. Build extraction prompt
-3. LLM classification
-4. Extract main content
-5. Convert to markdown
-
-For large pages (300KB+), it falls back to trafilatura automatically.
+Select the model in the web console — **Extraction Methods** dropdown when testing domain hints, or set `default.postProcessor` in your domain hint (`domain: "*"` for the default, or per-site).
 
 ## Fallback Behavior
 
-If the AI model fails:
-- Connection error → silent fallback to `html_to_markdown`
-- Timeout → silent fallback
-- Empty response → silent fallback
-- Model not configured → silent fallback
+If the post-processor is unreachable or fails, the extractor's output is passed directly to the agent — whatever the extractor returned is what you get.
+
+- Connection error → fallback to extractor output
+- Timeout → fallback to extractor output
+- Empty response → fallback to extractor output
+- Model not configured → fallback to extractor output
 
 You'll see a warning in the server logs, but the fetch still succeeds.
-
-## Performance
-
-| Page Size | Model | Time |
-|-----------|-------|------|
-| 100KB Wikipedia | reader-lm-0.5b | ~4s |
-| 100KB Wikipedia | MinerU-HTML | ~2s |
-| 300KB+ | MinerU-HTML | Falls back to trafilatura (~0.6s) |
 
 ## Tips
 

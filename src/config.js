@@ -397,7 +397,7 @@ export async function loadConfig() {
     mcpApiKeys: parseApiKeys(process.env.MCP_API_KEYS),
     mcpAllowUnauthenticated: parseBoolean(process.env.MCP_ALLOW_UNAUTHENTICATED, true),
     enableStdioMcp: parseBoolean(process.env.ENABLE_STDIO_MCP, true),
-    enableDevtoolsMcp: parseBoolean(process.env.ENABLE_DEVTOOLS_MCP, false),
+    enableDevtoolsMcp: parseBoolean(process.env.ENABLE_DEVTOOLS_MCP, true),
     enableScreenshotDownloadLink: parseBoolean(process.env.ENABLE_SCREENSHOT_DOWNLOAD_LINK, false),
     screenshotPathPrefix: screenshotPathPrefix.trim() || null,
     enableWebConsole: parseBoolean(process.env.ENABLE_WEB_CONSOLE, true),

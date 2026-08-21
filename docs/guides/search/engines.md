@@ -1,6 +1,6 @@
 # Search Engines
 
-Navigator has 12 search routes across 5 engines and 3 browser backends. The automatic router picks the best one for each query.
+Navigator has 12 search routes across 7 engines and 3 browser backends. The automatic router picks the best one for each query.
 
 ## Available Engines
 
@@ -10,6 +10,8 @@ Navigator has 12 search routes across 5 engines and 3 browser backends. The auto
 | Google | Browser | `google_cb`, `google_ch`, `google_lp` | Best coverage, may block automation |
 | Bing | Browser | `bing_cb`, `bing_lp` | Good general coverage |
 | Brave | Browser | `brave_cb` | Privacy-focused, growing index |
+| Startpage | Browser | `startpage_cb` | Google results via privacy proxy |
+| Yahoo | Browser | `yahoo_cb` | General web search |
 | Mojeek | Browser | `mojeek_lp` | Independent, UK-based |
 
 ## Route Naming
@@ -30,17 +32,33 @@ Routes are named `{engine}_{backend}`:
 | `chromium` | Standard headless Chromium | When CloakBrowser isn't available |
 | `lightpanda` | Lightweight CDP browser | Shared pool, low memory |
 
-## Automatic Routing
+## Circuit Breakers
 
-With `select_best` (default), Navigator:
+When a search engine signals bot detection — captcha, blocked page, or timeout — Navigator detects it and puts that route on cooldown. During cooldown:
 
-1. Checks which routes are healthy
-2. Ranks them by recent performance (success rate, speed, result count)
-3. Tries the best route first
-4. Falls back to the next route on failure
-5. Puts failed routes on cooldown (circuit breaker)
+- The route is skipped for automatic selection
+- It can still be used if explicitly requested
+- After cooldown, it's tried again with a probe request
+- If the probe succeeds, the route rejoins the pool
 
-You almost never need to specify an engine manually.
+View circuit breaker status at `/console` or via the `/health` endpoint.
+
+## Search Windows
+
+Navigator maintains "search windows" — pre-opened browser tabs ready for search. This makes subsequent searches faster because the browser doesn't need to open a new tab each time.
+
+- Windows are pooled by engine backend
+- Idle windows are cleaned up after a timeout
+
+The pool size is bounded by two settings:
+
+Minimum sticky windows kept warm:
+
+> `SEARCH_KEEP_MIN_WORKING_WINDOWS=2` — default 2, always kept open per pool
+
+Maximum pool size:
+
+> `SEARCH_MAX_WORKING_WINDOWS=10` — default 10, hard cap per pool
 
 ## Manual Engine Selection
 
@@ -57,24 +75,17 @@ This runs the requested route even if it's not in the automatic pool.
 
 Available route names: `duckduckgo_api`, `duckduckgo_cb`, `duckduckgo_ch`, `google_cb`, `google_ch`, `google_lp`, `bing_cb`, `bing_lp`, `brave_cb`, `mojeek_lp`, `startpage_cb`, `yahoo_cb`.
 
-## Circuit Breakers
+## Automatic Routing
 
-When a route fails, it enters a cooldown period (default: 5 minutes). During cooldown:
+With `select_best` (default), Navigator:
 
-- The route is skipped for automatic selection
-- It can still be used if explicitly requested
-- After cooldown, it's tried again with a probe request
-- If the probe succeeds, the route rejoins the pool
+1. Checks which routes are healthy
+2. Ranks them by recent performance (success rate, speed, result count)
+3. Tries the best route first
+4. Falls back to the next route on failure
+5. Puts failed routes on cooldown (circuit breaker)
 
-View circuit breaker status at `/console` or via the `/health` endpoint.
-
-## Search Windows
-
-Navigator maintains "search windows" — pre-opened browser tabs ready for search. This makes subsequent searches faster because the browser doesn't need to open a new tab each time.
-
-- Windows are pooled by engine backend
-- Idle windows are cleaned up after a timeout
-- The number of windows is configurable via `SEARCH_MAX_WORKING_WINDOWS`
+You almost never need to specify an engine manually.
 
 ## Tips
 

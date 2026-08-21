@@ -10,7 +10,7 @@ const active = useSharedTabs(props.group);
 </script>
 
 <template>
-  <div v-show="active === value" class="vp-tab-panel">
+  <div v-show="active === value">
     <slot />
   </div>
 </template>

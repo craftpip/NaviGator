@@ -35,7 +35,7 @@ cd navigator
 cp .env.example .env
 ```
 
-The defaults work out of the box. No changes needed for a basic setup.
+The defaults work for a local setup. Authentication is required — you'll create an API key in the next steps.
 
 Start the server:
 
@@ -89,54 +89,73 @@ curl -s http://localhost:1994/health
 You should see:
 
 ```json
-{"ok":true,"backend":"cloakbrowser",...}
+{"ok":true,"browserConnected":true,"headless":true,"enableDevtoolsMcp":true,...}
 ```
 
-## Open the Web Console
+## Create an API Key
 
-Visit **http://localhost:1994/console** in your browser. You'll see:
-
-- Engine health status (which search engines are working)
-- Browser instance info
-- Live activity feed
-- Configuration editor
-- Domain hints editor
+Open **http://localhost:1994/console/keys** in your browser and create an API key. Copy it — you'll need it in the next step.
 
 ## Connect Your MCP Client
 
-<Tabs>
-<Tab value="docker">
+Pick your client and paste the config. Replace `your-api-key-here` with the key you just created.
 
-Add this to your MCP client configuration:
+<TabBar values="universal,hermes,openclaw" labels="Universal,Hermes,OpenClaw" group="client" />
+
+<Tabs group="client">
+
+<Tab value="universal" group="client">
+
+Every MCP client supports this format — including OpenCode, Claude Desktop, Cursor, and Windsurf:
 
 ```json
 {
   "mcpServers": {
     "navigator": {
       "transport": "http",
-      "url": "http://localhost:1994/mcp"
+      "url": "http://localhost:1994/mcp",
+      "headers": {
+        "Authorization": "Bearer your-api-key-here"
+      }
     }
   }
 }
+```
+
+Save it to wherever your client keeps its MCP servers file.
+
+</Tab>
+<Tab value="hermes" group="client">
+
+Add to `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  navigator:
+    url: "http://localhost:1994/mcp"
+    headers:
+      Authorization: "Bearer your-api-key-here"
 ```
 
 </Tab>
-<Tab value="nodejs">
+<Tab value="openclaw" group="client">
 
-Add this to your MCP client configuration:
+Add to your OpenClaw config:
 
-```json
+```json5
 {
-  "mcpServers": {
-    "navigator": {
-      "command": "node",
-      "args": ["/absolute/path/to/navigator/src/mcp-server.js"]
-    }
-  }
+  mcp: {
+    servers: {
+      navigator: {
+        url: "http://localhost:1994/mcp",
+        transport: "streamable-http",
+      },
+    },
+  },
 }
 ```
 
-Replace `/absolute/path/to/navigator` with the actual path on your system.
+Or add it from the Control UI: **Settings → MCP → Add server**, transport **Streamable HTTP**, URL `http://localhost:1994/mcp`.
 
 </Tab>
 </Tabs>
@@ -150,6 +169,8 @@ That's it. Your agent can now search the web, read pages, and take screenshots.
 | MCP Server | 1994 | Tool calls and HTTP endpoints |
 | Web Console | 1994/console | Management UI |
 | noVNC (optional) | 1996 | Remote desktop browser |
+
+<TabShow value="nodejs">
 
 ## Development Mode
 
@@ -166,25 +187,44 @@ npm test
 npm run lint
 ```
 
+</TabShow>
+
 ## Troubleshooting
 
-**Server won't start:**
-```bash
-# Docker
-docker compose logs navigator
+<Tabs>
 
-# Node.js
-# Check the terminal output for errors
+<Tab value="docker">
+
+**Container won't start:**
+```bash
+docker compose logs navigator
 ```
 
 **Port 1994 already in use:**
 Change `MCP_API_PORT` in `.env` and update your client config.
 
 **Browser fails to launch:**
-The Docker image includes Chromium. If running without Docker, ensure Chromium is installed and `CHROME_PATH` is set correctly. Check that your system has enough memory (2GB+ recommended).
+The Docker image includes Chromium. Ensure your system has enough memory (2GB+ recommended).
+
+</Tab>
+
+<Tab value="nodejs">
+
+**Server won't start:**
+Check the terminal output for errors and ensure all dependencies are installed.
+
+**Port 1994 already in use:**
+Change `MCP_API_PORT` in your environment and update your client config.
+
+**Browser fails to launch:**
+Ensure Chromium is installed and `CHROME_PATH` is set correctly. Check that your system has enough memory (2GB+ recommended).
+
+</Tab>
+
+</Tabs>
 
 ## Next Steps
 
 - [First Search](/guides/first-search) -- Test your first web search
-- [Client Configuration](/guides/client-config) -- Set up Claude Desktop, Cursor, or other clients
+- [Development Tools](/guides/dev-tools) -- Try the browser devtools
 - [Self-Hosting](/guides/self-hosting/overview) -- Production deployment guide

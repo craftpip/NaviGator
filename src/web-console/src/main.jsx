@@ -2850,7 +2850,7 @@ function BlockRowEditor({ block, postProcessorModels = [], onChange, onRemove })
       {isLeaf ? (
         <div className="hint-options-grid">
           <div className="hint-option">
-            <span className="hint-option-name">Extractor</span>
+            <span className="hint-option-name">Extraction Methods</span>
             <select value={block.format || "text"} onChange={(event) => set("format", event.target.value)}>
               {HINT_BLOCK_FORMATS.map((format) => (
                 <option key={format} value={format}>
@@ -3913,7 +3913,7 @@ function HintEditorPane({ index, initial, postProcessorModels = [], onClose, onS
                     />
                     <div className="hint-options-grid">
                       <div className="hint-option">
-                        <span className="hint-option-name">Extractor</span>
+                        <span className="hint-option-name">Extraction Methods</span>
                         <select
                           value={hint.default?.format || "readability_to_markdown"}
                           onChange={(event) => patchDefault({ format: event.target.value })}

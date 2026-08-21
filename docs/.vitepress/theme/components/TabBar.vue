@@ -4,6 +4,7 @@ import { useSharedTabs } from "./shared-tabs.js";
 const props = defineProps({
   values: { type: String, required: true },
   labels: { type: String, required: true },
+  group: { type: String, default: "install" },
 });
 
 const items = props.values.split(",").map((v, i) => ({
@@ -11,11 +12,11 @@ const items = props.values.split(",").map((v, i) => ({
   label: (props.labels.split(",")[i] || v).trim(),
 }));
 
-const active = useSharedTabs();
+const active = useSharedTabs(props.group);
 </script>
 
 <template>
-  <div class="vp-tab-bar">
+  <div class="vp-tab-bar" :class="`vp-tabs-group-${group}`">
     <button
       v-for="item in items"
       :key="item.value"

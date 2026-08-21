@@ -67,30 +67,41 @@ export default defineConfig({
         items: [
           { text: "Getting Started", link: "/guides/getting-started" },
           { text: "First Search", link: "/guides/first-search" },
-          { text: "Client Configuration", link: "/guides/client-config" },
+          { text: "Development Tools", link: "/guides/dev-tools" },
+          { text: "Agent Instructions", link: "/guides/agent-instructions" },
         ],
       },
       {
-        text: "Search",
+        text: "Web Search Tool",
         collapsible: true,
         collapsed: true,
         items: [
           { text: "Overview", link: "/guides/search/overview" },
+          { text: "Search Queue", link: "/guides/search/routing" },
           { text: "Engines", link: "/guides/search/engines" },
           { text: "Results", link: "/guides/search/results" },
           { text: "Tips", link: "/guides/search/tips" },
         ],
       },
       {
-        text: "Extraction",
+        text: "Web Fetch Tool",
         collapsible: true,
         collapsed: true,
         items: [
           { text: "Overview", link: "/guides/extraction/overview" },
-          { text: "Formats", link: "/guides/extraction/formats" },
-          { text: "Links", link: "/guides/extraction/links" },
-          { text: "AI Extractors", link: "/guides/extraction/ai-extractors" },
+          { text: "Extractors", link: "/guides/extraction/formats" },
           { text: "Domain Hints", link: "/guides/extraction/domain-hints" },
+        ],
+      },
+      {
+        text: "Post-processors",
+        collapsible: true,
+        collapsed: true,
+        items: [
+          { text: "Overview", link: "/guides/extraction/ai-extractors" },
+          { text: "Ollama", link: "/guides/extraction/ollama" },
+          { text: "MinerU", link: "/guides/extraction/mineru" },
+          { text: "Custom API", link: "/guides/extraction/custom-api" },
         ],
       },
       {
