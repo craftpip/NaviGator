@@ -2136,6 +2136,28 @@ function Tools() {
     setToolResponse(toolName, {});
   };
 
+  const downloadSvg = (svgString, index) => {
+    const blob = new Blob([svgString], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    let name = "";
+    try {
+      name = (svgString.match(/data-page-title="([^"]*)"/) || [])[1] || "";
+    } catch {}
+    const slug =
+      String(name)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 40) || "page";
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${slug}${index ? `-${index + 1}` : ""}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <section className="tools">
       {error ? (
@@ -2225,12 +2247,20 @@ function Tools() {
                   />
                 ))}
                 {(response.svgs || []).map((svgString, index) => (
-                  <div
-                    key={`svg-${index}`}
-                    className="svg-preview"
-                    dangerouslySetInnerHTML={svgHtmlObjects[index]}
-                    title={`SVG preview ${index + 1} — ${svgString.length.toLocaleString()} chars`}
-                  />
+                  <div key={`svg-${index}`} className="svg-preview-wrap">
+                    <button
+                      className="svg-download"
+                      onClick={() => downloadSvg(svgString, index)}
+                      title="Download this SVG file"
+                    >
+                      Download SVG
+                    </button>
+                    <div
+                      className="svg-preview"
+                      dangerouslySetInnerHTML={svgHtmlObjects[index]}
+                      title={`SVG preview ${index + 1} — ${svgString.length.toLocaleString()} chars`}
+                    />
+                  </div>
                 ))}
                 <p className="note">
                   Requests run against the MCP API with the console's internal

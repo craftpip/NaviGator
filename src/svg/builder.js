@@ -4,6 +4,57 @@ import { escapeXml, clampRadius, parseRadius, parseRadii, radiiEqual, buildRadiu
 import { parseSimpleLinearGradient, parseSimpleRadialGradient, parseBoxShadows } from './style.js';
 import { measureTextWidth, maxCharsFitting, appendEllipsis, wrapTextToWidth, wrapWithWordWidths } from './text.js';
 
+// Collapse captured word/glyph rects into compact per-line runs: one <text> per
+// contiguous run instead of one element per fragment. The run anchors at its
+// first fragment's x, baseline = rangeTop + ascent (true-baseline model), and
+// textLength pins the run's browser-measured width — under viewer font
+// substitution spacing is redistributed to hit that exact width instead of
+// drifting cumulatively. Runs split only where gaps are irregular (tab jumps,
+// wide justification stretches), which stay exact per-word <text> elements.
+function emitExactRuns(parts, el, fontAttrs, fill, opacity, fbaEl, fontSize) {
+  const sorted = [...el.wordRects].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+  const lineTol = Math.max(1.5, fontSize * 0.12);
+  const spaceW = Number(el.spaceWidth) || fontSize * 0.27;
+  const gapSplit = Math.max(spaceW * 2.5, fontSize * 0.5);
+  const lines = [];
+  for (const f of sorted) {
+    const cur = lines[lines.length - 1];
+    if (!cur || Math.abs(f.y - cur[0].y) > lineTol) lines.push([f]);
+    else cur.push(f);
+  }
+  const emitRun = (r) => {
+    const x0 = Math.round(r[0].x * 10) / 10;
+    const yB = Math.round((r[0].y + fbaEl) * 10) / 10;
+    // per-WORD captures join with real spaces; per-GLYPH captures (letterSpacing/CJK)
+    // have no space fragments — rebuild them from geometry: a gap larger than a
+    // glyph step was a space in the source text
+    const spaceGap = Math.max(fontSize * 0.1, 1.2);
+    let txt = r[0].word;
+    for (let i = 1; i < r.length; i++) {
+      const prevW = r[i - 1];
+      let sep;
+      if (prevW.word.length > 1 && r[i].word.length > 1) sep = " ";
+      else if (prevW.word.length === 1 || r[i].word.length === 1) {
+        sep = (r[i].x - (prevW.x + prevW.width)) > spaceGap ? " " : "";
+      } else sep = "";
+      txt += sep + r[i].word;
+    }
+    const w = Math.round(((r[r.length - 1].x + r[r.length - 1].width) - r[0].x) * 10) / 10;
+    const tl = r.length > 1 ? ` textLength="${w}" lengthAdjust="spacing"` : "";
+    parts.push(`  <text x="${x0}" y="${yB}"${tl} ${fontAttrs} fill="${fill}" opacity="${opacity}">${escapeXml(txt)}</text>`);
+  };
+  for (const line of lines) {
+    line.sort((a, b) => a.x - b.x);
+    let run = [line[0]];
+    for (let i = 1; i < line.length; i++) {
+      const prev = run[run.length - 1];
+      if ((line[i].x - (prev.x + prev.width)) > gapSplit) { emitRun(run); run = [line[i]]; }
+      else run.push(line[i]);
+    }
+    emitRun(run);
+  }
+}
+
 function formatLegend(elements, options = {}) {
   const includeSelector = options.includeSelector !== false;
   const includeXpath = options.includeXpath !== false;
@@ -669,10 +720,8 @@ image { pointer-events: none; }
             ...(fontStyle2 === "italic" || fontStyle2 === "oblique" ? [`font-style="italic"`] : []),
             ...(letterSpacingNum !== 0 ? [`letter-spacing="${letterSpacingNum}"`] : []),
           ].join(" ");
-          for (const wr of el.wordRects) {
-            // wr.y is top of word's Range rect, hanging baseline => y is top, keeps exact y and per-glyph letterSpacing via word width
-            parts.push(`  <text x="${wr.x}" y="${Math.round((Number(wr.y) + fbaEl) * 10) / 10}" ${fontAttrs2} fill="${textFill2}" opacity="${textOpacity2}">${escapeXml(wr.word)}</text>`);
-          }
+          // wr.y is top of word's Range rect; baseline = wr.y + ascent (true-baseline model)
+          emitExactRuns(parts, el, fontAttrs2, textFill2, textOpacity2, fbaEl, fontSize);
           // skip the rest of the text handling for this element — wordRects already rendered
           // still need to handle title below, so jump to after text block
           // we do this by setting lines to empty and handling title separately
@@ -698,9 +747,7 @@ image { pointer-events: none; }
             ...(fontStyle2 === "italic" || fontStyle2 === "oblique" ? [`font-style="italic"`] : []),
             ...(letterSpacingNum !== 0 ? [`letter-spacing="${letterSpacingNum}"`] : []),
           ].join(" ");
-          for (const wr of el.wordRects) {
-            parts.push(`  <text x="${wr.x}" y="${Math.round((Number(wr.y) + fbaEl) * 10) / 10}" ${fontAttrs2} fill="${textFill2}" opacity="${textOpacity2}">${escapeXml(wr.word)}</text>`);
-          }
+          emitExactRuns(parts, el, fontAttrs2, textFill2, textOpacity2, fbaEl, fontSize);
           const titleText2 = escapeXml((textRaw || value || alt || href || selector || tag).slice(0, 300));
           if (titleText2) parts.push(`  <title>${titleText2}</title>`);
           parts.push(`</g>`);
@@ -721,9 +768,7 @@ image { pointer-events: none; }
             ...(fontStyle2 === "italic" || fontStyle2 === "oblique" ? [`font-style="italic"`] : []),
             ...(letterSpacingNum !== 0 ? [`letter-spacing="${letterSpacingNum}"`] : []),
           ].join(" ");
-          for (const wr of el.wordRects) {
-            parts.push(`  <text x="${wr.x}" y="${Math.round((Number(wr.y) + fbaEl) * 10) / 10}" ${fontAttrs2} fill="${textFill2}" opacity="${textOpacity2}">${escapeXml(wr.word)}</text>`);
-          }
+          emitExactRuns(parts, el, fontAttrs2, textFill2, textOpacity2, fbaEl, fontSize);
           const titleText2b = escapeXml((textRaw || value || alt || href || selector || tag).slice(0, 300));
           if (titleText2b) parts.push(`  <title>${titleText2b}</title>`);
           parts.push(`</g>`);
