@@ -5,7 +5,7 @@
     "pageType": "default",
     "comment": "Default extraction for all URLs. Edit in the Domain hints panel.",
     "default": {
-      "format": "readability_to_markdown",
+      "format": "trafilatura_to_markdown",
       "stabilizeStrategy": "network_idle",
       "waitForSelector": [],
       "waitForContent": [],
