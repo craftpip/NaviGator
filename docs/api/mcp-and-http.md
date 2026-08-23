@@ -2,14 +2,14 @@
 
 ## MCP Transport
 
-`src/mcp-server.js` supports two transports.
+`src/mcp-server.js` supports two transports — **Streamable HTTP is the default**.
 
 | Transport | Enablement | Use |
 |---|---|---|
-| stdio | `ENABLE_STDIO_MCP` | A local MCP client starts `node src/mcp-server.js` |
-| Streamable HTTP | `ENABLE_HTTP_MCP=1` | Clients connect to `POST /mcp` |
+| **Streamable HTTP** | `ENABLE_HTTP_MCP=1` (default in Compose) | **Recommended** — clients connect to `POST /mcp` |
+| stdio | `ENABLE_STDIO_MCP=1` | Legacy — a local MCP client starts `node src/mcp-server.js` |
 
-HTTP supports both stateless JSON-RPC calls and session-based Streamable HTTP. Session POST requests must carry the exact `Mcp-Session-Id` returned by their transport. The server sends raw SSE comment frames every 30 seconds to keep idle session streams alive without generating JSON-RPC notifications.
+Streamable HTTP supports both stateless JSON-RPC calls and session-based Streamable HTTP. Session POST requests must carry the exact `Mcp-Session-Id` returned by their transport. The server sends raw SSE comment frames every 30 seconds to keep idle session streams alive without generating JSON-RPC notifications. Use Streamable HTTP for all new integrations — stdio is not recommended.
 
 ## Web Tools
 

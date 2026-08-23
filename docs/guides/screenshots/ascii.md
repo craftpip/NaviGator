@@ -1,18 +1,32 @@
-# ASCII Renders
+# ASCII Renders <Badge type="danger" text="Disabled by default" />
 
 `web_page_ascii` captures a page as a terminal-friendly render using Unicode half-block characters. See page layout, colors, and element positions without leaving the terminal.
 
-## Basic Usage
+> **Disabled by default** — remove `web_page_ascii` from `DISABLE_TOOLS` in `.env` / Configs ([http://localhost:1994/console/manage](http://localhost:1994/console/manage)) and restart (`docker compose up -d`) to enable.
 
-```json
-{
-  "url": "https://example.com"
-}
+## Flow
+
+```
+URL ───→│ Browser → Screenshot → Downscale → ASCII → Response │──→ User
+        └──────────────────────────────────────────────────────┘
 ```
 
-Returns a code block with the visual render plus an element legend.
+Browser renders the page, takes a screenshot, downscales it to a character grid, maps pixel pairs to half-block cells, and returns the render plus an element legend.
 
-## What You Get
+## Request
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | `string` | — | Single URL to render (use this OR `ref_id`) |
+| `ref_id` | `number` | — | Reference from a prior `web_search` |
+| `width` | `number` | `100` | Render width in characters (40–200) |
+| `fullPage` | `boolean` | `false` | Capture full scrollable page |
+| `mode` | `string` | `color_ansi` | `color_ansi`, `grayscale_ansi`, or `ascii` |
+| `elementLimit` | `number` | `25` | Maximum annotated elements (1–100) |
+| `includeSelector` | `boolean` | `true` | Include CSS selectors in the legend |
+| `includeXpath` | `boolean` | `true` | Include XPaths in the legend |
+
+## Response
 
 ```
 ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
@@ -31,19 +45,6 @@ Returns a code block with the visual render plus an element legend.
 ```
 
 The `[N]` markers show where interactive elements are on the page.
-
-## Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `url` | `string` | — | Single URL to render (use this OR `ref_id`) |
-| `ref_id` | `number` | — | Reference from a prior `web_search` |
-| `width` | `number` | `100` | Render width in characters (40–200) |
-| `fullPage` | `boolean` | `false` | Capture full scrollable page |
-| `mode` | `string` | `color_ansi` | `color_ansi`, `grayscale_ansi`, or `ascii` |
-| `elementLimit` | `number` | `25` | Maximum annotated elements (1–100) |
-| `includeSelector` | `boolean` | `true` | Include CSS selectors in the legend |
-| `includeXpath` | `boolean` | `true` | Include XPaths in the legend |
 
 ## Render Modes
 

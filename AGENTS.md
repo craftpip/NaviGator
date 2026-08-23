@@ -124,6 +124,33 @@ Captures a webpage as a chafa-style half-block render — the real screenshot do
 
 ---
 
+### `web_page_svg`
+
+Captures a webpage as a structured SVG render — every element is a filled `<rect>` (real bg/border/radius colors) plus `<text>` laid out with the page's own font metrics, and `<image href>` for img/canvas content. Coordinates are document-relative CSS pixels (`data-x/y/width/height` on every `<g>`, `viewBox` = page size), so the file doubles as a layout database for geometry math. Independent of `web_page_ascii` (no pixels, no legend — pure vector).
+
+**Input:**
+
+- `url: string` | `urls: string[]` | `ref_id: number` | `ref_ids: number[]`
+- `targetId: string` — Screenshot an existing persistent devtools tab
+- `viewport: { width, height }`
+- `fullPage: boolean` (default `false`) — Capture full scrollable page (tall pages clip without it)
+- `elementLimit: number` (default `100`, 1–500) — Max elements captured
+- `includeSelector` / `includeXpath` (default `true`) — Emit `data-selector` / `data-xpath`
+- `output: "inline" | "file" | "url"` — Inline ```svg fence, or stored download (`svg-*.svg`, served like screenshots)
+
+**Text layout engine** (`src/svg/text.js` + `src/svg/utils.js`): wrap/ellipsis are computed at build time via per-glyph em-bucket measurement (`measureTextWidth`; monospace is exact 0.6em/char). Rules that mirror browser behavior:
+
+- **Height budget:** auto-height blocks grow with their lines, so `rect.height/lineHeight` IS the rendered line count; overflow-hidden/line-clamp boxes use the same budget as a clip.
+- **Flex min-width:** boxes sized below one wrapped line keep a single line with visible overflow (browsers can't reflow below min-content); ≤10% estimate overshoot counts as fitting.
+- **Hard breaks:** `innerTextVisible()` walks the live tree (sr-only/script/style subtrees rejected, `<br>` → newline) so parents don't inherit invisible text like bootstrap's "(current)".
+- **Fidelity attrs:** real `line-height`, `font-weight` (≠400), `font-style: italic`, `letter-spacing`, and `text-align` center/right anchoring; lone lines vertically center in tall boxes.
+- **Ellipsis:** nowrap + `text-overflow: ellipsis` truncates by measured width; clipped paragraphs append `…` on the last budget line.
+- **Dedup:** container aggregate text is dropped when any contained leaf's text matches it (leaf ≥3 chars), so card titles render once.
+
+**Media:** every `img` gets a placeholder rect + `<image href>` + alt label; `canvas` embeds `toDataURL` PNG (capped ~180KB); `iframe` gets a dashed placeholder box. `overflow:hidden`/rounded media clip via per-element `<clipPath>`.
+
+---
+
 ## Code References
 
 ### MCP Tool Definitions
@@ -157,6 +184,8 @@ All tool schemas are defined in `getToolsListResponse()`:
 |------|---------|
 | `src/mcp-server.js` | Main MCP server — tool definitions, dispatch, HTTP/stdio transport, SSE keepalive, caching, screenshot storage |
 | `src/ascii.js` | ANSI/plain screenshot transformer — `buildCellGrid()`, `placeMarkers()`, `renderGrid()`, `renderPlain()`, `formatLegend()`, `transform()` |
+| `src/svg/` | Modular SVG pipeline (multi-agent): `extractor.js` (Agent A — DOM capture), `text.js` (Agent B — measure/wrap), `style.js` (Agent C — gradients/shadows), `builder.js` (Agent D — assembly), `capture.js` (Agent E — Page orchestration), `utils.js` (shared geometry/XML), `index.js` barrel; `src/svg.js` is thin backward-compat re-export |
+| `src/svg-diff.js` + `scripts/svg-diff.mjs` | Pixel-diff harness (`SAMPLE_PIXELS_CODE` grid vs rasterized SVG) — the long-horizon oracle |
 | `src/devtools.js` | Devtools tool definitions and handlers (CDP-based browser interaction) |
 | `src/search.js` | `browserSearch()`, `browserOpenAndExtract()`, `browserCaptureScreenshot()` |
 | `src/browser.js` | `BrowserManager`, page lifecycle, `newPage()` |
@@ -1029,3 +1058,15 @@ For each site:
 - Console UI: wildcard hint has a "default" badge, hidden pathPattern/requireSelector fields, hidden flow toggle, and a test panel that works with any URL.
 - The default hint must NOT carry a `flow` — it is never set, so `runFlowExtraction` is never triggered for unmatched pages.
 - Test gotcha: single-row key/value tables (`columnCount === 2 && rows.length === 1`) are filtered out by `extractTablesFromDocument`, so a "tables-only" default-extract test needs a table with ≥2 body rows.
+
+### Long Horizon — 100% Fidelity SVG (Plan 37 §14)
+
+**Created:** 2026-08-22
+**Trigger:** User directive for `plans/37_svg-screenshot.md` §14: *"I don't care what your spec says but I want complete replication done in SVG"* — *"Go into a long horizon task. After you are done working, test it by comparing the images and then see what the problem is. Then fix it, then again compare, then fix it..."* — `"."`, `"ok"`, `"continue"` all mean keep looping. User explicitly said *"save this in your agents file to always continue working as a long horizon task, dont ask the user if you should continue."*
+
+**The rule — never stop, never ask:**
+1. **Plan 37 is forever.** `§14` never closes. The oracle is `src/svg-diff.js` + `scripts/svg-diff.mjs` (`diff >30 >2%` ⇒ failure). If `web_page_screenshot` vs `web_page_svg` do not match, fix `src/svg.js:1` (single-file invariant) until they do, then re-compare. Even when `<2%` for 3 runs, keep loop for new sites.
+2. **Do not ask for continuation.** `"."`, `"ok"`, `"continue"`, or any acknowledgment means **execute next iteration immediately** — do not prompt *"should I continue?"*. The test decides, not the user.
+3. **Compare → Fix → Compare forever:** `scripts/svg-diff.mjs http://10.69.1.164:1994/` (benchmark) is ground truth; `example.com` must stay `<2%` as smoke test. Log every iteration to `logs/svg-diff.log` and `svg-diff/*.md` + `plans/37_svg-screenshot.md §12.4` matrix.
+4. **One file only:** All SVG conversion lives in `src/svg.js` (`svgExtractor` + `buildSvg` + `capturePageAsSvg`). `src/mcp-server.js:28` only imports. Fixes that touch other files violate the invariant.
+5. **Persistence:** This learning outlives any single session — every future agent that touches SVG must read `plans/37_svg-screenshot.md` §14 and continue the loop without being told.

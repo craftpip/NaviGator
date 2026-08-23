@@ -1,6 +1,6 @@
 import { mcpCall } from "./_lib.js";
 
-const url = process.argv[2] || "https://example.com";
+const url = process.argv[2] || "http://10.69.1.164:1994/console";
 const maxChars = Number(process.env.MAX_CHARS || 8000);
 
 const result = await mcpCall("web_fetch", { url, maxChars });

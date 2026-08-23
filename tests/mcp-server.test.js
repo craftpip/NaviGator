@@ -182,11 +182,11 @@ describe("mcp-server HTTP endpoints", () => {
       expect(body).toHaveProperty("searchRouteCircuitBreakers");
     });
 
-    it("GET / also returns health", async () => {
+    it("GET / serves console when web console enabled", async () => {
       const res = await fetch(`${MCP_BASE}/`);
       expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.ok).toBe(true);
+      const html = await res.text();
+      expect(html).toContain("<title>Navigator Console</title>");
     });
   });
 
@@ -679,6 +679,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(names).toContain("web_search");
       expect(names).toContain("web_fetch");
       expect(names).toContain("web_page_screenshot");
+      expect(names).toContain("web_page_svg");
     });
 
     it("publishes the documented web_fetch input contract", async () => {
@@ -717,6 +718,26 @@ describe("mcp-server HTTP endpoints", () => {
       const links = tools.find((tool) => tool.name === "web_page_links");
       const linksProps = Object.keys(links.inputSchema.properties);
       expect(linksProps).toEqual(["ref_ids"]);
+    });
+
+    it("advertises web_page_svg with url/urls/ref_id/ref_ids/targetId and svg options", async () => {
+      const { status, body } = await mcpPost({
+        jsonrpc: "2.0", id: 59, method: "tools/list"
+      });
+      expect(status).toBe(200);
+      const svg = body.result.tools.find((tool) => tool.name === "web_page_svg");
+      expect(svg).toBeDefined();
+      const props = Object.keys(svg.inputSchema.properties);
+      expect(props).toContain("url");
+      expect(props).toContain("urls");
+      expect(props).toContain("ref_id");
+      expect(props).toContain("ref_ids");
+      expect(props).toContain("targetId");
+      expect(props).toContain("fullPage");
+      expect(props).toContain("elementLimit");
+      expect(props).toContain("viewport");
+      expect(props).toContain("output");
+      expect(svg.inputSchema.additionalProperties).toBe(false);
     });
 
     it("advertises only the singular engine param for web_search", async () => {
@@ -1730,7 +1751,7 @@ describe("mcp-server HTTP endpoints", () => {
       expect(names).not.toContain("DOM.querySelector");
     });
 
-    it("returns the five public search and page tools", async () => {
+    it("returns the six public search and page tools (including web_page_svg)", async () => {
       const { status, body } = await mcpPost({
         jsonrpc: "2.0", id: 51, method: "tools/list",
       });
@@ -1743,6 +1764,7 @@ describe("mcp-server HTTP endpoints", () => {
         "web_page_screenshot",
         "web_page_links",
         "web_page_ascii",
+        "web_page_svg",
       ]);
     });
   });

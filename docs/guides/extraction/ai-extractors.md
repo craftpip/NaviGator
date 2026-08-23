@@ -1,12 +1,6 @@
 # Post-processors (AI)
 
-Post-processors let you send page HTML or a screenshot to **any AI endpoint** — local Ollama or any ChatGPT-compatible API — and get clean markdown back. Any model that speaks OpenAI `chat/completions` works.
-
-Configure them in the console:
-
-> [Open Settings → POST_PROCESSOR_MODELS](http://localhost:1994/console/manage?focus=POST_PROCESSOR_MODELS){target="_blank"}
-
-If the model fails or isn't configured, Navigator falls back to `html_to_markdown`.
+Post-processors let you send page HTML or a screenshot to **any AI endpoint** — local Ollama or any ChatGPT-compatible API — and get clean markdown back. Any model that speaks OpenAI `chat/completions` works. If the model fails or isn't configured, Navigator falls back to `html_to_markdown`.
 
 ## Overview
 
@@ -27,63 +21,39 @@ Extractor ──┬── HTML ──┐
 
 The extractor provides **HTML or an image**, the post-processor forwards it to the processor — either **Ollama** or **MinerU** — and returns markdown.
 
-## Configuring Post-processors
+## Creating a Post-processor
 
-Add models to `POST_PROCESSOR_MODELS` in your `.env` or use the console link above. Each entry is a JSON object:
+In the console's **Configs** panel, the **POST_PROCESSOR_MODELS** card provides an interactive form:
+
+> [http://localhost:1994/console/manage?focus=POST_PROCESSOR_MODELS](http://localhost:1994/console/manage?focus=POST_PROCESSOR_MODELS)
+
+Pick the kind, fill `id`, `baseUrl`, `model`, etc., and save — no manual JSON needed.
+
+You can also set it manually in `.env`:
 
 ```bash
 POST_PROCESSOR_MODELS=[{"id":"reader_lm","label":"reader-lm","model":"jinaai/reader-lm-0.5b","baseUrl":"http://host.docker.internal:8000/v1"}]
 ```
 
-### Model Entry Fields
-
-| Field | Description |
-|-------|-------------|
-| `id` | Unique identifier for the model |
-| `label` | Display name in the web console |
-| `model` | Model name (for OpenAI-compatible APIs) |
-| `baseUrl` | API endpoint URL |
-| `kind` | `chat` (default), `mineru`, or `api` |
-| `timeoutMs` | Request timeout (optional) |
-| `maxInputChars` | Max HTML to send (optional) |
-| `maxTokens` | Max output tokens (optional) |
-
 ## Model Kinds
 
-### Chat (OpenAI-compatible)
+### 1. Chat (OpenAI-compatible)
 
-POST to `<baseUrl>/chat/completions`:
+Any OpenAI-compatible `chat/completions` endpoint — use local Ollama or any hosted API. Popular models: `jinaai/reader-lm-0.5b` (Reader LM) and the OCR/document model we use (MinerU-HTML).
 
-```json
-{
-  "model": "jinaai/reader-lm-0.5b",
-  "messages": [{"role": "user", "content": "<html>...</html>"}]
-}
-```
+[OpenAI Compatible APIs →](/guides/extraction/openai-compatible)
 
-Works with reader-lm, GPT-4, Claude, or any OpenAI-compatible API.
+### 2. MinerU
 
-### MinerU
+MinerU is an open-source document parsing engine that turns PDFs, images, and Office docs into LLM-ready markdown and JSON. It runs in its own container with GPU support for fast, local extraction. The sidecar container `navigator-mineru` is provided by Navigator. Built on [MinerU](https://github.com/opendatalab/MinerU).
 
-MinerU is an open-source document parsing engine that turns PDFs, images, and Office docs into LLM-ready markdown and JSON. It runs in its own container with GPU support for fast, local extraction.
+[MinerU →](/guides/extraction/mineru)
 
-Provided by Navigator — see the [MinerU page](/guides/extraction/mineru) to set it up. Sidecar container `navigator-mineru`, built on [MinerU](https://github.com/opendatalab/MinerU).
+### 3. Custom API
 
-### Custom API
+Any API endpoint can be used as a post-processor — the extractor output is sent as the request and the response is returned as markdown.
 
-Any API can be used as a post-processor — customize how the request is built and how the response is parsed. The extractor's output is sent to the post-processor, and the post-processor's response is sent back to the agent.
-
-```json
-{
-  "kind": "api",
-  "baseUrl": "http://localhost:8000",
-  "body": {"html": "{{html}}", "task": "extract"},
-  "outputField": "result",
-  "outputType": "text"
-}
-```
-
-`body` controls the request payload (`{{html}}` is replaced with the page HTML), `outputField` picks the field in the response, and `outputType` sets how it is parsed — any API that follows this can be used.
+[Custom API →](/guides/extraction/custom-api)
 
 ## Using Post-processors
 
@@ -99,6 +69,27 @@ If the post-processor is unreachable or fails, the extractor's output is passed 
 - Model not configured → fallback to extractor output
 
 You'll see a warning in the server logs, but the fetch still succeeds.
+
+## Model Entry Fields
+
+| Field | Kind | Description |
+|-------|------|-------------|
+| `id` | All | Unique identifier — required |
+| `label` | All | Display name in the console (defaults to `id`) |
+| `baseUrl` | All | API endpoint URL — required (`https://.../v1`, trailing `/` stripped) |
+| `model` | `chat` · `mineru` | Model name — required for `chat`/`mineru`, ignored for `api` |
+| `kind` | All | `chat` (default) · `mineru` · `api` |
+| `inputs` | All | Allowed inputs — `html`, `text`, `screenshot` (array or comma-separated) |
+| `path` | `api` | Path appended to `baseUrl` (e.g. `/extract`) |
+| `method` | `api` | HTTP method (default `POST`) |
+| `body` | `api` | Request payload template — `{{input}}` is replaced with page HTML/text (JSON-encoded) |
+| `headers` | `chat` · `api` | Extra HTTP headers (`{ "Authorization": "Bearer ..." }`) |
+| `outputField` | `api` | Dot-path to extract from JSON response (default `text`) |
+| `outputType` | `api` | `json` (default, parse field) or `text` (return raw body) |
+| `prompt` | All (image) | Prompt for screenshot → markdown (default *"Extract all readable content..."*) |
+| `timeoutMs` | All | Request timeout in ms (default `60000`) |
+| `maxInputChars` | `chat` · `api` | Max HTML chars sent (default `60000`; `mineru` caps at `400000` internally) |
+| `maxTokens` | `chat` | Max output tokens (default `8192`) |
 
 ## Tips
 

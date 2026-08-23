@@ -99,7 +99,7 @@ export default defineConfig({
         collapsed: true,
         items: [
           { text: "Overview", link: "/guides/extraction/ai-extractors" },
-          { text: "Ollama", link: "/guides/extraction/ollama" },
+          { text: "OpenAI Compatible APIs", link: "/guides/extraction/openai-compatible" },
           { text: "MinerU", link: "/guides/extraction/mineru" },
           { text: "Custom API", link: "/guides/extraction/custom-api" },
         ],
@@ -110,8 +110,8 @@ export default defineConfig({
         collapsed: true,
         items: [
           { text: "Overview", link: "/guides/screenshots/overview" },
-          { text: "Output", link: "/guides/screenshots/output" },
-          { text: "ASCII Screenshot", link: "/guides/screenshots/ascii" },
+          { text: "Output Options", link: "/guides/screenshots/output" },
+          { text: "ASCII Renders", link: "/guides/screenshots/ascii" },
         ],
       },
       {
@@ -120,6 +120,7 @@ export default defineConfig({
         collapsed: true,
         items: [
           { text: "Overview", link: "/guides/devtools/overview" },
+          { text: "Tabs & Navigation", link: "/guides/devtools/tabs" },
           { text: "DOM", link: "/guides/devtools/dom" },
           { text: "Network", link: "/guides/devtools/network" },
           { text: "Interaction", link: "/guides/devtools/interaction" },
@@ -131,66 +132,61 @@ export default defineConfig({
         collapsed: true,
         items: [
           { text: "Overview", link: "/guides/self-hosting/overview" },
-          { text: "Docker", link: "/guides/self-hosting/docker" },
           { text: "Environment Variables", link: "/guides/self-hosting/env-vars" },
-          { text: "Monitoring", link: "/guides/self-hosting/monitoring" },
-          { text: "Security", link: "/guides/self-hosting/security" },
+          { text: "Operations", link: "/guides/self-hosting/operations" },
         ],
       },
       {
-        text: "API",
+        text: "Reference Content",
         collapsible: true,
         collapsed: true,
         items: [
-          { text: "MCP and HTTP", link: "/api/mcp-and-http" },
-          { text: "Tool Reference", link: "/api/tool-reference" },
-        ],
-      },
-      {
-        text: "Architecture",
-        collapsible: true,
-        collapsed: true,
-        items: [
-          { text: "Overview", link: "/architecture/overview" },
-          { text: "Browser Runtime and DevTools", link: "/architecture/browser-runtime" },
-        ],
-      },
-      {
-        text: "Code",
-        collapsible: true,
-        collapsed: true,
-        items: [
-          { text: "Core Server and Search", link: "/code/core-server-search" },
-          { text: "Browser and DevTools", link: "/code/browser-and-devtools" },
-          { text: "Search Drivers", link: "/code/search-drivers" },
-          { text: "Support Modules", link: "/code/support-modules" },
-          { text: "Runtime and Tests", link: "/code/runtime-and-tests" },
-        ],
-      },
-      {
-        text: "Operations",
-        collapsible: true,
-        collapsed: true,
-        items: [
-          { text: "Operations and Configuration", link: "/operations/operations-and-configuration" },
-        ],
-      },
-      {
-        text: "Reference",
-        collapsible: true,
-        collapsed: true,
-        items: [
-          { text: "Source Map", link: "/reference/source-reference" },
-        ],
-      },
-      {
-        text: "Archive",
-        collapsible: true,
-        collapsed: true,
-        items: [
-          { text: "ASCII Screenshot", link: "/archive/ascii-screenshot" },
-          { text: "Domain Hint Reference", link: "/archive/domain-hints-reference" },
-          { text: "Web Fetch Reference", link: "/archive/web-fetch-reference" },
+          {
+            text: "API",
+            collapsible: true,
+            collapsed: true,
+            items: [
+              { text: "MCP and HTTP", link: "/api/mcp-and-http" },
+              { text: "Tool Reference", link: "/api/tool-reference" },
+            ],
+          },
+          {
+            text: "Architecture",
+            collapsible: true,
+            collapsed: true,
+            items: [
+              { text: "Overview", link: "/architecture/overview" },
+              { text: "Browser Runtime and DevTools", link: "/architecture/browser-runtime" },
+            ],
+          },
+          {
+            text: "Code",
+            collapsible: true,
+            collapsed: true,
+            items: [
+              { text: "Core Server and Search", link: "/code/core-server-search" },
+              { text: "Browser and DevTools", link: "/code/browser-and-devtools" },
+              { text: "Search Drivers", link: "/code/search-drivers" },
+              { text: "Support Modules", link: "/code/support-modules" },
+              { text: "Runtime and Tests", link: "/code/runtime-and-tests" },
+            ],
+          },
+          {
+            text: "Operations",
+            collapsible: true,
+            collapsed: true,
+            items: [
+              { text: "Operations and Configuration", link: "/operations/operations-and-configuration" },
+            ],
+          },
+          {
+            text: "Reference",
+            collapsible: true,
+            collapsed: true,
+            items: [
+              { text: "Source Map", link: "/reference/source-reference" },
+            ],
+          },
         ],
       },
     ],

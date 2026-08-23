@@ -1,136 +1,133 @@
 # Network & Console
 
-Monitor what's happening behind the scenes — network requests, console output, and page errors.
+Monitor what's happening behind the scenes — network requests, console output, and page errors. Our network/console tools aggregate into rolling buffers — not per-request CDP events.
 
-## Network Requests
+## Network.getRequests
 
-View all network requests the page has made:
+Aggregated view of the last 200 requests (newest first) with our `method`, `url`, `status`, `resourceType`, `ok`/`failed`/`fromCache` fields.
 
-```json
-{
-  "targetId": "ABC"
-}
-```
+**Request**
 
-Returns the last 200 requests (newest first):
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `filter` | `string` | — | Substring to match against URL |
+| `failedOnly` | `boolean` | `false` | Only failed requests |
+| `status` | `number` | — | Exact HTTP status to filter |
+| `limit` | `number` | `25` | Max requests to return (1–200) |
 
-```
-GET https://api.example.com/data (200) - 145ms - fetch
-POST https://analytics.example.com/event (204) - 23ms - xhr
-GET https://cdn.example.com/style.css (304) - 5ms - stylesheet
-Failed: GET https://broken.example.com/image.png (404) - image
-```
 
-### Filter by URL
+Response:
 
 ```json
 {
   "targetId": "ABC",
-  "filter": "api.example.com"
+  "url": "https://example.com/",
+  "total": 42,
+  "shown": 1,
+  "failed": 1,
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://api.example.com/data",
+      "status": 404,
+      "resourceType": "xhr",
+      "ok": false,
+      "failed": true,
+      "fromCache": false
+    }
+  ]
 }
 ```
 
-### Show Only Failures
+Results are `entries.slice(-limit).reverse()` — newest first, oldest dropped when over 200.
+
+## Runtime.getConsoleMessages
+
+Last 100 console/page-error/request-failure messages — our buffer, not CDP `Console.messageAdded`.
+
+**Request**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `limit` | `number` | `30` | Max messages (1–100) |
+
+
+Response:
 
 ```json
 {
   "targetId": "ABC",
-  "failedOnly": true
+  "count": 12,
+  "messages": [
+    { "type": "log", "text": "User clicked button", "timestamp": 1710000000000 },
+    { "type": "error", "text": "Failed to load resource: 404", "timestamp": 1710000000000 }
+  ]
 }
 ```
 
-### Filter by Status Code
+`count` is total buffered, `messages` is `slice(-limit)`.
+
+## Runtime.evaluate
+
+Run JavaScript in the page. We serialize the result safely — objects/arrays capped at 25 entries and depth 4, with `[Circular]` and `[MaxDepth]` markers; Elements become our descriptor.
+
+**Request**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `expression` | `string` | — | JavaScript expression to evaluate |
+
+
+Response:
 
 ```json
 {
   "targetId": "ABC",
-  "status": 404
+  "result": "Example Domain"
 }
 ```
 
-### Limit Results
+For an element: `Runtime.evaluate({ targetId: "ABC", expression: "document.querySelector('h1')" })` returns:
 
 ```json
 {
   "targetId": "ABC",
-  "limit": 10
+  "result": {
+    "tagName": "h1",
+    "text": "Example Domain",
+    "value": "",
+    "selector": "html > body > div > h1",
+    "xpath": "/html[1]/body[1]/div[1]/h1[1]",
+    "attributes": {},
+    "rect": { "x": 0, "y": 0, "width": 100, "height": 20 }
+  }
 }
 ```
 
-## Console Messages
-
-Read captured console output, page errors, and request failures:
-
-```json
-{
-  "targetId": "ABC"
-}
-```
-
-Returns the last 30 messages:
-
-```
-log: "User clicked button" (09:23:45)
-warn: "Deprecated API called" (09:23:42)
-error: "Failed to load resource" (09:23:40)
-info: "Page loaded in 1.2s" (09:23:38)
-```
-
-### Message Types
-
-| Type | Description |
-|------|-------------|
-| `log` | Regular console.log output |
-| `warn` | Console warnings |
-| `error` | Errors and failed requests |
-| `info` | Console info messages |
+Standard CDP `Runtime.evaluate` returns `{ result: { type, value, objectId } }` — we return the serialized `result` directly.
 
 ## Example: Debugging a Failed Request
 
-```json
-// 1. Open the page
-Target.createTarget({ "url": "https://example.com" })
 
-// 2. Check for failed requests
-Network.getRequests({ "targetId": "ABC", "failedOnly: true })
 
-// 3. See what's in the console
-Runtime.getConsoleMessages({ "targetId": "ABC" })
 
-// 4. Run custom diagnostics
-Runtime.evaluate({
-  "targetId": "ABC",
-  "expression": "JSON.stringify({ title: document.title, links: document.querySelectorAll('a').length })"
-})
-```
-
-## Example: Monitoring API Calls
-
-```json
-// 1. Open a page with an API
-Target.createTarget({ "url": "https://example.com/dashboard" })
-
-// 2. Wait a moment for API calls
-Runtime.evaluate({ "targetId": "ABC", "expression": "await new Promise(r => setTimeout(r, 2000))" })
-
-// 3. Check what API calls were made
-Network.getRequests({ "targetId": "ABC", "filter": "api" })
-```
 
 ## Buffer Limits
 
-| Buffer | Max Size | Behavior |
-|--------|----------|----------|
-| Network requests | 200 | Rolling buffer, oldest dropped |
-| Console messages | 100 | Rolling buffer, oldest dropped |
+| Buffer | Max | Behavior |
+|--------|-----|----------|
+| Network requests | 200 | Rolling, oldest dropped |
+| Console messages | 100 | Rolling, oldest dropped |
 
 ## Tips
 
-- **Check network first** when a page isn't loading — failed requests are often the cause
-- **Use `failedOnly: true`** to quickly find problems
-- **Console errors** often reveal JavaScript issues that aren't visible on the page
-- **Use `filter`** to focus on specific API endpoints
-- **Combine with DOM inspection** — see what the page shows, then check what it fetched
+- **Check network first** when a page isn't loading — `failedOnly: true` finds 404s fast
+- **Use `filter`** to focus on `api` or `cdn` hosts
+- **Console errors** reveal JS issues not visible in DOM
+- **Combine with `DOM.getDocument`** — see what the page shows, then check what it fetched
 
 ## Next Steps
 

@@ -1770,6 +1770,28 @@ select.config-input option {
   max-width: 100%;
   padding: 10px;
 }
+.response .svg-preview {
+  max-width: 100%;
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+  margin-top: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+/* web_page_svg only — keep the raw text output compact so the SVG preview stays above the fold */
+.response--svg pre,
+.response--svg .response-html {
+  min-height: 140px;
+  max-height: 32vh;
+}
+.response .svg-preview svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
 .response .response-html {
   flex: 1;
   min-height: 240px;

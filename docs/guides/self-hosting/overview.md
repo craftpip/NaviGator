@@ -2,13 +2,6 @@
 
 Deploy Navigator on your own infrastructure. One Docker container gives your team a private, self-hosted browser for AI agents.
 
-## Why Self-Host?
-
-- **Privacy** — All searches, pages, and screenshots stay on your network
-- **Control** — Configure engines, timeouts, and extraction to your needs
-- **Reliability** — No dependency on third-party APIs
-- **Security** — API key authentication, network isolation
-
 ## Requirements
 
 | Resource | Minimum | Recommended |
@@ -18,76 +11,86 @@ Deploy Navigator on your own infrastructure. One Docker container gives your tea
 | Disk | 10 GB | 50 GB |
 | Network | Outbound internet | Low-latency to target sites |
 
-## Deployment Options
+## Docker Configuration
 
-### Docker (Recommended)
+The compose file is the source of truth. Key sections:
 
-The simplest way to run Navigator:
-
-```bash
-git clone https://github.com/craftpip/navigator.git
-cd navigator
-cp .env.example .env
-docker compose up --build -d
-```
-
-See [Docker Configuration](/guides/self-hosting/docker) for details.
-
-### Docker Compose with GPU
-
-For AI extractors (MinerU-HTML):
+### Basic Setup
 
 ```yaml
 services:
-  navigator-mineru:
-    image: navigator-mineru:latest
+  navigator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    init: true
+    shm_size: "2g"     # Required for Chromium
+    ports:
+      - "${MCP_API_PORT:-1994}:${MCP_API_PORT:-1994}"  # MCP + console
+      - "${NOVNC_PORT:-1996}:${NOVNC_PORT:-1996}"      # noVNC (optional)
+    volumes:
+      - ./:/app
+      - /tmp/screenshots:/app/screenshots
+      - chrome_data:/data/chrome  # Persistent browser profile
     deploy:
       resources:
+        limits:
+          cpus: "4.0"
+          memory: 4g
         reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+          cpus: "4.0"
+          memory: 4g
 ```
 
-### Kubernetes
+### Ports
 
-For production deployments at scale, see the Kubernetes examples in the repository.
+| Port | Service | Required |
+|------|---------|----------|
+| 1994 | MCP Server + Web Console | Yes |
+| 1996 | noVNC Remote Desktop | Optional |
 
-## Architecture
+### Volumes
 
+| Volume | Purpose |
+|--------|---------|
+| `./:/app` | Source code (bind mount for development) |
+| `/tmp/screenshots:/app/screenshots` | Screenshot storage (host `/tmp/screenshots` → container `/app/screenshots`) |
+| `chrome_data:/data/chrome` | Persistent browser profile |
+
+### Shared Memory
+
+Chromium needs shared memory. The `shm_size: "2g"` setting is required for stable browser operation.
+
+### Resource Limits
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: "4.0"     # Max CPU
+      memory: 4g      # Max memory
+    reservations:
+      cpus: "4.0"     # Guaranteed CPU
+      memory: 4g      # Guaranteed memory
 ```
-┌─────────────────────────────────────────────┐
-│                Navigator                    │
-├─────────────────────────────────────────────┤
-│  MCP Server (port 1994)                     │
-│  ├── web_search  → Search engines           │
-│  ├── web_fetch   → Browser + extraction     │
-│  ├── screenshots → Browser rendering        │
-│  └── DevTools    → CDP browser control      │
-├─────────────────────────────────────────────┤
-│  Browser (Chromium/CloakBrowser)            │
-│  ├── Headless mode (default)                │
-│  └── VNC mode (optional)                    │
-├─────────────────────────────────────────────┤
-│  SQLite (data/navigator.db)                 │
-│  ├── Activity logs                          │
-│  ├── API keys                               │
-│  └── Reference IDs                          │
-└─────────────────────────────────────────────┘
+
+### Environment File
+
+Copy `.env.example` to `.env` and edit as needed:
+
+```bash
+cp .env.example .env
 ```
 
-## What's Included
+See [Environment Variables](/guides/self-hosting/env-vars) for all options.
 
-| Component | Purpose |
-|-----------|---------|
-| MCP Server | Tool dispatch, HTTP endpoints, caching |
-| Browser | Chromium with anti-bot fingerprinting |
-| Search Engine Router | 12 routes across 5 engines |
-| Extraction Pipeline | Readability, domain hints, AI models |
-| Web Console | Management UI at `/console` |
-| SQLite DB | Activity logs, API keys, reference memory |
-| Navigator CLI | Host-side monitoring (`./navigator.js`) |
+::: info
+The container runs `npm install --omit=dev` on every start, which prunes dev dependencies from the bind-mounted `node_modules`. After a restart, reinstall dev deps if you need them:
+
+```bash
+docker compose exec navigator npm install --include=dev
+```
+:::
 
 ## Quick Health Check
 
@@ -108,7 +111,5 @@ Returns:
 
 ## Next Steps
 
-- [Docker Configuration](/guides/self-hosting/docker) — docker-compose.yml explained
 - [Environment Variables](/guides/self-hosting/env-vars) — All configuration options
-- [Security](/guides/self-hosting/security) — API keys and authentication
-- [Monitoring](/guides/self-hosting/monitoring) — Health checks and activity logs
+- [Operations](/guides/self-hosting/operations) — Health, monitoring, and security

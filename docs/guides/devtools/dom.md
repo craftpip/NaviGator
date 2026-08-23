@@ -1,130 +1,188 @@
 # DOM Inspection
 
-Read the structure of any web page — find elements, get their HTML, and understand the layout.
+Read the structure of any web page — find elements, get their HTML, and understand the layout. Our DOM tools return **LLM-friendly descriptors** with `selector`, `xpath`, `attributes`, `value`, `visible`, and `rect` — not just CDP nodeIds.
 
-## Getting the Page Structure
+## DOM.getDocument
 
-Start with `DOM.getDocument` to see the page's element tree:
+Discover the page — returns a snapshot of important elements with selectors you can use directly.
 
-```json
-{
-  "targetId": "ABC",
-  "limit": 30
-}
-```
+**Request**
 
-Returns a structured view of the page:
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id from `Target.createTarget` |
+| `limit` | `number` | `15` | Max elements to include |
 
-```
-Page: https://example.com (1247x3892)
-├── <html> 
-├── <head>
-├── <body>
-│   ├── <header> (0,0 — 1247,80) visible
-│   │   ├── <nav.navbar>
-│   │   │   ├── <a.logo> "Navigator"
-│   │   │   └── <div.nav-links>
-│   │   │       ├── <a> "Docs"
-│   │   │       └── <a> "GitHub"
-│   ├── <main> (0,80 — 1247,3800) visible
-│   │   ├── <article.content>
-│   │   │   ├── <h1> "Getting Started"
-│   │   │   └── <p> "Follow these steps..."
-│   └── <footer> (0,3800 — 1247,3892) visible
-```
 
-Each element shows:
-- **Tag and class/id** — `<article.content>`
-- **Position** — bounding rectangle
-- **Visibility** — whether it's visible on screen
-- **Text content** — if it's a text node
-
-## Finding Specific Elements
-
-### querySelector — Find One Element
+Response — `handleDevtoolsToolCall` returns:
 
 ```json
 {
   "targetId": "ABC",
-  "selector": "article.content h1"
+  "title": "Example Domain",
+  "url": "https://example.com/",
+  "readyState": "complete",
+  "elements": [
+    {
+      "tagName": "h1",
+      "role": "",
+      "text": "Example Domain",
+      "selector": "html > body > div > h1",
+      "xpath": "/html[1]/body[1]/div[1]/h1[1]",
+      "attributes": {},
+      "value": "",
+      "visible": true,
+      "rect": { "x": 384, "y": 142, "width": 1152, "height": 28 }
+    }
+  ]
 }
 ```
 
-Returns the element with its text, attributes, and position:
+Each element shows `tagName`, `role`, `text` (300 chars), `selector` (cssPath), `xpath`, `attributes` (real DOM attrs only), `value` (for inputs), `visible`, and `rect`. Standard CDP `DOM.getDocument` returns a full node tree with `nodeId`s — we return this filtered, LLM-ready list from a fixed selector set (`main`, `article`, `h1`, `button`, `a[href]`, `input`, etc.), deduped by `selector`.
 
-```
-Found: <h1> "Getting Started"
-Selector: article.content h1
-XPath: /html/body/main/article/h1
-Text: "Getting Started"
-Visible: yes
-Position: (24, 120 — 400, 160)
-```
+## DOM.querySelector
 
-### querySelectorAll — Find Multiple Elements
+Find one element by CSS or XPath. Fails with page URL + candidate elements if nothing matches.
+
+**Request**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `selector` | `string` | — | CSS selector, e -> `input[type='password']` |
+| `xpath` | `string` | — | XPath, e -> `/html/body/form/div[2]/input` |
+
+
+Response:
 
 ```json
 {
-  "targetId": "ABC",
-  "selector": "nav a",
-  "limit": 10
+  "tagName": "input",
+  "role": "",
+  "text": "",
+  "selector": "html > body > main > form > input[type='email']",
+  "xpath": "/html[1]/body[1]/main[1]/form[1]/input[1]",
+  "attributes": { "type": "email", "name": "email" },
+  "value": "",
+  "visible": true,
+  "rect": { "x": 24, "y": 120, "width": 400, "height": 36 }
 }
 ```
 
-Returns all matching elements:
+One of `selector` or `xpath` required. Standard CDP returns `nodeId` — we return the descriptor above.
 
+## DOM.querySelectorAll
+
+Find many elements. Returns an array of descriptors (same shape as `querySelector`).
+
+**Request**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `selector` | `string` | — | CSS selector to match many |
+| `xpath` | `string` | — | XPath to match many |
+| `limit` | `number` | `10` | Max descriptors to return |
+
+
+Response:
+
+```json
+[
+  {
+    "tagName": "a",
+    "role": "",
+    "text": "Docs",
+    "selector": "html > body > header > nav > a:nth-of-type(1)",
+    "xpath": "/html[1]/body[1]/header[1]/nav[1]/a[1]",
+    "attributes": { "href": "/docs" },
+    "value": "",
+    "visible": true,
+    "rect": { "x": 10, "y": 10, "width": 40, "height": 20 }
+  }
+]
 ```
-Found 5 elements:
-1. <a> "Docs" — /html/body/header/nav/a[1]
-2. <a> "GitHub" — /html/body/header/nav/a[2]
-3. <a> "Search" — /html/body/header/nav/a[3]
-...
-```
 
-## Getting HTML
+## DOM.getOuterHTML
 
-### getOuterHTML — Raw HTML
+Get outerHTML for a selector/xpath, or smart main-content HTML when no locator is given.
+
+**Request**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `selector` | `string` | — | CSS selector, e -> `main` |
+| `xpath` | `string` | — | XPath |
+| `maxChars` | `number` | `10000` | Max characters of HTML to return |
+
+
+Response:
 
 ```json
 {
-  "targetId": "ABC",
-  "selector": "article.content",
-  "maxChars": 5000
+  "outerHTML": "<article class=\"content\"><h1>Title</h1><p>...</p></article>",
+  "text": "Title ...",
+  "truncated": false
 }
 ```
 
-Returns the raw HTML of the element:
+Without `selector`/`xpath`, it returns the page's main content. `truncated` reports whether `maxChars` cut the output.
 
-```html
-<article class="content">
-  <h1>Getting Started</h1>
-  <p>Follow these steps to install Navigator...</p>
-  <div class="code-block">
-    <code>npm install</code>
-  </div>
-</article>
-```
+## DOM.getCompactHTML
 
-## Scrolling to Elements
+Same as `getOuterHTML` but minified — strips scripts, styles, comments, svg, iframes, `head`, non-essential attrs; collapses whitespace; drops empty elements. Single-line.
 
-If an element is off-screen:
+**Request**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `selector` | `string` | — | CSS selector |
+| `xpath` | `string` | — | XPath |
+| `maxChars` | `number` | `10000` | Max characters |
+
+
+Response:
 
 ```json
 {
-  "targetId": "ABC",
-  "selector": "footer.contact"
+  "outerHTML": "<main><h1>Title</h1><p>Text</p></main>",
+  "text": "Title Text",
+  "truncated": false
 }
 ```
 
-Returns the element's position and scrolls it into view if needed.
+Use for fast debugging without raw-page noise.
+
+## DOM.scrollIntoViewIfNeeded
+
+Scroll an element into view.
+
+**Request**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `selector` | `string` | — | CSS selector |
+| `xpath` | `string` | — | XPath |
+
+
+Response:
+
+```json
+{ "ok": true }
+```
+
+Fails with page URL + interactive candidates if selector doesn't match.
 
 ## Tips
 
-- **Start with `getDocument`** to understand the page layout
-- **Use specific selectors** — `article h1` is better than just `h1`
-- **Check visibility** — elements might exist but be hidden
-- **Use `limit`** to avoid overwhelming output on large pages
-- **Combine with screenshots** — DOM shows structure, screenshots show appearance
+- **Start with `getDocument`** to discover valid selectors — don't guess.
+- **Use `querySelector` to verify** a selector returns one element before clicking/typing.
+- **Prefer `getCompactHTML`** for large pages — `getOuterHTML` can be noisy.
+- **Check `visible` and `rect`** — an element can exist but be off-screen or `display:none`.
+- **Attributes are real** — `attributes` only includes attrs that actually exist on the element, plus `value` for form fields.
 
 ## Next Steps
 

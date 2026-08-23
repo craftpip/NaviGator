@@ -10,5 +10,5 @@ services:
       # Find the actual host port with: docker port example-com 8080
       - "8080"
     volumes:
-      - .:/www
+      - /www1/examples.com:/www
     restart: unless-stopped

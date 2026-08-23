@@ -80,7 +80,7 @@ function normalizeBackend(manager, backend) {
   return normalized;
 }
 
-function getTargetState(targetId) {
+export function getTargetState(targetId) {
   const tid = String(targetId || "").trim();
   if (closedTargets.has(tid)) {
     throw new Error(`Target ${tid} was closed due to inactivity (no interaction for 5 minutes). Create a new target with Target.createTarget.`);
@@ -386,7 +386,50 @@ export async function captureTargetScreenshot(args = {}) {
   const fullPage = args.fullPage === undefined ? true : Boolean(args.fullPage);
   const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
 
-  console.error(`📸  target screenshot: targetId=${args.targetId} format=${normalizedFormat} quality=${normalizedQuality ?? "default"} fullPage=${fullPage} timeout=${timeoutMs}ms`);
+  // ---- viewport handling: same style as Target.createTarget ----
+  let normalizedViewport = null;
+  if (args.viewport !== undefined && args.viewport !== null) {
+    const vp = args.viewport;
+    if (!vp || typeof vp !== "object" || Array.isArray(vp)) {
+      throw new Error("Invalid input: viewport must be an object with width and height");
+    }
+    const hasWidth = Object.prototype.hasOwnProperty.call(vp, "width");
+    const hasHeight = Object.prototype.hasOwnProperty.call(vp, "height");
+    if (!hasWidth) throw new Error("Invalid input: viewport.width is required");
+    const w = Math.floor(Number(vp.width));
+    if (!Number.isFinite(w) || w <= 0) throw new Error("Invalid input: viewport.width must be a positive number");
+    let h;
+    if (hasHeight) {
+      h = Math.floor(Number(vp.height));
+      if (!Number.isFinite(h) || h <= 0) throw new Error("Invalid input: viewport.height must be a positive number");
+    } else if (!fullPage) {
+      throw new Error("Invalid input: viewport.height is required when fullPage is false");
+    } else {
+      h = 1080;
+    }
+    normalizedViewport = { width: w, height: h };
+  }
+
+  const vpLog = normalizedViewport ? `${normalizedViewport.width}x${normalizedViewport.height}` : "default";
+  console.error(`📸  target screenshot: targetId=${args.targetId} format=${normalizedFormat} quality=${normalizedQuality ?? "default"} fullPage=${fullPage} viewport=${vpLog} timeout=${timeoutMs}ms`);
+
+  let prevViewport = null;
+  let didOverride = false;
+  if (normalizedViewport) {
+    try {
+      prevViewport = state.page.viewport();
+    } catch {}
+    if (!prevViewport && state.viewport) prevViewport = { ...state.viewport };
+    if (!prevViewport) prevViewport = { width: 1920, height: 1080 };
+    console.error(`📸  target viewport override: ${prevViewport.width || "?"}x${prevViewport.height || "?"} → ${normalizedViewport.width}x${normalizedViewport.height}`);
+    try {
+      await state.page.setViewport(normalizedViewport);
+      didOverride = true;
+    } catch (e) {
+      console.error(`📸  setViewport failed: ${String(e?.message || e)}`);
+      throw e;
+    }
+  }
 
   let screenshot;
   try {
@@ -405,6 +448,15 @@ export async function captureTargetScreenshot(args = {}) {
     console.error(`📸  target screenshot failed: targetId=${args.targetId} error=${String(error?.message || error)}`);
     if (error?.stack) console.error(`📸  stack: ${String(error.stack).slice(0, 500)}`);
     throw error;
+  } finally {
+    if (didOverride && prevViewport) {
+      try {
+        await state.page.setViewport(prevViewport);
+        console.error(`📸  target viewport restored: ${prevViewport.width}x${prevViewport.height}`);
+      } catch (e) {
+        console.error(`📸  restore viewport failed: ${String(e?.message || e)}`);
+      }
+    }
   }
 
   const [resolvedUrl, pageTitle] = await Promise.all([

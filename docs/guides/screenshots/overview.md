@@ -1,18 +1,19 @@
 # Screenshot Overview
 
-Capture what web pages actually look like. `web_page_screenshot` takes JPEG screenshots of any page — full-page or viewport-only.
+`web_page_screenshot` opens any URL in a real browser, renders JavaScript, and returns a JPEG of what the page actually looks like. Navigator handles navigation and rendering — you get a visual you can use.
 
-## Basic Usage
+## Flow
 
-```json
-{
-  "urls": ["https://example.com"]
-}
+```
+        ┌─────────────────────────────────┐
+URL ───→│ Browser → Screenshot → Response │──→ User
+        └─────────────────────────────────┘
+              fullPage / quality
 ```
 
-Returns an inline base64 JPEG image.
+Browser renders the page (including JS), the screenshot captures it as a JPEG (full-page or viewport), and the response returns it as base64/file/url.
 
-## Parameters
+## Request
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -21,54 +22,49 @@ Returns an inline base64 JPEG image.
 | `targetId` | `string` | — | Screenshot an existing DevTools tab |
 | `quality` | `string` | `medium` | `low` (30), `medium` (55), or `high` (75) |
 | `fullPage` | `boolean` | `true` | Capture entire scrollable page |
+| `viewport` | `object` | — | `{ width, height }` — `fullPage: true` → only `width` is applied; `fullPage: false` → both `width` and `height` are applied |
 | `output` | `string` | `base64` | `base64`, `file`, or `url` |
+
+## Response
+
+With `output: "base64"` (default):
+
+```
+Captured 1 screenshot(s); 1 succeeded.
+
+### [Example Domain](2)
+- Status: Success
+- URL: https://example.com/
+- Content-Type: image/jpeg
+
+![Example Domain](data:image/jpeg;base64,/9j/...)
+```
+
+The `data:image/jpeg;base64,...` string is the JPEG.
+
+For `output: "file"` (`File: ...`) and `output: "url"` (`Download: http://localhost:1994/download/<uuid>`) see [Screenshot Output](/guides/screenshots/output) — they require `ENABLE_SCREENSHOT_PATH` / `ENABLE_SCREENSHOT_DOWNLOAD_LINK` (and the `/tmp/screenshots:/app/screenshots` bind for Docker).
 
 ## Quality Presets
 
-| Preset | JPEG Quality | File Size | When to use |
-|--------|-------------|-----------|-------------|
-| `low` | 30 | Smallest | Quick checks, layout verification |
-| `medium` | 55 | Balanced | General use, most tasks |
-| `high` | 75 | Largest | Detail inspection, final verification |
+| Preset | JPEG Quality | File Size | Use for |
+|--------|-------------|-----------|---------|
+| `low` | 30 | 1× | Layout checks — text is not reliably OCRable |
+| `medium` | 55 | ~1.38× | **Recommended** — crisp, fully OCRable text at balanced size |
+| `high` | 75 | ~1.78× | Final verification — maximum detail |
 
-## Full Page vs Viewport
+## Viewport
 
-**Full page** (`fullPage: true`, default):
-Captures everything, including content below the fold. Good for seeing the complete layout.
+`viewport: { width, height }` controls the browser viewport:
 
-**Viewport only** (`fullPage: false`):
-Captures only what's visible in the browser window. Good for seeing what a user sees on load.
-
-```json
-// Full page
-{ "urls": ["https://example.com"], "fullPage: true }
-
-// Viewport only
-{ "urls": ["https://example.com"], "fullPage: false }
-```
-
-## Using Reference IDs
-
-Screenshot search results directly:
+- `fullPage: true` — only `width` is applied (height is the full scrollable height)
+- `fullPage: false` — both `width` and `height` are applied
 
 ```json
-// Search
-{ "queries": ["React documentation"], "limit": 5 }
+// Full page — width only
+{ "urls": ["https://example.com"], "fullPage": true, "viewport": { "width": 1280 } }
 
-// Screenshot the first result
-{ "ref_ids": [1], "quality": "low" }
-```
-
-## Screenshot a DevTools Tab
-
-If you have an open DevTools tab:
-
-```json
-{
-  "targetId": "ABC123",
-  "quality": "high",
-  "fullPage": false
-}
+// Viewport — width and height
+{ "urls": ["https://example.com"], "fullPage": false, "viewport": { "width": 1280, "height": 800 } }
 ```
 
 ## Tips

@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu \
     fonts-liberation \
     fonts-noto-color-emoji \
+    mupdf-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Stealth Panda (fork of Lightpanda)

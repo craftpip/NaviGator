@@ -62,6 +62,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@mozilla/readability": "^0.6.0",
+    "@xmldom/xmldom": "^0.9.12",
     "better-sqlite3": "^11.10.0",
     "cloakbrowser": "^0.5.7",
     "jsdom": "^27.0.0",

@@ -1,4 +1,4 @@
-import { StrictMode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { StrictMode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import logo from "../../../navigator-logo.png";
@@ -1998,14 +1998,29 @@ function Tools() {
       const mcp = await mcpRequest("tools/list");
       const list = mcp.json?.result?.tools || [];
       setTools(list);
-      if (list.length) selectTool(list[0]);
+      if (!list.length) return;
+      // Restore last selected tool for refresh persistence
+      let preferred = null;
+      try {
+        const urlTool = new URLSearchParams(window.location.search).get("tool");
+        const saved = localStorage.getItem("navigator:tools:selected");
+        preferred = urlTool || saved;
+      } catch {}
+      const found = preferred ? list.find((t) => t.name === preferred) : null;
+      selectTool(found || list[0], { persist: false });
     } catch (loadError) {
       setError(String(loadError?.message || loadError));
     }
   };
 
-  const selectTool = (tool) => {
+  const selectTool = (tool, opts = {}) => {
     setToolName(tool.name);
+    try {
+      localStorage.setItem("navigator:tools:selected", tool.name);
+      const url = new URL(window.location.href);
+      url.searchParams.set("tool", tool.name);
+      window.history.replaceState(null, "", url.toString());
+    } catch {}
     const defaults = {};
     for (const [name, schema] of Object.entries(
       tool.inputSchema?.properties || {},
@@ -2034,6 +2049,7 @@ function Tools() {
     output: "Select a tool and send a request.",
     status: "Response",
     images: [],
+    svgs: [],
   };
   const setToolResponse = (name, updates) =>
     setResponses((current) => ({
@@ -2042,10 +2058,18 @@ function Tools() {
         output: "Select a tool and send a request.",
         status: "Response",
         images: [],
+        svgs: [],
         ...current[name],
         ...updates,
       },
     }));
+
+  const renderedHtml = useMemo(() => renderMarkdown(response.output), [response.output]);
+  const htmlProps = useMemo(() => ({ __html: renderedHtml }), [renderedHtml]);
+  const svgHtmlObjects = useMemo(
+    () => (response.svgs || []).map((s) => ({ __html: s })),
+    [response.svgs],
+  );
 
   const buildArguments = (properties) => {
     const args = {};
@@ -2096,6 +2120,7 @@ function Tools() {
         status: `${httpLabel} · ${formatMs(ms)} · ${text.length.toLocaleString()} chars (${bytes.toLocaleString()} B)`,
         output: extracted.text,
         images: extracted.images,
+        svgs: extracted.svgs || [],
       });
     } catch (runError) {
       setToolResponse(selectedTool, {
@@ -2159,7 +2184,7 @@ function Tools() {
                   {running ? "Running..." : "Send request"}
                 </button>
               </form>
-              <section className="response">
+              <section className={`response${toolName === "web_page_svg" ? " response--svg" : ""}`}>
                 <div className="response-head">
                   <span
                     className={`status ${response.status.startsWith("200") ? "ok" : response.status === "Request failed" ? "error" : ""}`}
@@ -2177,9 +2202,9 @@ function Tools() {
                     <button
                       className={viewMode === "html" ? "active" : ""}
                       onClick={() => setViewMode("html")}
-                      title="Render the markdown response as HTML"
+                      title="Preview the markdown response as rendered HTML"
                     >
-                      HTML
+                      Preview
                     </button>
                   </div>
                   <button className="clear" onClick={clear}>
@@ -2187,10 +2212,7 @@ function Tools() {
                   </button>
                 </div>
                 {viewMode === "html" ? (
-                  <div
-                    className="response-html"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(response.output) }}
-                  />
+                  <div className="response-html" dangerouslySetInnerHTML={htmlProps} />
                 ) : (
                   <pre>{response.output}</pre>
                 )}
@@ -2200,6 +2222,14 @@ function Tools() {
                     className="preview"
                     src={src}
                     alt={`Screenshot preview ${index + 1}`}
+                  />
+                ))}
+                {(response.svgs || []).map((svgString, index) => (
+                  <div
+                    key={`svg-${index}`}
+                    className="svg-preview"
+                    dangerouslySetInnerHTML={svgHtmlObjects[index]}
+                    title={`SVG preview ${index + 1} — ${svgString.length.toLocaleString()} chars`}
                   />
                 ))}
                 <p className="note">
@@ -2216,6 +2246,7 @@ function Tools() {
 }
 function extractToolResult(json, rawText) {
   const images = [];
+  const svgs = [];
   const chunks = [];
   if (json?.error) {
     chunks.push(
@@ -2242,7 +2273,39 @@ function extractToolResult(json, rawText) {
     if (!images.includes(match)) images.push(match);
   }
   if (images.length) text = text.replace(dataUrlRegex, "[image preview shown below]");
-  return { text, images };
+
+  // SVG fence extraction: ```svg ... ``` blocks rendered as inline SVG previews
+  const svgFenceRegex = /```svg\s*\n([\s\S]*?)\n```/gi;
+  let fenceMatch;
+  while ((fenceMatch = svgFenceRegex.exec(text)) !== null) {
+    const svgContent = fenceMatch[1]?.trim();
+    if (svgContent && svgContent.includes("<svg")) {
+      // collect raw SVG string (ensure it starts with <svg)
+      const start = svgContent.indexOf("<svg");
+      const svgString = start >= 0 ? svgContent.slice(start) : svgContent;
+      if (svgString.includes("</svg>")) {
+        // avoid duplicates via exact text match
+        if (!svgs.includes(svgString)) svgs.push(svgString);
+      }
+    }
+  }
+  // Also catch raw inline <svg>...</svg> outside fences (fallback)
+  if (!svgs.length) {
+    const inlineSvgRegex = /<svg[\s\S]*?<\/svg>/gi;
+    for (const match of text.match(inlineSvgRegex) || []) {
+      if (!svgs.includes(match)) svgs.push(match);
+    }
+  }
+  // Also catch data:image/svg+xml base64
+  const svgDataUrlRegex = /data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+/g;
+  for (const match of text.match(svgDataUrlRegex) || []) {
+    try {
+      const b64 = match.split(",")[1];
+      const decoded = atob(b64);
+      if (decoded.includes("<svg") && !svgs.includes(decoded)) svgs.push(decoded);
+    } catch {}
+  }
+  return { text, images, svgs };
 }
 function SchemaField({ name, schema, value, onChange }) {
   const enums = Array.isArray(schema.enum) ? schema.enum : null;

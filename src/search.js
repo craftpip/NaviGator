@@ -2397,7 +2397,8 @@ export async function browserCaptureScreenshot({
   url,
   format: _format = "jpeg",
   fullPage = true,
-  quality
+  quality,
+  viewport
 }) {
   activityCounters.screenshots += 1;
   incrementUsageTotal("screenshots");
@@ -2415,6 +2416,17 @@ export async function browserCaptureScreenshot({
     const page = await manager.newPage({ backend: manager.config.defaultBackend });
 
     try {
+      if (viewport && typeof viewport === "object" && viewport.width) {
+        const vw = Math.floor(Number(viewport.width));
+        const vh = Math.floor(Number(viewport.height));
+        if (Number.isFinite(vw) && vw > 0 && Number.isFinite(vh) && vh > 0) {
+          try {
+            await page.setViewport({ width: vw, height: vh });
+          } catch (e) {
+            console.error(`📸  setViewport failed: ${String(e?.message || e)}`);
+          }
+        }
+      }
       await page.goto(url, {
         waitUntil: manager.config.navWaitUntil,
         timeout: manager.config.browserOpTimeoutMs
@@ -2438,7 +2450,8 @@ export async function browserCaptureScreenshot({
       });
 
       const timeoutMs = Math.max(1000, Number(manager.config.browserOpTimeoutMs) || 60000);
-      console.error(`📸  url screenshot: url=${url} format=${normalizedFormat} quality=${normalizedQuality ?? "default"} fullPage=${fullPage !== false} dims=${dimensions.fullWidth}x${dimensions.fullHeight} timeout=${timeoutMs}ms`);
+      const vpLog = viewport ? `${viewport.width}x${viewport.height}` : "default";
+      console.error(`📸  url screenshot: url=${url} format=${normalizedFormat} quality=${normalizedQuality ?? "default"} fullPage=${fullPage !== false} viewport=${vpLog} dims=${dimensions.fullWidth}x${dimensions.fullHeight} timeout=${timeoutMs}ms`);
 
       let screenshot;
       try {

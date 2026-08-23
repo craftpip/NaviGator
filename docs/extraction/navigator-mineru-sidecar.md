@@ -53,7 +53,7 @@ own lifecycle. If it is down, navigator's AI extractor **falls back to
 |---|---|
 | `docker/navigator-mineru/Dockerfile` | Image: python:3.11-slim + gcc/g++/libcairo2 + `mineru_html[vllm]==1.1.2` + baked model |
 | `docker/navigator-mineru/sidecar.py` | FastAPI wrapper; backend selection; concurrency gate; `MAX_INPUT_CHARS` tail-cut; all runtime knobs from `MINERU_*` env vars |
-| `docker-compose.yml` | `navigator-mineru` service: nvidia runtime, `:1998`, shm 2gb, mem limit; every knob exposed as `${MINERU_*:-default}` |
+| `docker-compose.mineru.yml` | `navigator-mineru` service: nvidia runtime, `:1998`, shm 2gb, mem limit; every knob exposed as `${MINERU_*:-default}` (run via `docker compose -f docker-compose.yml -f docker-compose.mineru.yml up --build -d`) |
 | `src/post-processor.js` | `extractWithMineru()` client; `MINERU_MAX_INPUT_CHARS` safety cap; concurrency gate |
 | `src/config.js` | `POST_PROCESSOR_MODELS` entries carry `kind: "mineru"` (`parsePostProcessorKind`, `POST_PROCESSOR_KINDS`) |
 | `src/search.js` | `runPostProcessor` dispatches on `entry.kind` |
@@ -226,7 +226,7 @@ with a navigator one (vLLM/torch's own `VLLM_ATTENTION_BACKEND` /
 `PYTORCH_CUDA_ALLOC_CONF` are exposed via the prefixed names and translated
 inside `sidecar.py`).
 
-### compose service
+### compose service (`docker-compose.mineru.yml`)
 
 ```yaml
 navigator-mineru:
@@ -241,9 +241,15 @@ navigator-mineru:
     MINERU_BACKEND: ${MINERU_BACKEND:-vllm}
     MINERU_CONTEXT_WINDOW: ${MINERU_CONTEXT_WINDOW:-13312}
     MINERU_GPU_MEM_UTIL: ${MINERU_GPU_MEM_UTIL:-0.95}
-    # ... every knob is a ${MINERU_*:-default} passthrough (see docker-compose.yml)
+    # ... every knob is a ${MINERU_*:-default} passthrough (see docker-compose.mineru.yml)
   deploy: { resources: { limits: { memory: ${MINERU_MEM_LIMIT:-8g} } } }
   ports: ["${MINERU_PORT:-1998}:1998"]
+```
+
+Run it alongside the main compose:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mineru.yml up --build -d
 ```
 
 ### Navigator-side entry (`POST_PROCESSOR_MODELS`)

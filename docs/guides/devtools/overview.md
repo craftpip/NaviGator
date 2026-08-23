@@ -2,20 +2,6 @@
 
 19 CDP tools for interacting with live web pages — create persistent tabs, inspect DOM, click buttons, type text, and monitor network requests.
 
-## Enabling DevTools
-
-DevTools are enabled by default. Set `ENABLE_DEVTOOLS_MCP=0` to disable them.
-
-Restart the server after changing this setting.
-
-## The DevTools Workflow
-
-1. **Create a tab** — open a page in a persistent browser tab
-2. **Inspect** — read the DOM, check element positions, get HTML
-3. **Interact** — click buttons, fill forms, type text
-4. **Monitor** — watch network requests and console output
-5. **Close** — clean up when done
-
 ## Available Tools
 
 ### Tab Management
@@ -39,6 +25,7 @@ Restart the server after changing this setting.
 | `DOM.querySelector` | Find a single element |
 | `DOM.querySelectorAll` | Find multiple elements |
 | `DOM.getOuterHTML` | Get raw HTML of an element |
+| `DOM.getCompactHTML` | Get compact HTML (minified) |
 | `DOM.scrollIntoViewIfNeeded` | Scroll an element into view |
 
 ### Interaction

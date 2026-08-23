@@ -147,18 +147,15 @@ html {
   overflow-y: scroll;
 }
 
-/* ── Collapsible groups: custom arrow, indented items ── */
+/* ── Collapsible groups: custom arrow, even spacing for two levels ── */
 .VPSidebar .nav {
   padding-top: 24px;
-}
-.VPSidebarItem.collapsed {
-  padding-bottom: 4px;
 }
 /* hide VitePress's default inline chevron glyph */
 .VPSidebarItem .caret .caret-icon {
   display: none;
 }
-/* our own arrow — the caret is a flex box, so the arrow stays centered on the text line */
+/* our own arrow — centered, smaller */
 .VPSidebarItem .caret {
   display: inline-flex;
   align-items: center;
@@ -170,19 +167,33 @@ html {
 .VPSidebarItem .caret::before {
   content: "";
   box-sizing: border-box;
-  width: 8px;
-  height: 8px;
-  border-right: 2px solid var(--vp-c-text-2);
-  border-bottom: 2px solid var(--vp-c-text-2);
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--vp-c-text-2);
+  border-bottom: 1.5px solid var(--vp-c-text-2);
   transform: rotate(-45deg);
   transition: transform 0.25s ease;
 }
 .VPSidebarItem:not(.collapsed) > .item .caret::before {
   transform: rotate(45deg);
 }
-/* indent the sub-links inside a group */
-.VPSidebarItem.level-0 > .items .VPSidebarItem .item {
-  padding-left: 8px;
+/* muted arrow for nested (smaller) groups inside Reference Content */
+.VPSidebarItem.level-1 .caret::before {
+  border-color: var(--vp-c-text-3, #a1a1aa);
+}
+/* even spacing for all child groups — two levels */
+.VPSidebarItem {
+  margin-bottom: 2px;
+}
+.VPSidebarItem .items {
+  padding: 6px 0 6px 8px;
+}
+.VPSidebarItem.collapsed .items {
+  padding: 0;
+}
+/* indent level-1 groups slightly more */
+.VPSidebarItem.level-1 > .items {
+  padding-left: 12px;
 }
 
 /* ── H2 headings: consistent spacing + horizontal line above each section ──
@@ -427,6 +438,40 @@ html.dark .chat-msg.tool details code {
 }
 
 /* ── Rounded corners for all doc tables ── */
+/* ── Badge vertical alignment in headings ── */
+.vp-doc h1 .VPBadge,
+.vp-doc h2 .VPBadge,
+.vp-doc h3 .VPBadge {
+  vertical-align: middle;
+  margin-left: 8px;
+  position: relative;
+  top: -1px;
+}
+
+/* ── Sidebar pill for Experimental pages ── */
+.VPSidebar a[href="/guides/screenshots/ascii.html"]::after,
+.VPSidebar a[href="/guides/screenshots/ascii"]::after {
+  content: "Experimental";
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 999px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+html.dark .VPSidebar a[href="/guides/screenshots/ascii.html"]::after,
+html.dark .VPSidebar a[href="/guides/screenshots/ascii"]::after {
+  color: #fcd34d;
+  background: rgba(252, 211, 77, 0.15);
+  border-color: rgba(252, 211, 77, 0.3);
+}
+
 .vp-doc table {
   border-collapse: separate;
   border-spacing: 0;
@@ -514,4 +559,12 @@ html.dark .tool-name {
 html:not([data-install="nodejs"]) .VPDocAsideOutline a[href="#development-mode"],
 html:not([data-install="nodejs"]) .VPLocalNavOutlineDropdown a[href="#development-mode"] {
   display: none !important;
+}
+
+/* ── Keep header anchor (#) visible when heading is targeted via URL hash ──
+ * :target covers native hash navigation; .is-target is set by JS for VitePress
+ * router pushState (which doesn't fire :target reliably). */
+.vp-doc :where(h1, h2, h3, h4, h5, h6):target .header-anchor,
+.vp-doc :where(h1, h2, h3, h4, h5, h6).is-target .header-anchor {
+  opacity: 1 !important;
 }

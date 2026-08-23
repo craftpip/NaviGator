@@ -13,7 +13,7 @@ gpu_memory_utilization=0.8, which over-reserves the KV cache and fails to init
 on 4GB cards. We build the vLLM backend directly with a bounded context window
 and a memory budget sized to fit the whole GPU.
 
-Everything is tunable via MINERU_* env vars (see docker-compose.yml) — every
+Everything is tunable via MINERU_* env vars (see docker-compose.mineru.yml) — every
 var is MINERU_-prefixed so no sidecar var is ever confused with a navigator one:
   MINERU_BACKEND, MINERU_MODEL_PATH, MINERU_CONTEXT_WINDOW, MINERU_GPU_MEM_UTIL,
   MINERU_MAX_INPUT_CHARS, MINERU_TENSOR_PARALLEL_SIZE, MINERU_DTYPE,

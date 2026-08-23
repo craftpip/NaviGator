@@ -4,6 +4,9 @@ node_modules/
 npm-debug.log*
 screenshots/*.png
 !screenshots/.gitkeep
+
+# svg-diff benchmark artifacts (PNG/SVG pairs from scripts/svg-diff.mjs)
+svg-diff/
 .idea/
 .ai/
 .cache/

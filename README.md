@@ -369,6 +369,14 @@ Resolve inline link reference IDs from `web_fetch` output, such as `[documentati
 
 Capture a screenshot-derived ANSI or plain-text layout render with an element legend.
 
+### `web_page_svg`
+
+Capture a webpage as a structured SVG — filled rects with real colors/radii, text laid out with the page's own font metrics (build-time wrap and ellipsis), `<image>` embeds for img/canvas content. Coordinates are document-relative CSS pixels, so the file doubles as a layout database for geometry math.
+
+```json
+{ "url": "https://example.com", "fullPage": true, "elementLimit": 100 }
+```
+
 ### Optional browser-testing tools
 
 When `ENABLE_DEVTOOLS_MCP=1`, the server also exposes these tools:

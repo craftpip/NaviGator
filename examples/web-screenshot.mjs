@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { mcpCall } from "./_lib.js";
 
-const url = process.argv[2] || "https://example.com";
+const url = process.argv[2] || "http://10.69.1.164:1994/console";
 const out = process.argv[3] || "screenshot.jpg";
 
 const result = await mcpCall("web_page_screenshot", { url, fullPage: false });

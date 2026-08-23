@@ -1,140 +1,130 @@
 # Interaction
 
-Click buttons, fill forms, and interact with live web pages.
+Click buttons, fill forms, and interact with live web pages. Our input tools resolve CSS/XPath before acting and return synthesized results with helpful failures — not raw CDP `Input` events.
 
-## Clicking Elements
+## Input.dispatchMouseEvent
 
-Use `Input.dispatchMouseEvent` to click any element:
+Click an element by CSS or XPath. Scrolls it into view first; fails with page URL + candidate clickables if nothing matches.
 
-```json
-{
-  "targetId": "ABC",
-  "selector": "button.submit"
-}
-```
+**Request**
 
-Options:
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `selector` | `string` | — | CSS selector of the element to click |
+| `xpath` | `string` | — | XPath of the element to click |
+| `button` | `string` | `left` | `left`, `right`, or `middle` |
+| `clickCount` | `number` | `1` | Number of clicks (1–3) |
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `button` | `left` | `left`, `right`, or `middle` |
-| `clickCount` | `1` | Number of clicks (1-3 for double/triple click) |
 
-### Click by XPath
+Response:
 
 ```json
 {
   "targetId": "ABC",
-  "xpath": "/html/body/main/form/button"
+  "clicked": true,
+  "button": "left",
+  "clickCount": 1,
+  "point": { "x": 512, "y": 320, "tagName": "button", "found": true }
 }
 ```
 
-## Typing Text
+Standard CDP `Input.dispatchMouseEvent` needs raw `x,y` — we resolve the element for you.
 
-Use `Input.insertText` to type into form fields:
+## Input.insertText
+
+Focus an input, clear it, and type `text` char-by-char. Requires a selector/xpath that resolves to an editable element.
+
+**Request**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `selector` | `string` | — | CSS selector of the editable element |
+| `xpath` | `string` | — | XPath of the editable element |
+| `text` | `string` | — | The text to type (clears existing value first) |
+
+
+Response:
 
 ```json
 {
   "targetId": "ABC",
-  "selector": "input[name='email']",
-  "text": "user@example.com"
+  "focused": true,
+  "clearedExistingValue": "old@example.com",
+  "finalValue": "user@example.com"
 }
 ```
 
-This:
-1. Focuses the element
-2. Clears any existing value
-3. Types the text character by character
-4. Returns the final value
+Clears any existing `value` first, then types with `HUMAN_TYPING_DELAY`. Standard CDP has no `insertText` — we synthesize `focused`/`clearedExistingValue`/`finalValue`. Fails with editable candidates if selector doesn't match an input.
 
-### Password Fields
+## Input.dispatchKeyEvent
+
+Press a key, optionally with modifiers. Synthetic events can't trigger browser shortcuts (Ctrl+R, etc.) — use `Page.reload` instead.
+
+**Request**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `key` | `string` | — | Key to press — `Enter`, `Tab`, `Escape`, `ArrowUp`, `Backspace`, `a`, etc. |
+| `modifiers` | `string[]` | — | Modifiers to hold — `Control`, `Shift`, `Alt`, `Meta` |
+| `text` | `string` | — | Text to inject for text keys |
+
+
+Response:
 
 ```json
 {
   "targetId": "ABC",
-  "selector": "input[type='password']",
-  "text": "my-secret-password"
+  "pressed": "Enter",
+  "modifiers": []
 }
 ```
 
-## Keyboard Events
+With modifiers: `Input.dispatchKeyEvent({ targetId: "ABC", key: "a", modifiers: ["Control"] })` — holds `Control`, presses `a`, releases. Returns `pressed` and `modifiers` echo.
 
-Use `Input.dispatchKeyEvent` for keyboard shortcuts and special keys:
+## DOM.scrollIntoViewIfNeeded
+
+Scroll an element into view before interacting.
+
+**Request**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `targetId` | `string` | — | Target id |
+| `selector` | `string` | — | CSS selector |
+| `xpath` | `string` | — | XPath |
+
+
+Response:
 
 ```json
-{
-  "targetId": "ABC",
-  "key": "Enter"
-}
+{ "ok": true }
 ```
 
-### Special Keys
-
-| Key | Description |
-|-----|-------------|
-| `Enter` | Submit form, confirm |
-| `Tab` | Move to next field |
-| `Escape` | Close modal, cancel |
-| `ArrowUp` / `ArrowDown` | Navigate lists |
-| `Backspace` | Delete character |
-
-### Key with Modifiers
-
-```json
-{
-  "targetId": "ABC",
-  "key": "a",
-  "modifiers": ["Control"]
-}
-```
-
-This selects all text (Ctrl+A).
+Fails with page URL + interactive candidates if selector doesn't match.
 
 ## Example: Filling a Search Form
 
-```json
-// 1. Open the page
-Target.createTarget({ "url": "https://example.com" })
 
-// 2. Find the search input
-DOM.querySelector({ "targetId": "ABC", "selector": "input[type='search']" })
 
-// 3. Type the search query
-Input.insertText({ "targetId": "ABC", "selector": "input[type='search']", "text": "MCP protocol" })
 
-// 4. Press Enter to submit
-Input.dispatchKeyEvent({ "targetId": "ABC", "key": "Enter" })
 
-// 5. Wait for results, then check the page
-DOM.getDocument({ "targetId": "ABC", "limit": 20 })
-```
-
-## Example: Paginating Results
-
-```json
-// 1. Click "Next" button
-Input.dispatchMouseEvent({ "targetId": "ABC", "selector": "button.next-page" })
-
-// 2. Wait for page to load (check network)
-Network.getRequests({ "targetId": "ABC", "filter": "api" })
-
-// 3. Read the new content
-DOM.getDocument({ "targetId": "ABC", "limit": 20 })
-```
 
 ## Limitations
 
-- **No browser shortcuts** — Synthetic key events can't trigger Ctrl+R, Ctrl+W, etc. Use `Page.reload` instead.
-- **No drag and drop** — Only click and type are supported.
-- **No file upload** — Can't interact with file input dialogs.
-- **Typing delay** — Characters are typed with a configurable delay (`HUMAN_TYPING_DELAY`).
+- **No browser shortcuts** — synthetic keys can't trigger Ctrl+R/W, etc. Use `Page.reload`/`Page.goBack`.
+- **No drag and drop** — only click and type.
+- **No file upload** — can't interact with file input dialogs.
+- **Typing delay** — `HUMAN_TYPING_DELAY` adds per-char delay.
 
 ## Tips
 
-- **Use `DOM.getDocument` first** to find the right selector
-- **Scroll before clicking** — `DOM.scrollIntoViewIfNeeded` ensures the element is visible
-- **Check `Network.getRequests`** after clicks to see if API calls were made
-- **Use `Runtime.evaluate`** for complex interactions not covered by other tools
+- **Find the selector first** — `DOM.getDocument` → `DOM.querySelector` → then `dispatchMouseEvent`/`insertText`
+- **Scroll before clicking** — `DOM.scrollIntoViewIfNeeded` if element is off-screen
+- **Check `Network.getRequests`** after clicks to confirm API calls
+- **Use `Runtime.evaluate`** for custom interactions
 
 ## Next Steps
 

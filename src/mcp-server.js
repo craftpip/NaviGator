@@ -22,9 +22,10 @@ import { vncManager } from "./vnc-manager.js";
 import { browserOpenAndExtract, browserSearch, browserCaptureScreenshot, getSearchBackendHealth, getActivityCounters, getEngineAttemptStats, getEngineProfiles, resetSearchEngine } from "./search.js";
 import { getActivityTrend, getRecentActivity, recordActivityEvent, recordPageOp, recordPageOpStart } from "./activity.js";
 import { createMcpApiKey, getUsageTotals, incrementUsageTotal, initDb, initializeMcpApiKeys, listMcpApiKeys, revokeMcpApiKey, setMcpApiKeyTools } from "./db.js";
-import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters, createTarget, closeTarget, getPageContent, navigatePage, listTargets } from "./devtools.js";
+import { devtoolsToolDefinitions, formatDevtoolsToolResponse, handleDevtoolsToolCall, captureTargetScreenshot, getDevtoolsCounters, createTarget, closeTarget, getPageContent, navigatePage, listTargets, getTargetState } from "./devtools.js";
 import { transform as asciiTransform } from "./ascii.js";
 import { SAMPLE_PIXELS_CODE, asciiGridDims } from "./pixel-sampler.js";
+import { svgExtractor, capturePageAsSvg } from "./svg.js";
 import { rememberLink, getUrlForRefId, getLinkRefByUrl, getRememberedLinkRecord } from "./ref-memory.js";
 import { SUPPORTED_ENGINES, getEngineMetadata } from "./engines/index.js";
 import { getAuthorizedMcpKey, getMcpApiKey, isAuthorizedMcpRequest } from "./mcp-api-auth.js";
@@ -64,7 +65,7 @@ const CONSOLE_ENGINE_BY_ID = new Map(
 const screenshotDownloadById = new Map();
 const screenshotStorageDir = path.join(process.cwd(), "screenshots");
 const CONSOLE_API_KEY = `nvg_console_${randomBytes(32).toString("base64url")}`;
-const WEB_TOOL_NAMES = new Set(["web_search", "web_fetch", "web_page_screenshot", "web_page_links", "web_page_ascii"]);
+const WEB_TOOL_NAMES = new Set(["web_search", "web_fetch", "web_page_screenshot", "web_page_links", "web_page_ascii", "web_page_svg"]);
 let toolCacheTtlMs = 5 * 60 * 1000; // updated from manager.config after boot
 const SCREENSHOT_DOWNLOAD_TTL_MS = 60 * 60 * 1000;
 const MAX_HTTP_BODY_BYTES = 1024 * 1024;
@@ -290,6 +291,35 @@ function parsePositiveInt(value, field) {
     throw new Error(`Invalid input: ${field} must be a positive number`);
   }
   return Math.floor(parsed);
+}
+
+function parseScreenshotViewport(value, fullPage) {
+  if (value === undefined || value === null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid input: viewport must be an object with width and height");
+  }
+  const hasWidth = Object.prototype.hasOwnProperty.call(value, "width");
+  const hasHeight = Object.prototype.hasOwnProperty.call(value, "height");
+  if (!hasWidth) {
+    throw new Error("Invalid input: viewport.width is required");
+  }
+  const width = Math.floor(Number(value.width));
+  if (!Number.isFinite(width) || width <= 0) {
+    throw new Error("Invalid input: viewport.width must be a positive number");
+  }
+  let height = null;
+  if (hasHeight) {
+    height = Math.floor(Number(value.height));
+    if (!Number.isFinite(height) || height <= 0) {
+      throw new Error("Invalid input: viewport.height must be a positive number");
+    }
+  } else if (fullPage === false) {
+    throw new Error("Invalid input: viewport.height is required when fullPage is false");
+  } else {
+    // fullPage true → height is ignored, default to 1080 for viewport setup
+    height = 1080;
+  }
+  return { width, height };
 }
 
 function sendJson(res, status, payload, extraHeaders) {
@@ -1109,13 +1139,41 @@ async function pruneScreenshotDownloads() {
   }
 }
 
+async function storeSvgDownload(svgText, config, { enableDownload }) {
+  if (!svgText) return null;
+  await pruneScreenshotDownloads();
+  await pruneStoredScreenshotFiles();
+  await fs.mkdir(screenshotStorageDir, { recursive: true });
+  const downloadId = randomUUID();
+  const filename = `svg-${downloadId}.svg`;
+  const filePath = path.join(screenshotStorageDir, filename);
+  await fs.writeFile(filePath, svgText, "utf8");
+  let downloadUrl = null;
+  if (enableDownload) {
+    screenshotDownloadById.set(downloadId, {
+      path: filePath,
+      filename,
+      contentType: "image/svg+xml",
+      createdAt: Date.now()
+    });
+    const baseUrl = buildApiBaseUrl(config);
+    downloadUrl = `${baseUrl}/download/${downloadId}`;
+  }
+  return {
+    downloadId,
+    downloadUrl,
+    bytes: Buffer.byteLength(svgText, "utf8"),
+    filePath
+  };
+}
+
 async function pruneStoredScreenshotFiles() {
   try {
     const entries = await fs.readdir(screenshotStorageDir, { withFileTypes: true });
     const now = Date.now();
     for (const entry of entries) {
       if (!entry.isFile()) continue;
-      if (!entry.name.startsWith("screenshot-")) continue;
+      if (!entry.name.startsWith("screenshot-") && !entry.name.startsWith("svg-")) continue;
       const filePath = path.join(screenshotStorageDir, entry.name);
       try {
         const stats = await fs.stat(filePath);
@@ -1778,6 +1836,16 @@ function getToolsListResponse(allowedTools = null) {
               type: "string",
               description: "Target id from Target.createTarget. Screenshots the existing tab instead of opening a new one."
             },
+            viewport: {
+              type: "object",
+              properties: {
+                width: { type: "number", description: "Viewport width in CSS pixels" },
+                height: { type: "number", description: "Viewport height in CSS pixels" }
+              },
+              additionalProperties: false,
+              description:
+                "Viewport size for the screenshot (same style as Target.createTarget viewport). When fullPage is true only width matters — height is ignored and defaults to 1080 if omitted. When fullPage is false both width and height define the viewport."
+            },
             quality: {
               type: "string",
               enum: ["low", "medium", "high"],
@@ -1854,6 +1922,62 @@ function getToolsListResponse(allowedTools = null) {
             },
             includeSelector: { type: "boolean", default: true },
             includeXpath: { type: "boolean", default: true }
+          },
+          additionalProperties: false
+        }
+      },
+      {
+        name: "web_page_svg",
+        description:
+          "Capture a webpage as a faithful SVG render — each visible element is a filled rect (with optional rx for rounded corners) so the SVG looks like the screenshot, plus per-element g data-* attributes (data-tag, data-selector, data-xpath, data-x/y/width/height) and rect x/y/width/height rx so the agent can compute positions, containment, and flow without decoding pixels. Text inside each box is real text with computed color/font. Use instead of web_page_screenshot when you need both a render and layout geometry.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "Single URL to snapshot (prefer this for one page)" },
+            urls: {
+              type: "array",
+              items: { type: "string" },
+              description: "One or more URLs to open"
+            },
+            ref_id: { type: "number", description: "Result id from a previous web_search call (single)" },
+            ref_ids: {
+              type: "array",
+              items: { type: "number" },
+              description: "Result ids from a previous web_search call"
+            },
+            targetId: {
+              type: "string",
+              description: "Target id from Target.createTarget — snapshots the live tab, reflecting JS-driven state"
+            },
+            fullPage: {
+              type: "boolean",
+              default: false,
+              description: "false=viewport only (default), true=full scrollable document (like web_page_screenshot fullPage:true)"
+            },
+            elementLimit: {
+              type: "number",
+              default: 5000,
+              description: "Max elements in the SVG (1-5000). Higher = more boxes but larger SVG."
+            },
+            viewport: {
+              type: "object",
+              properties: {
+                width: { type: "number", description: "Viewport width in CSS pixels" },
+                height: { type: "number", description: "Viewport height in CSS pixels" }
+              },
+              additionalProperties: false,
+              description:
+                "Viewport override (CSS px). fullPage:false requires both; fullPage:true only width matters (height→1080) — same contract as web_page_screenshot / Target.createTarget"
+            },
+            includeSelector: { type: "boolean", default: true },
+            includeXpath: { type: "boolean", default: true },
+            hybrid: { type: "boolean", default: false, description: "When true, SVG includes <foreignObject> with inlined HTML for 100% visual fidelity (hybrid: foreignObject visual + rect data-* geometry). Use for pixel-perfect replication of http://10.69.1.164:1994/." },
+            output: {
+              type: "string",
+              enum: ["inline", "file", "url"],
+              default: "inline",
+              description: "inline=markdown ```svg block, file=save to screenshots/*.svg, url=download URL"
+            }
           },
           additionalProperties: false
         }
@@ -1989,6 +2113,7 @@ async function handleToolCallInner(name, args = {}) {
     }
     if (quality === undefined) quality = 55;
     const fullPage = args.fullPage === undefined ? true : Boolean(args.fullPage);
+    const viewport = parseScreenshotViewport(args.viewport, fullPage);
 
     const allowedOutputModes = ["base64"];
     if (manager?.config?.screenshotPathPrefix) allowedOutputModes.push("file");
@@ -1999,6 +2124,7 @@ async function handleToolCallInner(name, args = {}) {
       format,
       quality: quality ?? "default",
       fullPage,
+      viewport: viewport || "default",
       target: hasTargetId ? args.targetId.trim() : (args.urls || args.ref_ids || "unknown")
     };
     console.error(`📸  screenshot context: ${JSON.stringify(screenshotCtx)}`);
@@ -2013,7 +2139,8 @@ async function handleToolCallInner(name, args = {}) {
             targetId: args.targetId.trim(),
             format,
             fullPage,
-            ...(quality ? { quality } : {})
+            ...(quality ? { quality } : {}),
+            ...(viewport ? { viewport } : {})
           })
         );
         recordPageOp({
@@ -2061,7 +2188,8 @@ async function handleToolCallInner(name, args = {}) {
           captureScreenshotsParallel(targetUrls, manager.config.openPageMaxParallel, {
             format,
             fullPage,
-            ...(quality ? { quality } : {})
+            ...(quality ? { quality } : {}),
+            ...(viewport ? { viewport } : {})
           })
         );
       } catch (error) {
@@ -2359,6 +2487,184 @@ async function handleToolCallInner(name, args = {}) {
     timer.step("format_response", mark);
     timer.end({ status: "ok" });
     return response;
+  }
+
+  if (name === "web_page_svg") {
+    let elementLimit = Math.max(1, Math.min(5000, args.elementLimit ? parsePositiveInt(args.elementLimit, "elementLimit") : 5000));
+    // webcontentextraction.org table was missed with limit 100 (0 td) — ensure fullPage captures all data tables
+    if (args.fullPage === true && elementLimit < 500) elementLimit = 500;
+    const fullPage = args.fullPage === true;
+    const includeSelector = args.includeSelector !== false;
+    const includeXpath = args.includeXpath !== false;
+    const hybrid = args.hybrid === true;
+    const output = ["inline", "file", "url"].includes(args.output) ? args.output : "inline";
+    const hasTargetId = typeof args.targetId === "string" && args.targetId.trim().length > 0;
+
+    // Viewport handling — independent, mirrors screenshot contract
+    let viewportOverride = null;
+    if (args.viewport !== undefined && args.viewport !== null) {
+      const vp = args.viewport;
+      if (!vp || typeof vp !== "object" || Array.isArray(vp)) throw new Error("Invalid input: viewport must be an object with width and height");
+      const hasWidth = Object.prototype.hasOwnProperty.call(vp, "width");
+      const hasHeight = Object.prototype.hasOwnProperty.call(vp, "height");
+      if (!hasWidth) throw new Error("Invalid input: viewport.width is required");
+      const w = Math.floor(Number(vp.width));
+      if (!Number.isFinite(w) || w <= 0) throw new Error("Invalid input: viewport.width must be a positive number");
+      let h;
+      if (hasHeight) {
+        h = Math.floor(Number(vp.height));
+        if (!Number.isFinite(h) || h <= 0) throw new Error("Invalid input: viewport.height must be a positive number");
+      } else if (!fullPage) {
+        throw new Error("Invalid input: viewport.height is required when fullPage is false");
+      } else {
+        h = 1080;
+      }
+      viewportOverride = { width: w, height: h };
+    }
+
+    const managerSvg = await getBrowserManager();
+    mark = timer.step("prepare_execution", mark);
+
+    if (hasTargetId) {
+      const targetId = String(args.targetId).trim();
+      const state = getTargetState(targetId);
+      let prevViewport = null;
+      let didOverride = false;
+      if (viewportOverride) {
+        try { prevViewport = state.page.viewport(); } catch {}
+        if (!prevViewport) prevViewport = { width: 1920, height: 1080 };
+        await state.page.setViewport(viewportOverride);
+        didOverride = true;
+      }
+      let svgResult;
+      try {
+        const cap = await capturePageAsSvg(state.page, { elementLimit, fullPage, includeSelector, includeXpath, hybrid });
+        svgResult = { svg: cap.svg, title: cap.data.title, url: cap.data.url, stats: { width: cap.clipW, height: cap.clipH, viewportWidth: cap.data.viewportWidth, viewportHeight: cap.data.viewportHeight, pageWidth: cap.data.pageWidth, pageHeight: cap.data.pageHeight, elementCount: cap.data.elements.length, filteredCount: cap.filtered.length, bytes: cap.built.stats.bytes, fullPage }, filteredCount: cap.filtered.length, elementCount: cap.data.elements.length, bytes: cap.built.stats.bytes };
+        // keep cap.data for potential use
+        svgResult._capData = cap.data;
+
+        svgResult.targetId = targetId;
+      } finally {
+        if (didOverride && prevViewport) {
+          try { await state.page.setViewport(prevViewport); } catch {}
+        }
+      }
+      mark = timer.step("capture_svg", mark);
+
+      if (output === "file" || output === "url") {
+        const stored = await storeSvgDownload(svgResult.svg, managerSvg.config, { enableDownload: output === "url" });
+        if (stored) {
+          svgResult.filePath = stored.filePath;
+          svgResult.bytes = stored.bytes;
+          if (stored.downloadUrl) {
+            svgResult.downloadUrl = stored.downloadUrl;
+            svgResult.downloadId = stored.downloadId;
+          }
+          if (output === "file" || output === "url") {
+            // keep svg inline for file/url too? Return metadata + file path
+          }
+        }
+      }
+
+      const lines = [
+        `### ${svgResult.title || "Page"} — SVG Render (faithful)`,
+        "",
+        "```svg",
+        output === "inline" ? svgResult.svg : `<!-- SVG saved to ${svgResult.filePath || "file"} — ${svgResult.stats.bytes} bytes -->`,
+        "```",
+        ...(output !== "inline" && svgResult.filePath ? ["", `SVG saved: \`${svgResult.filePath}\`${svgResult.downloadUrl ? ` — download: ${svgResult.downloadUrl}` : ""}`] : []),
+        "",
+        `- Page: ${svgResult.title} (${svgResult.url})${hasTargetId ? ` [target ${targetId}]` : ""}`,
+        `- Canvas: ${svgResult.stats.width}×${svgResult.stats.height} ${svgResult.stats.fullPage ? "(full page)" : "(viewport)"} · mode: render (filled rects, rx for rounded)`,
+        `- Elements: ${svgResult.stats.elementCount} found, ${svgResult.stats.filteredCount} in SVG`,
+        `- Bytes: ${svgResult.stats.bytes}`,
+        ...(svgResult.filePath ? [`- File: \`${svgResult.filePath}\``] : []),
+        ...(svgResult.downloadUrl ? [`- Download: ${svgResult.downloadUrl}`] : [])
+      ];
+      timer.step("format_response", mark);
+      timer.end({ status: "ok" });
+      return asMarkdownContent(lines.join("\n"));
+    }
+
+    // Non-targetId path — ephemeral pages, batch support
+    const targetUrls = (() => {
+      try {
+        return resolveOpenTarget(args);
+      } catch (error) {
+        timer.step("resolve_targets_failed", mark);
+        timer.end({ status: "error", error: String(error?.message || error) });
+        throw error;
+      }
+    })();
+    mark = timer.step("resolve_targets", mark);
+
+    const svgBatch = await mapWithConcurrency(targetUrls, managerSvg.config.openPageMaxParallel, async (targetUrl) => {
+      return managerSvg.withPageSlot(async () => {
+        const page = await managerSvg.newPage({ backend: managerSvg.config.defaultBackend });
+        try {
+          if (viewportOverride) await page.setViewport(viewportOverride);
+          await page.goto(targetUrl, { waitUntil: managerSvg.config.navWaitUntil, timeout: managerSvg.config.browserOpTimeoutMs });
+          await page.waitForFunction(() => document.readyState === "complete" || document.readyState === "interactive", { timeout: 10000 }).catch(() => {});
+          await new Promise((r) => setTimeout(r, 900));
+          const cap = await capturePageAsSvg(page, { elementLimit, fullPage, includeSelector, includeXpath, hybrid });
+          const result = { svg: cap.svg, title: cap.data.title, url: cap.data.url, stats: { width: cap.clipW, height: cap.clipH, viewportWidth: cap.data.viewportWidth, viewportHeight: cap.data.viewportHeight, pageWidth: cap.data.pageWidth, pageHeight: cap.data.pageHeight, elementCount: cap.data.elements.length, filteredCount: cap.filtered.length, bytes: cap.built.stats.bytes, fullPage }, filteredCount: cap.filtered.length, elementCount: cap.data.elements.length, bytes: cap.built.stats.bytes, _capData: cap.data };
+          result.url = targetUrl;
+          // file/url output per entry
+          if (output === "file" || output === "url") {
+            const stored = await storeSvgDownload(result.svg, managerSvg.config, { enableDownload: output === "url" });
+            if (stored) {
+              result.filePath = stored.filePath;
+              result.bytes = stored.bytes;
+              if (stored.downloadUrl) {
+                result.downloadUrl = stored.downloadUrl;
+                result.downloadId = stored.downloadId;
+              }
+              if (output !== "inline") {
+                // trim inline svg for batch file mode to keep response small
+                result.svgPreview = result.svg.slice(0, 800) + (result.svg.length > 800 ? "\n<!-- truncated, see file -->" : "");
+              }
+            }
+          }
+          return { ok: true, ...result, ref_id: rememberLink(targetUrl) };
+        } catch (error) {
+          console.error(`🟥 web_page_svg batch error for ${targetUrl}: ${String(error?.message || error)}`);
+          if (error?.stack) console.error(`🟥 stack: ${String(error.stack).slice(0,2000)}`);
+          return { ok: false, url: targetUrl, ref_id: rememberLink(targetUrl), error: String(error?.message || error) };
+        } finally {
+          if (!page.isClosed()) await page.close().catch(() => {});
+        }
+      });
+    });
+
+    mark = timer.step("capture_svg", mark);
+
+    // Format batch response
+    const linesOut = [];
+    const successCount = svgBatch.filter((e) => e.ok).length;
+    linesOut.push(`Processed ${svgBatch.length} page(s); ${successCount} succeeded.`);
+    for (let i = 0; i < svgBatch.length; i++) {
+      const entry = svgBatch[i];
+      const title = entry.title || entry.url || `Page ${i + 1}`;
+      linesOut.push("", `### ${title}`);
+      linesOut.push(`- Status: ${entry.ok ? "Success" : "Failed"}`);
+      if (entry.url) linesOut.push(`- URL: ${entry.url}`);
+      if (!entry.ok) {
+        linesOut.push(`- Error: ${entry.error}`);
+        continue;
+      }
+      linesOut.push(`- Canvas: ${entry.stats.width}×${entry.stats.height} ${entry.stats.fullPage ? "(full page)" : "(viewport)"}`);
+      linesOut.push(`- Elements: ${entry.stats.elementCount} found, ${entry.stats.filteredCount} in SVG · ${entry.stats.bytes} bytes`);
+      if (entry.filePath) linesOut.push(`- File: \`${entry.filePath}\`${entry.downloadUrl ? ` — download: ${entry.downloadUrl}` : ""}`);
+      if (output === "inline") {
+        linesOut.push("", "```svg", entry.svg, "```");
+      } else {
+        linesOut.push("", "```svg", entry.svgPreview || entry.svg.slice(0, 1000), "```");
+      }
+    }
+
+    timer.step("format_response", mark);
+    timer.end({ status: "ok" });
+    return asMarkdownContent(linesOut.join("\n"));
   }
 
   if (name === "web_page_links") {
