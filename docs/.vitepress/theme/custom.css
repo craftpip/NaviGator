@@ -450,7 +450,9 @@ html.dark .chat-msg.tool details code {
 
 /* ── Sidebar pill for Experimental pages ── */
 .VPSidebar a[href="/guides/screenshots/ascii.html"]::after,
-.VPSidebar a[href="/guides/screenshots/ascii"]::after {
+.VPSidebar a[href="/guides/screenshots/ascii"]::after,
+.VPSidebar a[href="/guides/screenshots/svg.html"]::after,
+.VPSidebar a[href="/guides/screenshots/svg"]::after {
   content: "Experimental";
   display: inline-block;
   margin-left: 8px;
@@ -466,7 +468,9 @@ html.dark .chat-msg.tool details code {
   white-space: nowrap;
 }
 html.dark .VPSidebar a[href="/guides/screenshots/ascii.html"]::after,
-html.dark .VPSidebar a[href="/guides/screenshots/ascii"]::after {
+html.dark .VPSidebar a[href="/guides/screenshots/ascii"]::after,
+html.dark .VPSidebar a[href="/guides/screenshots/svg.html"]::after,
+html.dark .VPSidebar a[href="/guides/screenshots/svg"]::after {
   color: #fcd34d;
   background: rgba(252, 211, 77, 0.15);
   border-color: rgba(252, 211, 77, 0.3);

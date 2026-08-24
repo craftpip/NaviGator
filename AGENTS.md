@@ -293,6 +293,25 @@ docker compose build               # Build Docker image
 docker compose up --build -d       # Build and start containers
 ```
 
+### Docs site dev server (hot reload, port 5431)
+
+The docs site (`docs/`, VitePress) has its own package.json. The dev command is `npm run docs:dev` in `docs/` — hot-reloads on every file change, served at `http://10.69.1.164:5431/`.
+
+**Starting it from an agent shell — MUST use `setsid -f`:**
+
+```bash
+cd /www1/navigator/docs
+setsid -f npm run docs:dev </dev/null >/tmp/vitepress-dev.log 2>&1 &
+```
+
+- Plain `nohup ... &` is NOT enough here: the child stays in the agent tool-call's process group/session, and when the command window closes the whole group is killed — the server dies silently within minutes (no error in logs).
+- `setsid -f` forks into a brand-new session (PPID becomes 1), so nothing can group-kill it afterward. Verified surviving across many tool calls.
+- Redirect all three streams (`</dev/null >log 2>&1`) and keep the launch call minimal (no curls/sleeps in the same call — they caused hangs/timeouts before).
+- Verify separately after ~10s: `curl -m 4 -o /dev/null -w "%{http_code}" http://10.69.1.164:5431/` → 200.
+- Stop with `kill <pid>` of the `sh -c vitepress dev` process (or `pkill -f vitepress` from a call whose own cmdline doesn't contain that string).
+- Deps live in `docs/node_modules` (vitepress ^1.6.4); if missing, `npm install` inside `docs/`.
+- Foreground runs always die at the tool timeout — never launch a dev server bare.
+
 ### Running tests
 
 All tests run inside the container only. The entrypoint runs `npm install --omit=dev` on every container start, which prunes dev deps from the bind-mounted host `node_modules` — so reinstall dev deps after **every** restart/build, not just the first time:

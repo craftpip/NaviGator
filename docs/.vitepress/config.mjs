@@ -112,6 +112,7 @@ export default defineConfig({
           { text: "Overview", link: "/guides/screenshots/overview" },
           { text: "Output Options", link: "/guides/screenshots/output" },
           { text: "ASCII Renders", link: "/guides/screenshots/ascii" },
+          { text: "SVG Renders", link: "/guides/screenshots/svg" },
         ],
       },
       {
