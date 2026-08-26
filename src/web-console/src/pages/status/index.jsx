@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatBytes, formatMs, formatCountdown, formatTime, formatRelativeTime, formatBackend, formatTrendLabel } from "../../lib/format.js";
 import { WEB_TOOLS, request, classifyError } from "../../lib/request.js";
 import { Panel, Empty, Dot, Pill, Trend, Metric, Item, Countdown } from "../../components/ui.jsx";
